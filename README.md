@@ -65,10 +65,17 @@ Health check:
 http://127.0.0.1:8000/health
 ```
 
-Run tests:
+Run tests without activating the virtual environment:
 
 ```powershell
-.\.venv\Scripts\activate
+.\.venv\Scripts\python.exe -m pytest
+```
+
+If you want to activate the virtual environment in PowerShell, you may need to allow scripts for the current process first:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
 pytest
 ```
 
