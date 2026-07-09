@@ -1,0 +1,24 @@
+@echo off
+setlocal
+
+cd /d %~dp0
+
+if not exist .venv (
+    echo Creating virtual environment...
+    py -m venv .venv
+)
+
+call .venv\Scripts\activate
+
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+
+if not exist data mkdir data
+if not exist backups mkdir backups
+
+set PYTHONPATH=%CD%
+
+echo Starting Local-First Operations Tracker...
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+
+endlocal
