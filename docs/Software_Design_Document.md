@@ -22,19 +22,21 @@ Planned fields:
 - business ID
 - notes
 
-### Jobs / Orders
+### Work Orders / Jobs
 
-Stores incoming work and tracks it through a configurable workflow.
+Stores a simple work order and tracks it through a configurable workflow.
+
+The work order is the central record. In a laundry this can represent incoming laundry. In a repair shop it can represent a repair job. In another company it can represent any customer work that arrives, is processed, and is later picked up or delivered.
 
 Planned fields:
 
-- job number
+- work order number
 - receipt number
 - customer
 - title
 - description
-- arrival date
-- requested pickup date
+- received date
+- requested pickup or delivery date
 - status
 - priority
 - notes
@@ -57,15 +59,15 @@ Laundry preset example:
 
 The dashboard is the daily command center. It must show:
 
-- overdue jobs
-- jobs due today
-- jobs due tomorrow
-- jobs that need attention before the next business day
-- ready but uncollected jobs
+- overdue work orders
+- work orders due today
+- work orders due tomorrow
+- work orders that need attention before the next business day
+- ready but uncollected work orders
 
 ### Products and pricing
 
-Products or service items can be added to jobs.
+Products or service items can be added to work orders.
 
 Planned fields:
 
@@ -122,14 +124,14 @@ Configurable items:
 The first build should include:
 
 1. customer CRUD
-2. job CRUD
+2. work order CRUD
 3. configurable statuses
-4. pickup dates
+4. pickup or delivery dates
 5. dashboard reminders
 6. sequential receipt numbers
 7. printable receipt preview
 8. products and pricing
-9. job item rows
+9. work order item rows
 10. total calculation
 
 ## 4. Technical direction
