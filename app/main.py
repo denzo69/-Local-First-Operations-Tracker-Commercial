@@ -5,6 +5,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.config import get_settings
 from app.database import init_db
+from app.routes import customers
 
 settings = get_settings()
 
@@ -12,6 +13,7 @@ templates = Jinja2Templates(directory="app/templates")
 
 app = FastAPI(title=settings.app_name)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+app.include_router(customers.router)
 
 
 @app.on_event("startup")
