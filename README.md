@@ -4,7 +4,7 @@ A configurable local-first operations tracker for small businesses.
 
 ## Project status
 
-**Status:** Design phase  
+**Status:** Design phase / early prototype  
 **Visibility:** Private during early development  
 **Primary goal:** Build a practical, offline-capable workflow system for small businesses.
 
@@ -36,6 +36,60 @@ The system is not intended to be laundry-only. The workflow, statuses, receipt t
 - **Offline isolated:** no required internet connection
 - **VPN / Tailscale:** optional secure remote access
 - **Cloud-ready:** later deployment to AWS or another cloud provider
+
+## Quick start on Windows
+
+Clone the repository:
+
+```powershell
+git clone https://github.com/denzo69/Local-First-Operations-Tracker.git
+cd Local-First-Operations-Tracker
+```
+
+Start the development server:
+
+```powershell
+.\run.bat
+```
+
+Open the app:
+
+```text
+http://127.0.0.1:8000
+```
+
+Health check:
+
+```text
+http://127.0.0.1:8000/health
+```
+
+Run tests:
+
+```powershell
+.\.venv\Scripts\activate
+pytest
+```
+
+## Local network access
+
+The default `run.bat` starts the app on `127.0.0.1`, which means it is only available on the same computer.
+
+For local network testing, change the Uvicorn host to `0.0.0.0` and open the Windows firewall only for the trusted local network.
+
+Example:
+
+```powershell
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Then open the app from another device using the server computer's local IP address:
+
+```text
+http://192.168.x.x:8000
+```
+
+Do not expose the development server directly to the public internet.
 
 ## Documentation
 
