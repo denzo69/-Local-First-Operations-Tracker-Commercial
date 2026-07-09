@@ -16,14 +16,15 @@ The system should keep working even if the external internet connection is down.
 
 ## First target use case
 
-The first practical use case is a laundry / textile service workflow:
+The first practical use case is a laundry / textile service workflow, but the core concept is a simple **work order**:
 
 - customer details
-- incoming laundry date
-- requested pickup date
+- work order / job details
+- work order received date
+- requested pickup or delivery date
 - next-business-day pickup reminders
 - job status tracking
-- printable receipts
+- printable receipts and work orders
 - sequential receipt numbers
 - products and pricing
 - inventory value tracking
