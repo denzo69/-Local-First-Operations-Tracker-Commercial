@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+    <div>
+        <h1 class="h3 mb-1">Dashboard</h1>
+        <p class="text-muted mb-0">Daily overview for local-first operations tracking.</p>
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-primary" disabled>+ New job</button>
+        <button class="btn btn-outline-secondary" disabled>+ New customer</button>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    {% for card in cards %}
+    <div class="col-6 col-lg-3">
+        <div class="card shadow-sm h-100 border-0 dashboard-card dashboard-card-{{ card.tone }}">
+            <div class="card-body">
+                <div class="text-muted small">{{ card.label }}</div>
+                <div class="display-6 fw-semibold">{{ card.value }}</div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="card shadow-sm border-0">
+    <div class="card-header bg-white fw-semibold">Jobs needing attention</div>
+    <div class="card-body">
+        <p class="text-muted mb-0">No jobs yet. Next step: implement customer and job CRUD.</p>
+    </div>
+</div>
+{% endblock %}
