@@ -1,0 +1,43 @@
+:root {
+    color-scheme: light;
+}
+
+body {
+    background: #f6f7f9;
+}
+
+.dashboard-card {
+    border-left: 0.35rem solid transparent !important;
+}
+
+.dashboard-card-danger {
+    border-left-color: #dc3545 !important;
+}
+
+.dashboard-card-warning {
+    border-left-color: #ffc107 !important;
+}
+
+.dashboard-card-info {
+    border-left-color: #0dcaf0 !important;
+}
+
+.dashboard-card-success {
+    border-left-color: #198754 !important;
+}
+
+@media print {
+    nav,
+    .btn {
+        display: none !important;
+    }
+
+    body {
+        background: #fff;
+    }
+
+    main {
+        width: 100%;
+        max-width: 100%;
+    }
+}
