@@ -1,4 +1,6 @@
-from datetime import datetime
+from __future__ import annotations
+
+from datetime import date, datetime
 
 from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -20,7 +22,7 @@ class Customer(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    jobs: Mapped[list["Job"]] = relationship(back_populates="customer")
+    jobs: Mapped[list[Job]] = relationship(back_populates="customer")
 
 
 class JobStatus(Base):
@@ -34,7 +36,7 @@ class JobStatus(Base):
     is_packed_state: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
-    jobs: Mapped[list["Job"]] = relationship(back_populates="status")
+    jobs: Mapped[list[Job]] = relationship(back_populates="status")
 
 
 class Job(Base):
@@ -46,8 +48,8 @@ class Job(Base):
     customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"), nullable=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    arrival_date: Mapped[datetime | None] = mapped_column(Date, nullable=True)
-    requested_pickup_date: Mapped[datetime | None] = mapped_column(Date, nullable=True, index=True)
+    arrival_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    requested_pickup_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     status_id: Mapped[int | None] = mapped_column(ForeignKey("job_statuses.id"), nullable=True)
     priority: Mapped[str] = mapped_column(String(50), default="normal")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -56,7 +58,7 @@ class Job(Base):
 
     customer: Mapped[Customer | None] = relationship(back_populates="jobs")
     status: Mapped[JobStatus | None] = relationship(back_populates="jobs")
-    items: Mapped[list["JobItem"]] = relationship(back_populates="job")
+    items: Mapped[list[JobItem]] = relationship(back_populates="job")
 
 
 class Product(Base):
@@ -73,7 +75,7 @@ class Product(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    job_items: Mapped[list["JobItem"]] = relationship(back_populates="product")
+    job_items: Mapped[list[JobItem]] = relationship(back_populates="product")
 
 
 class JobItem(Base):
