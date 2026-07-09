@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+    <div>
+        <h1 class="h3 mb-1">{{ customer.name }}</h1>
+        <p class="text-muted mb-0">Customer details</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a class="btn btn-outline-secondary" href="/customers">Back</a>
+        <a class="btn btn-primary" href="/customers/{{ customer.id }}/edit">Edit</a>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-8">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white fw-semibold">Contact details</div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-3">Name</dt>
+                    <dd class="col-sm-9">{{ customer.name }}</dd>
+
+                    <dt class="col-sm-3">Company</dt>
+                    <dd class="col-sm-9">{{ customer.company_name or "—" }}</dd>
+
+                    <dt class="col-sm-3">Phone</dt>
+                    <dd class="col-sm-9">{{ customer.phone or "—" }}</dd>
+
+                    <dt class="col-sm-3">Email</dt>
+                    <dd class="col-sm-9">{{ customer.email or "—" }}</dd>
+
+                    <dt class="col-sm-3">Business ID</dt>
+                    <dd class="col-sm-9">{{ customer.business_id or "—" }}</dd>
+
+                    <dt class="col-sm-3">Address</dt>
+                    <dd class="col-sm-9 white-space-pre-line">{{ customer.address or "—" }}</dd>
+
+                    <dt class="col-sm-3">Notes</dt>
+                    <dd class="col-sm-9 white-space-pre-line">{{ customer.notes or "—" }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card shadow-sm border-0 border-danger-subtle">
+            <div class="card-header bg-white fw-semibold">Danger zone</div>
+            <div class="card-body">
+                <p class="text-muted small">Delete is included for prototype testing. Later this should become archive/deactivate.</p>
+                <form method="post" action="/customers/{{ customer.id }}/delete" onsubmit="return confirm('Delete this customer?');">
+                    <button class="btn btn-outline-danger w-100" type="submit">Delete customer</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
