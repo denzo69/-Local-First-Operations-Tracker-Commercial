@@ -8,17 +8,12 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import get_db
 from app.models import Product
+from app.services.money_service import parse_decimal
 from app.services.settings_service import get_app_settings
 from app.template_context import templates
 
 router = APIRouter(prefix="/products", tags=["products"])
 settings = get_settings()
-
-
-def parse_float(value: str, default: float = 0.0) -> float:
-    if value is None or not str(value).strip():
-        return default
-    return float(str(value).replace(",", "."))
 
 
 def upsert_product_from_row(db: Session, row: dict[str, str]) -> Product | None:
@@ -32,8 +27,8 @@ def upsert_product_from_row(db: Session, row: dict[str, str]) -> Product | None:
         db.add(product)
 
     product.description = (row.get("description") or "").strip() or None
-    product.unit_price = parse_float(row.get("unit_price") or row.get("price") or "0")
-    product.vat_percent = parse_float(row.get("vat_percent") or row.get("vat") or "24", 24.0)
+    product.unit_price = parse_decimal(row.get("unit_price") or row.get("price") or "0")
+    product.vat_percent = parse_decimal(row.get("vat_percent") or row.get("vat") or "24", "24")
     product.unit = (row.get("unit") or "pcs").strip() or "pcs"
     product.is_active = True
     return product
@@ -118,8 +113,8 @@ def create_product(
     product = Product(
         name=name.strip(),
         description=description.strip() or None,
-        unit_price=parse_float(unit_price),
-        vat_percent=parse_float(vat_percent, 24.0),
+        unit_price=parse_decimal(unit_price),
+        vat_percent=parse_decimal(vat_percent, "24"),
         unit=unit.strip() or "pcs",
         is_stock_item=is_stock_item == "on",
     )
@@ -169,8 +164,8 @@ def update_product(
 
     product.name = name.strip()
     product.description = description.strip() or None
-    product.unit_price = parse_float(unit_price)
-    product.vat_percent = parse_float(vat_percent, 24.0)
+    product.unit_price = parse_decimal(unit_price)
+    product.vat_percent = parse_decimal(vat_percent, "24")
     product.unit = unit.strip() or "pcs"
     product.is_active = is_active == "on"
     product.is_stock_item = is_stock_item == "on"

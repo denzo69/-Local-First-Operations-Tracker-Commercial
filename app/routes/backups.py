@@ -1,55 +1,64 @@
-from datetime import datetime
-from pathlib import Path
-from shutil import copy2
-
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.database import get_db
+from app.services.audit_service import log_audit_event
+from app.services.backup_service import backup_health, cleanup_retention, create_backup, list_backups, restore_backup
+from app.services.maintenance_service import maintenance_mode
 from app.template_context import templates
 
 router = APIRouter(prefix="/backups", tags=["backups"])
 settings = get_settings()
 
 
-def backup_dir() -> Path:
-    path = Path(settings.backup_dir)
-    path.mkdir(exist_ok=True)
-    return path
-
-
-def database_path() -> Path:
-    if settings.database_url.startswith("sqlite:///./"):
-        return Path(settings.database_url.replace("sqlite:///./", "", 1))
-    if settings.database_url.startswith("sqlite:///"):
-        return Path(settings.database_url.replace("sqlite:///", "", 1))
-    raise RuntimeError("Manual backups are currently supported only for SQLite.")
-
-
-def list_backup_files() -> list[Path]:
-    return sorted(backup_dir().glob("app-*.sqlite"), key=lambda path: path.stat().st_mtime, reverse=True)
-
-
 @router.get("", response_class=HTMLResponse)
-def list_backups(request: Request):
+def show_backups(request: Request):
     return templates.TemplateResponse(
         "backups/list.html",
         {
             "request": request,
             "app_name": settings.app_name,
             "active_page": "backups",
-            "backups": list_backup_files(),
+            "backups": list_backups(),
+            "health": backup_health(),
         },
     )
 
 
 @router.post("")
-def create_backup():
-    source = database_path()
-    if not source.exists():
-        raise RuntimeError("Database file does not exist yet.")
+@router.post("/create")
+def create_manual_backup(db: Session = Depends(get_db)):
+    try:
+        backup = create_backup()
+        cleanup_retention()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    log_audit_event(
+        db,
+        event_type="backup_created",
+        entity_type="backup",
+        entity_id=0,
+        description=f"Backup created: {backup.name}.",
+    )
+    db.commit()
+    return RedirectResponse(url="/backups", status_code=303)
 
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    target = backup_dir() / f"app-{timestamp}.sqlite"
-    copy2(source, target)
+
+@router.post("/{name}/restore")
+def restore_selected_backup(name: str, db: Session = Depends(get_db)):
+    try:
+        with maintenance_mode():
+            restored = restore_backup(name)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    log_audit_event(
+        db,
+        event_type="backup_restored",
+        entity_type="backup",
+        entity_id=0,
+        description=f"Backup restored: {restored.name}.",
+    )
+    db.commit()
     return RedirectResponse(url="/backups", status_code=303)

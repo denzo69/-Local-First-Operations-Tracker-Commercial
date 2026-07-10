@@ -7,7 +7,7 @@
         <p class="text-muted mb-0">{{ job.title }}</p>
     </div>
     <div class="d-flex gap-2">
-        <a class="btn btn-outline-secondary" href="/jobs/{{ job.id }}">{{ t.back }}</a>
+        <a class="btn btn-outline-secondary" href="{{ route_base }}/{{ job.id }}">{{ t.back }}</a>
         <button class="btn btn-primary" type="button" onclick="window.print()">{{ t.print }}</button>
     </div>
 </div>
@@ -22,7 +22,7 @@
         </div>
         <div class="text-end">
             <div class="fw-semibold">{{ t.receipt_number }} {{ job.receipt_number }}</div>
-            <div class="text-muted">Job #{{ job.id }}</div>
+            <div class="text-muted">Work order #{{ job.id }}</div>
             <div class="text-muted">{{ job.created_at.date() if job.created_at else "" }}</div>
         </div>
     </div>
@@ -32,7 +32,7 @@
         <dd class="col-8">{{ job.customer.name if job.customer else "-" }}</dd>
         <dt class="col-4">{{ t.phone }}</dt>
         <dd class="col-8">{{ job.customer.phone if job.customer and job.customer.phone else "-" }}</dd>
-        <dt class="col-4">{{ t.jobs }}</dt>
+        <dt class="col-4">{{ t.work_orders }}</dt>
         <dd class="col-8">{{ job.title }}</dd>
         <dt class="col-4">{{ t.status }}</dt>
         <dd class="col-8">{{ status_label(job.status.name if job.status else "Received") }}</dd>

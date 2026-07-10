@@ -20,7 +20,16 @@ def inject_global_template_context(request: Request) -> dict:
         db.close()
 
 
-templates = Jinja2Templates(
+_jinja_templates = Jinja2Templates(
     directory="app/templates",
     context_processors=[inject_global_template_context],
 )
+
+
+class AppTemplates:
+    def TemplateResponse(self, name: str, context: dict, **kwargs):
+        request = context["request"]
+        return _jinja_templates.TemplateResponse(request, name, context, **kwargs)
+
+
+templates = AppTemplates()

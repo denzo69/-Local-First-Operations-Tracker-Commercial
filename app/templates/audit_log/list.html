@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="mb-4">
+    <h1 class="h3 mb-1">Audit log</h1>
+    <p class="text-muted mb-0">Newest operational events first.</p>
+</div>
+
+<div class="card shadow-sm border-0">
+    <div class="card-body p-0">
+        {% if events %}
+        <div class="list-group list-group-flush">
+            {% for event in events %}
+            <div class="list-group-item py-3">
+                <div class="d-flex justify-content-between gap-3">
+                    <div>
+                        <div class="fw-semibold">{{ event.event_type }}</div>
+                        <div class="text-muted">{{ event.description or "-" }}</div>
+                        <div class="text-muted small">{{ event.entity_type or "-" }} #{{ event.entity_id or "-" }}</div>
+                    </div>
+                    <div class="text-muted small text-end">{{ event.created_at }}</div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="p-4 text-muted">No audit events yet.</div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

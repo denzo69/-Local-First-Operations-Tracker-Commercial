@@ -1,6 +1,17 @@
 from fastapi.testclient import TestClient
 
+from app.database import SessionLocal, engine
 from app.main import app
+from app.models import Customer
+from app.services.maintenance_service import maintenance_mode
+from app.services.backup_service import (
+    backup_health,
+    cleanup_retention,
+    create_backup,
+    list_backups,
+    restore_backup,
+    validate_sqlite_database,
+)
 
 
 def test_backups_page_loads_and_backup_can_be_created():
@@ -10,5 +21,67 @@ def test_backups_page_loads_and_backup_can_be_created():
 
     assert page_response.status_code == 200
     assert "Create backup" in page_response.text
+    assert "Backup status" in page_response.text
     assert create_response.status_code == 303
     assert create_response.headers["location"] == "/backups"
+
+
+def test_backup_restore_recovers_database_state():
+    with SessionLocal() as db:
+        db.add(Customer(name="Test Customer"))
+        db.commit()
+
+    backup = create_backup(label="restore_test")
+
+    with SessionLocal() as db:
+        customer = db.query(Customer).filter(Customer.name == "Test Customer").first()
+        db.delete(customer)
+        db.commit()
+
+    restore_backup(backup.name)
+    engine.dispose()
+
+    with SessionLocal() as db:
+        restored = db.query(Customer).filter(Customer.name == "Test Customer").first()
+
+    assert restored is not None
+
+
+def test_backup_retention_keeps_newest_files():
+    first = create_backup(label="retention_old")
+    second = create_backup(label="retention_new")
+
+    removed = cleanup_retention(keep=1)
+    remaining_names = {backup.name for backup in list_backups()}
+
+    assert removed >= 1
+    assert second.name in remaining_names
+    assert first.name not in remaining_names
+
+
+def test_backup_health_reports_latest_backup():
+    backup = create_backup(label="health_test")
+    health = backup_health()
+
+    assert health["status"] == "ok"
+    assert health["last_backup"].name == backup.name
+
+
+def test_corrupt_backup_fails_integrity_check(tmp_path):
+    corrupt = tmp_path / "corrupt.sqlite"
+    corrupt.write_bytes(b"not a sqlite database")
+
+    try:
+        validate_sqlite_database(corrupt)
+    except Exception as exc:
+        assert "file is not a database" in str(exc) or "integrity" in str(exc).lower()
+    else:
+        raise AssertionError("Corrupt backup passed validation")
+
+
+def test_write_routes_are_blocked_during_maintenance():
+    with TestClient(app) as client:
+        with maintenance_mode():
+            response = client.post("/customers", data={"name": "Blocked Customer"})
+
+    assert response.status_code == 503

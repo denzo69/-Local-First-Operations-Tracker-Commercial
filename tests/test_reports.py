@@ -49,3 +49,26 @@ def test_reports_show_sales_totals():
     assert "Day sales" in response.text
     assert "45.00" in response.text
     assert "Test job report" in response.text
+
+
+def test_reports_load_when_work_order_has_no_items():
+    with TestClient(app) as client:
+        customer_response = client.post(
+            "/customers",
+            data={"name": "Job Owner"},
+            follow_redirects=False,
+        )
+        customer_id = customer_response.headers["location"].rsplit("/", 1)[-1]
+        client.post(
+            "/work-orders",
+            data={"title": "Test job empty report", "customer_id": customer_id},
+            follow_redirects=False,
+        )
+
+        today = date.today().isoformat()
+        month = date.today().strftime("%Y-%m")
+        response = client.get(f"/reports?day={today}&month={month}")
+
+    assert response.status_code == 200
+    assert "0.00" in response.text
+    assert "Test job empty report" in response.text

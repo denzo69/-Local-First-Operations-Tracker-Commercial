@@ -7,9 +7,9 @@
         <p class="text-muted mb-0">{{ job.customer.name if job.customer else t.no_customer }}</p>
     </div>
     <div class="d-flex flex-wrap gap-2">
-        <a class="btn btn-outline-secondary" href="/jobs">{{ t.back }}</a>
-        <a class="btn btn-outline-primary" href="/jobs/{{ job.id }}/edit">{{ t.edit }}</a>
-        <a class="btn btn-outline-dark" href="/jobs/{{ job.id }}/receipt">{{ t.print }}</a>
+        <a class="btn btn-outline-secondary" href="{{ route_base }}">{{ t.back }}</a>
+        <a class="btn btn-outline-primary" href="{{ route_base }}/{{ job.id }}/edit">{{ t.edit }}</a>
+        <a class="btn btn-outline-dark" href="{{ route_base }}/{{ job.id }}/receipt">{{ t.print }}</a>
     </div>
 </div>
 
@@ -23,7 +23,7 @@
             <div class="d-flex flex-wrap gap-2">
                 {% for status in statuses %}
                     {% if not job.status or status.id != job.status.id %}
-                    <form method="post" action="/jobs/{{ job.id }}/status">
+                    <form method="post" action="{{ route_base }}/{{ job.id }}/status">
                         <input type="hidden" name="status_id" value="{{ status.id }}">
                         <button class="btn {% if status.is_ready_state %}btn-success{% elif status.is_final %}btn-dark{% else %}btn-outline-primary{% endif %}" type="submit">
                             {{ status_label(status.name) }}
@@ -90,7 +90,7 @@
                         <td class="text-end">{{ item.vat_percent }}%</td>
                         <td class="text-end">{{ "%.2f"|format(item.line_total) }}</td>
                         <td class="text-end">
-                            <form method="post" action="/jobs/{{ job.id }}/items/{{ item.id }}/delete">
+                            <form method="post" action="{{ route_base }}/{{ job.id }}/items/{{ item.id }}/delete">
                                 <button class="btn btn-sm btn-outline-danger" type="submit">{{ t.remove }}</button>
                             </form>
                         </td>
@@ -108,7 +108,7 @@
         </div>
         {% endif %}
 
-        <form class="row g-2" method="post" action="/jobs/{{ job.id }}/items">
+        <form class="row g-2" method="post" action="{{ route_base }}/{{ job.id }}/items">
             <div class="col-md-4">
                 <label class="form-label" for="product_id">{{ t.product }}</label>
                 <select class="form-select" id="product_id" name="product_id">

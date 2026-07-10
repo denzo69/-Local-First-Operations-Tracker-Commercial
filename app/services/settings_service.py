@@ -10,6 +10,10 @@ DEFAULT_SETTINGS = {
     "company_email": "",
     "default_vat_percent": "24",
     "receipt_prefix": "LOT-",
+    "receipt_padding": "6",
+    "receipt_annual_reset": "false",
+    "next_receipt_sequence": "1",
+    "receipt_sequence_year": "",
     "language": "en",
 }
 

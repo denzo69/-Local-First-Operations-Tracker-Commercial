@@ -8,7 +8,7 @@
 
 {% if not customers %}
 <div class="alert alert-warning">
-    Add a customer before creating a job.
+    Add a customer before creating a work order.
     <a class="alert-link" href="/customers/new">Create customer</a>
 </div>
 {% endif %}
@@ -17,8 +17,8 @@
     <div class="card-body">
         <div class="row g-3">
             <div class="col-12">
-                <label class="form-label" for="title">Job title</label>
-                <input class="form-control" id="title" name="title" required placeholder="Laundry order, repair job, service task" value="{{ job.title if job else '' }}">
+                <label class="form-label" for="title">Work order title</label>
+                <input class="form-control" id="title" name="title" required placeholder="Repair, service task, delivery, maintenance" value="{{ job.title if job else '' }}">
             </div>
             <div class="col-12">
                 <label class="form-label" for="customer_id">Customer</label>
@@ -34,7 +34,7 @@
                 <input class="form-control" id="arrival_date" name="arrival_date" type="date" value="{{ job.arrival_date if job and job.arrival_date else '' }}">
             </div>
             <div class="col-md-6">
-                <label class="form-label" for="requested_pickup_date">Pickup date</label>
+                <label class="form-label" for="requested_pickup_date">Requested pickup / delivery date</label>
                 <input class="form-control" id="requested_pickup_date" name="requested_pickup_date" type="date" value="{{ job.requested_pickup_date if job and job.requested_pickup_date else '' }}">
             </div>
             <div class="col-md-6">
@@ -64,8 +64,8 @@
         </div>
     </div>
     <div class="card-footer bg-white d-flex gap-2 justify-content-end">
-        <a class="btn btn-outline-secondary" href="/jobs">Cancel</a>
-        <button class="btn btn-primary" type="submit" {% if not customers and not job %}disabled{% endif %}>Save job</button>
+        <a class="btn btn-outline-secondary" href="{{ route_base or '/work-orders' }}">Cancel</a>
+        <button class="btn btn-primary" type="submit" {% if not customers and not job %}disabled{% endif %}>Save work order</button>
     </div>
 </form>
 {% endblock %}

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+    <div>
+        <h1 class="h3 mb-1">Workflow statuses</h1>
+        <p class="text-muted mb-0">Configure the work order workflow without changing code.</p>
+    </div>
+    <a class="btn btn-primary" href="/settings/statuses/new">New status</a>
+</div>
+
+<div class="card shadow-sm border-0">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Order</th>
+                        <th>Ready</th>
+                        <th>Packed</th>
+                        <th>Final</th>
+                        <th>Active</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for status in statuses %}
+                    <tr>
+                        <td>{{ status.name }}</td>
+                        <td>{{ status.sort_order }}</td>
+                        <td>{{ "Yes" if status.is_ready_state else "No" }}</td>
+                        <td>{{ "Yes" if status.is_packed_state else "No" }}</td>
+                        <td>{{ "Yes" if status.is_final else "No" }}</td>
+                        <td>{{ "Yes" if status.is_active else "No" }}</td>
+                        <td class="text-end">
+                            <a class="btn btn-sm btn-outline-primary" href="/settings/statuses/{{ status.id }}/edit">Edit</a>
+                            {% if status.is_active %}
+                            <form class="d-inline" method="post" action="/settings/statuses/{{ status.id }}/deactivate">
+                                <button class="btn btn-sm btn-outline-secondary" type="submit">Deactivate</button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -169,6 +169,13 @@ def update_customer(
     customer.business_id = business_id.strip() or None
     customer.notes = notes.strip() or None
 
+    log_audit_event(
+        db,
+        event_type="customer_updated",
+        entity_type="customer",
+        entity_id=customer.id,
+        description="Customer updated.",
+    )
     db.commit()
     return RedirectResponse(url=f"/customers/{customer.id}", status_code=303)
 
@@ -181,9 +188,17 @@ def delete_customer(customer_id: int, db: Session = Depends(get_db)):
     if customer.jobs:
         raise HTTPException(
             status_code=400,
-            detail="Customer has job history and cannot be deleted.",
+            detail="Customer has work order history and cannot be deleted.",
         )
 
+    customer_id_for_log = customer.id
     db.delete(customer)
+    log_audit_event(
+        db,
+        event_type="customer_deleted",
+        entity_type="customer",
+        entity_id=customer_id_for_log,
+        description="Customer deleted.",
+    )
     db.commit()
     return RedirectResponse(url="/customers", status_code=303)

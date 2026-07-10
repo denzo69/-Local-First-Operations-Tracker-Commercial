@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import Product
+from app.models import AuditLog, Job, Product, Receipt, Setting
 
 
 def test_new_job_page_has_customer_select():
@@ -39,6 +39,28 @@ def test_create_job_with_customer_redirects_to_detail():
 
     assert response.status_code == 303
     assert response.headers["location"].startswith("/jobs/")
+
+
+def test_work_order_routes_create_and_redirect_to_work_order_detail():
+    with TestClient(app) as client:
+        customer_response = client.post(
+            "/customers",
+            data={"name": "Job Owner"},
+            follow_redirects=False,
+        )
+        customer_id = customer_response.headers["location"].rsplit("/", 1)[-1]
+
+        form_response = client.get("/work-orders/new")
+        response = client.post(
+            "/work-orders",
+            data={"title": "Test job work order route", "customer_id": customer_id},
+            follow_redirects=False,
+        )
+
+    assert form_response.status_code == 200
+    assert 'action="/work-orders"' in form_response.text
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/work-orders/")
 
 
 def test_job_can_be_edited_and_printed():
@@ -118,7 +140,7 @@ def test_job_receipt_number_and_sales_items_work():
     assert "Test product" in receipt_response.text
 
 
-def test_job_status_can_be_marked_ready_for_pickup():
+def test_work_order_status_can_be_marked_ready():
     with TestClient(app) as client:
         customer_response = client.post(
             "/customers",
@@ -139,7 +161,7 @@ def test_job_status_can_be_marked_ready_for_pickup():
         job_url = job_response.headers["location"]
         detail_response = client.get(job_url)
 
-        marker = "Ready for pickup"
+        marker = "Ready"
         assert marker in detail_response.text
 
         before_marker = detail_response.text.split(marker, 1)[0]
@@ -152,12 +174,12 @@ def test_job_status_can_be_marked_ready_for_pickup():
 
     assert response.status_code == 200
     assert "Current status" in response.text
-    assert "Ready for pickup" in response.text
+    assert "Ready" in response.text
     assert "Activity timeline" in response.text
-    assert "Status changed from Received to Ready for pickup." in response.text
+    assert "Status changed from Received to Ready." in response.text
 
 
-def test_picked_up_job_is_available_in_history():
+def test_completed_work_order_is_available_in_history():
     with TestClient(app) as client:
         customer_response = client.post(
             "/customers",
@@ -174,7 +196,7 @@ def test_picked_up_job_is_available_in_history():
         job_url = job_response.headers["location"]
         detail_response = client.get(job_url)
 
-        before_marker = detail_response.text.split("Picked up", 1)[0]
+        before_marker = detail_response.text.split("Completed", 1)[0]
         status_id = before_marker.rsplit('name="status_id" value="', 1)[1].split('"', 1)[0]
         client.post(f"{job_url}/status", data={"status_id": status_id})
 
@@ -185,7 +207,7 @@ def test_picked_up_job_is_available_in_history():
     assert history_response.status_code == 200
     assert "Test job history only" not in active_response.text
     assert "Test job history only" in history_response.text
-    assert "Picked up" in history_response.text
+    assert "Completed" in history_response.text
 
 
 def test_jobs_can_be_searched():
@@ -229,3 +251,96 @@ def test_jobs_can_be_searched_by_receipt_number():
 
     assert response.status_code == 200
     assert "Test job receipt lookup" in response.text
+
+
+def test_receipt_number_uses_sequence_setting_not_job_id_and_reprint_preserves_number():
+    with TestClient(app) as client:
+        customer_response = client.post(
+            "/customers",
+            data={"name": "Job Owner"},
+            follow_redirects=False,
+        )
+        customer_id = customer_response.headers["location"].rsplit("/", 1)[-1]
+
+        with SessionLocal() as db:
+            db.add(Setting(key="receipt_prefix", value="SEQ-"))
+            db.add(Setting(key="next_receipt_sequence", value="900001"))
+            db.commit()
+
+        job_response = client.post(
+            "/work-orders",
+            data={"title": "Test job receipt sequence", "customer_id": customer_id},
+            follow_redirects=False,
+        )
+        job_url = job_response.headers["location"]
+        first_receipt = client.get(f"{job_url}/receipt")
+        second_receipt = client.get(f"{job_url}/receipt")
+
+        with SessionLocal() as db:
+            job_id = int(job_url.rsplit("/", 1)[-1])
+            job = db.get(Job, job_id)
+
+    assert first_receipt.status_code == 200
+    assert second_receipt.status_code == 200
+    assert job.receipt_number.endswith("-900001")
+    assert job.id != 900001
+    assert first_receipt.text.count(job.receipt_number) >= 1
+    assert second_receipt.text.count(job.receipt_number) >= 1
+
+
+def test_print_snapshot_is_stored_once_and_is_stable_after_work_order_update():
+    with TestClient(app) as client:
+        customer_response = client.post(
+            "/customers",
+            data={"name": "Job Owner"},
+            follow_redirects=False,
+        )
+        customer_id = customer_response.headers["location"].rsplit("/", 1)[-1]
+        job_response = client.post(
+            "/work-orders",
+            data={"title": "Test job snapshot original", "customer_id": customer_id},
+            follow_redirects=False,
+        )
+        job_url = job_response.headers["location"]
+        receipt_response = client.get(f"{job_url}/receipt")
+
+        job_id = int(job_url.rsplit("/", 1)[-1])
+        with SessionLocal() as db:
+            snapshot = (
+                db.query(Receipt)
+                .filter(Receipt.job_id == job_id, Receipt.receipt_type == "customer_receipt")
+                .first()
+            )
+            original_payload = snapshot.editable_snapshot
+            printed_at = snapshot.printed_at
+
+        client.post(
+            job_url,
+            data={
+                "title": "Test job snapshot changed",
+                "customer_id": customer_id,
+                "priority": "normal",
+            },
+            follow_redirects=False,
+        )
+        client.get(f"{job_url}/receipt")
+
+        with SessionLocal() as db:
+            snapshot_after = (
+                db.query(Receipt)
+                .filter(Receipt.job_id == job_id, Receipt.receipt_type == "customer_receipt")
+                .first()
+            )
+            print_events = (
+                db.query(AuditLog)
+                .filter(AuditLog.entity_type == "job", AuditLog.entity_id == job_id)
+                .filter(AuditLog.event_type == "document.printed")
+                .all()
+            )
+
+    assert receipt_response.status_code == 200
+    assert "Test job snapshot original" in original_payload
+    assert "Test job snapshot changed" not in snapshot_after.editable_snapshot
+    assert snapshot_after.editable_snapshot == original_payload
+    assert snapshot_after.printed_at == printed_at
+    assert len(print_events) == 1

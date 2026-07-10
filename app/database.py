@@ -35,5 +35,7 @@ def get_db():
 def init_db() -> None:
     """Create database tables for the early development version."""
     import app.models  # noqa: F401
+    from app.services.migration_service import ensure_sqlite_schema_compatibility
 
     Base.metadata.create_all(bind=engine)
+    ensure_sqlite_schema_compatibility(engine)

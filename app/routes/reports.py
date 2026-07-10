@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import get_db
 from app.models import Job
+from app.services.money_service import sum_money
 from app.template_context import templates
 
 router = APIRouter(prefix="/reports", tags=["reports"])
@@ -38,8 +39,8 @@ def sales_report(
         if job.created_at and job.created_at.strftime("%Y-%m") == selected_month
     ]
 
-    def job_total(job: Job) -> float:
-        return round(sum(item.line_total or 0 for item in job.items), 2)
+    def job_total(job: Job):
+        return sum_money(item.line_total for item in job.items)
 
     return templates.TemplateResponse(
         "reports/sales.html",

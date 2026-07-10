@@ -97,6 +97,16 @@ Planned fields:
 - created_at
 - updated_at
 
+Money calculation rule:
+
+- Unit prices are entered and stored as VAT-inclusive prices in the MVP.
+- `line_total` is `quantity * unit_price`, rounded to two decimals with decimal rounding.
+- VAT breakdown is calculated from the VAT-inclusive line totals.
+- `description`, `unit_price`, and `vat_percent` are snapshots on the work order item. Later product edits must not change historical work order rows.
+- New databases use SQLAlchemy `Numeric` definitions for money-related columns.
+- Existing SQLite databases created by earlier versions may still have older floating-point column affinity until a migration rebuilds those tables.
+- A later migration should rebuild persisted money columns or move them to integer cents before serious multi-user financial use.
+
 ## receipts
 
 Planned fields:

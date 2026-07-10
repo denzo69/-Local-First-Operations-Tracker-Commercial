@@ -8,8 +8,11 @@ from app.config import get_settings
 from app.database import get_db
 from app.models import AuditLog, Customer, Job, JobItem, JobStatus, Product
 from app.services.audit_service import log_audit_event
-from app.services.receipt_number_service import format_receipt_number
-from app.services.settings_service import get_app_settings
+from app.services.money_service import line_total as calculate_line_total
+from app.services.money_service import parse_decimal
+from app.services.money_service import sum_money
+from app.services.print_service import build_print_context
+from app.services.receipt_number_service import allocate_receipt_number
 from app.template_context import templates
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -31,15 +34,22 @@ DEFAULT_JOB_STATUSES = [
         "is_packed_state": False,
     },
     {
-        "name": "Ready for pickup",
+        "name": "Waiting",
         "sort_order": 30,
         "is_final": False,
-        "is_ready_state": True,
-        "is_packed_state": True,
+        "is_ready_state": False,
+        "is_packed_state": False,
     },
     {
-        "name": "Picked up",
+        "name": "Ready",
         "sort_order": 40,
+        "is_final": False,
+        "is_ready_state": True,
+        "is_packed_state": False,
+    },
+    {
+        "name": "Completed",
+        "sort_order": 50,
         "is_final": True,
         "is_ready_state": False,
         "is_packed_state": False,
@@ -48,15 +58,11 @@ DEFAULT_JOB_STATUSES = [
 
 
 def ensure_default_job_statuses(db: Session) -> list[JobStatus]:
-    for status_data in DEFAULT_JOB_STATUSES:
-        status = db.query(JobStatus).filter(JobStatus.name == status_data["name"]).first()
-        if status is None:
+    if db.query(JobStatus).count() == 0:
+        for status_data in DEFAULT_JOB_STATUSES:
             db.add(JobStatus(**status_data))
-        else:
-            for key, value in status_data.items():
-                setattr(status, key, value)
+        db.commit()
 
-    db.commit()
     return (
         db.query(JobStatus)
         .filter(JobStatus.is_active.is_(True))
@@ -67,21 +73,16 @@ def ensure_default_job_statuses(db: Session) -> list[JobStatus]:
 
 def get_received_status(db: Session) -> JobStatus:
     statuses = ensure_default_job_statuses(db)
-    return next(status for status in statuses if status.name == "Received")
+    received = next((status for status in statuses if status.name == "Received"), None)
+    return received or statuses[0]
 
 
 def ensure_receipt_number(db: Session, job: Job) -> str:
     if job.receipt_number:
         return job.receipt_number
 
-    app_settings = get_app_settings(db)
-    sequence = job.id
-    year = job.created_at.year if job.created_at else date.today().year
-    job.receipt_number = format_receipt_number(
-        year,
-        sequence,
-        prefix=app_settings.get("receipt_prefix", ""),
-    )
+    receipt_date = job.created_at.date() if job.created_at else date.today()
+    job.receipt_number = allocate_receipt_number(db, receipt_date)
     db.commit()
     db.refresh(job)
     return job.receipt_number
@@ -91,6 +92,10 @@ def parse_optional_date(value: str) -> date | None:
     if not value.strip():
         return None
     return date.fromisoformat(value)
+
+
+def route_base_for(request: Request) -> str:
+    return "/work-orders" if request.url.path.startswith("/work-orders") else "/jobs"
 
 
 @router.get("", response_class=HTMLResponse)
@@ -125,6 +130,7 @@ def list_jobs(
         )
 
     jobs = query.order_by(Job.created_at.desc()).all()
+    route_base = route_base_for(request)
     return templates.TemplateResponse(
         "jobs/list.html",
         {
@@ -134,6 +140,7 @@ def list_jobs(
             "view": view,
             "q": q,
             "jobs": jobs,
+            "route_base": route_base,
         },
     )
 
@@ -142,6 +149,7 @@ def list_jobs(
 def new_job(request: Request, db: Session = Depends(get_db)):
     customers = db.query(Customer).order_by(Customer.name.asc()).all()
     statuses = ensure_default_job_statuses(db)
+    route_base = route_base_for(request)
     return templates.TemplateResponse(
         "jobs/form.html",
         {
@@ -151,14 +159,16 @@ def new_job(request: Request, db: Session = Depends(get_db)):
             "customers": customers,
             "statuses": statuses,
             "job": None,
-            "form_action": "/jobs",
-            "page_title": "New job",
+            "form_action": route_base,
+            "page_title": "New work order",
+            "route_base": route_base,
         },
     )
 
 
 @router.post("")
 def create_job(
+    request: Request,
     title: str = Form(...),
     customer_id: int | None = Form(None),
     description: str = Form(""),
@@ -170,7 +180,7 @@ def create_job(
     db: Session = Depends(get_db),
 ):
     if not title.strip():
-        raise HTTPException(status_code=400, detail="Job title is required")
+        raise HTTPException(status_code=400, detail="Work order title is required")
 
     customer = db.get(Customer, customer_id) if customer_id else None
     if customer_id and customer is None:
@@ -205,21 +215,22 @@ def create_job(
         event_type="job_created",
         entity_type="job",
         entity_id=job.id,
-        description=f"Job created with status {job.status.name if job.status else 'Received'}.",
+        description=f"Work order created with status {job.status.name if job.status else 'Received'}.",
     )
     db.commit()
 
-    return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
+    return RedirectResponse(url=f"{route_base_for(request)}/{job.id}", status_code=303)
 
 
 @router.get("/{job_id}/edit", response_class=HTMLResponse)
 def edit_job(job_id: int, request: Request, db: Session = Depends(get_db)):
     job = db.get(Job, job_id)
     if job is None:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail="Work order not found")
 
     customers = db.query(Customer).order_by(Customer.name.asc()).all()
     statuses = ensure_default_job_statuses(db)
+    route_base = route_base_for(request)
     return templates.TemplateResponse(
         "jobs/form.html",
         {
@@ -229,14 +240,16 @@ def edit_job(job_id: int, request: Request, db: Session = Depends(get_db)):
             "customers": customers,
             "statuses": statuses,
             "job": job,
-            "form_action": f"/jobs/{job.id}",
-            "page_title": "Edit job",
+            "form_action": f"{route_base}/{job.id}",
+            "page_title": "Edit work order",
+            "route_base": route_base,
         },
     )
 
 
 @router.post("/{job_id}")
 def update_job(
+    request: Request,
     job_id: int,
     title: str = Form(...),
     customer_id: int | None = Form(None),
@@ -250,9 +263,9 @@ def update_job(
 ):
     job = db.get(Job, job_id)
     if job is None:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail="Work order not found")
     if not title.strip():
-        raise HTTPException(status_code=400, detail="Job title is required")
+        raise HTTPException(status_code=400, detail="Work order title is required")
 
     customer = db.get(Customer, customer_id) if customer_id else None
     if customer_id and customer is None:
@@ -281,17 +294,17 @@ def update_job(
         event_type="job_updated",
         entity_type="job",
         entity_id=job.id,
-        description="Job details updated.",
+        description="Work order details updated.",
     )
     db.commit()
-    return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
+    return RedirectResponse(url=f"{route_base_for(request)}/{job.id}", status_code=303)
 
 
 @router.get("/{job_id}", response_class=HTMLResponse)
 def job_detail(job_id: int, request: Request, db: Session = Depends(get_db)):
     job = db.get(Job, job_id)
     if job is None:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail="Work order not found")
     statuses = ensure_default_job_statuses(db)
     products = (
         db.query(Product)
@@ -316,7 +329,8 @@ def job_detail(job_id: int, request: Request, db: Session = Depends(get_db)):
             "statuses": statuses,
             "products": products,
             "audit_events": audit_events,
-            "job_total": sum(item.line_total or 0 for item in job.items),
+            "job_total": sum_money(item.line_total for item in job.items),
+            "route_base": route_base_for(request),
         },
     )
 
@@ -325,9 +339,9 @@ def job_detail(job_id: int, request: Request, db: Session = Depends(get_db)):
 def job_receipt(job_id: int, request: Request, db: Session = Depends(get_db)):
     job = db.get(Job, job_id)
     if job is None:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail="Work order not found")
     ensure_receipt_number(db, job)
-    app_settings = get_app_settings(db)
+    print_context = build_print_context(db, job, "customer_receipt")
 
     return templates.TemplateResponse(
         "jobs/receipt.html",
@@ -336,14 +350,15 @@ def job_receipt(job_id: int, request: Request, db: Session = Depends(get_db)):
             "app_name": settings.app_name,
             "active_page": "jobs",
             "job": job,
-            "company": app_settings,
-            "job_total": sum(item.line_total or 0 for item in job.items),
+            **print_context,
+            "route_base": route_base_for(request),
         },
     )
 
 
 @router.post("/{job_id}/items")
 def add_job_item(
+    request: Request,
     job_id: int,
     product_id: int | None = Form(None),
     description: str = Form(""),
@@ -354,23 +369,23 @@ def add_job_item(
 ):
     job = db.get(Job, job_id)
     if job is None:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail="Work order not found")
 
     product = db.get(Product, product_id) if product_id else None
-    parsed_quantity = float(str(quantity or "1").replace(",", "."))
-    parsed_unit_price = float(str(unit_price or "0").replace(",", "."))
-    parsed_vat_percent = float(str(vat_percent or "24").replace(",", "."))
+    parsed_quantity = parse_decimal(quantity, "1")
+    parsed_unit_price = parse_decimal(unit_price, "0")
+    parsed_vat_percent = parse_decimal(vat_percent, "24")
     item_description = description.strip()
 
     if product is not None and not item_description:
         item_description = product.name
-        parsed_unit_price = product.unit_price
-        parsed_vat_percent = product.vat_percent
+        parsed_unit_price = parse_decimal(product.unit_price)
+        parsed_vat_percent = parse_decimal(product.vat_percent)
 
     if not item_description:
         raise HTTPException(status_code=400, detail="Item description is required")
 
-    line_total = round(parsed_quantity * parsed_unit_price, 2)
+    line_total = calculate_line_total(parsed_quantity, parsed_unit_price)
     item = JobItem(
         job=job,
         product=product,
@@ -389,11 +404,16 @@ def add_job_item(
         description=f"Item added: {item_description} x {parsed_quantity}.",
     )
     db.commit()
-    return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
+    return RedirectResponse(url=f"{route_base_for(request)}/{job.id}", status_code=303)
 
 
 @router.post("/{job_id}/items/{item_id}/delete")
-def delete_job_item(job_id: int, item_id: int, db: Session = Depends(get_db)):
+def delete_job_item(
+    request: Request,
+    job_id: int,
+    item_id: int,
+    db: Session = Depends(get_db),
+):
     item = db.get(JobItem, item_id)
     if item is None or item.job_id != job_id:
         raise HTTPException(status_code=404, detail="Item not found")
@@ -407,18 +427,19 @@ def delete_job_item(job_id: int, item_id: int, db: Session = Depends(get_db)):
         description=f"Item removed: {item.description}.",
     )
     db.commit()
-    return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)
+    return RedirectResponse(url=f"{route_base_for(request)}/{job_id}", status_code=303)
 
 
 @router.post("/{job_id}/status")
 def update_job_status(
+    request: Request,
     job_id: int,
     status_id: int = Form(...),
     db: Session = Depends(get_db),
 ):
     job = db.get(Job, job_id)
     if job is None:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail="Work order not found")
 
     status = db.get(JobStatus, status_id)
     if status is None or not status.is_active:
@@ -435,4 +456,24 @@ def update_job_status(
     )
     db.commit()
 
-    return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
+    return RedirectResponse(url=f"{route_base_for(request)}/{job.id}", status_code=303)
+
+
+@router.post("/{job_id}/delete")
+def delete_job(request: Request, job_id: int, db: Session = Depends(get_db)):
+    job = db.get(Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Work order not found")
+
+    for item in list(job.items):
+        db.delete(item)
+    log_audit_event(
+        db,
+        event_type="job_deleted",
+        entity_type="job",
+        entity_id=job.id,
+        description="Work order deleted.",
+    )
+    db.delete(job)
+    db.commit()
+    return RedirectResponse(url=route_base_for(request), status_code=303)

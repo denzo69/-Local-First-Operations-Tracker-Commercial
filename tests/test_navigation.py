@@ -8,13 +8,22 @@ def test_dashboard_actions_are_links():
         response = client.get("/")
 
     assert response.status_code == 200
-    assert 'href="/jobs/new"' in response.text
+    assert 'href="/work-orders/new"' in response.text
     assert 'href="/customers/new"' in response.text
 
 
 def test_main_navigation_targets_load():
     with TestClient(app) as client:
-        for path in ["/customers", "/jobs", "/products", "/reports", "/backups", "/settings"]:
+        for path in [
+            "/customers",
+            "/work-orders",
+            "/jobs",
+            "/products",
+            "/reports",
+            "/backups",
+            "/audit-log",
+            "/settings",
+        ]:
             response = client.get(path)
             assert response.status_code == 200
 

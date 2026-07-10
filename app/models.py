@@ -1,9 +1,13 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import relationship
 
 from app.database import Base
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC)
 
 
 class Customer(Base):
@@ -17,8 +21,8 @@ class Customer(Base):
     company_name = Column(String(255), nullable=True)
     business_id = Column(String(100), nullable=True)
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
     jobs = relationship("Job", back_populates="customer")
 
@@ -42,7 +46,7 @@ class Job(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     job_number = Column(String(100), nullable=True, index=True)
-    receipt_number = Column(String(100), nullable=True, index=True)
+    receipt_number = Column(String(100), nullable=True, unique=True, index=True)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True)
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
@@ -51,8 +55,8 @@ class Job(Base):
     status_id = Column(Integer, ForeignKey("job_statuses.id"), nullable=True)
     priority = Column(String(50), default="normal")
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
     customer = relationship("Customer", back_populates="jobs")
     status = relationship("JobStatus", back_populates="jobs")
@@ -65,13 +69,13 @@ class Product(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False, index=True)
     description = Column(Text, nullable=True)
-    unit_price = Column(Float, default=0.0)
-    vat_percent = Column(Float, default=24.0)
+    unit_price = Column(Numeric(12, 2), default=0)
+    vat_percent = Column(Numeric(5, 2), default=24)
     unit = Column(String(50), default="pcs")
     is_active = Column(Boolean, default=True)
     is_stock_item = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
     job_items = relationship("JobItem", back_populates="product")
 
@@ -83,12 +87,12 @@ class JobItem(Base):
     job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=True)
     description = Column(String(255), nullable=False)
-    quantity = Column(Float, default=1.0)
-    unit_price = Column(Float, default=0.0)
-    vat_percent = Column(Float, default=24.0)
-    line_total = Column(Float, default=0.0)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    quantity = Column(Numeric(12, 3), default=1)
+    unit_price = Column(Numeric(12, 2), default=0)
+    vat_percent = Column(Numeric(5, 2), default=24)
+    line_total = Column(Numeric(12, 2), default=0)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
     job = relationship("Job", back_populates="items")
     product = relationship("Product", back_populates="job_items")
@@ -99,11 +103,11 @@ class Receipt(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False)
-    receipt_number = Column(String(100), nullable=False, index=True)
+    receipt_number = Column(String(100), nullable=False, unique=True, index=True)
     receipt_type = Column(String(100), default="incoming")
     printed_at = Column(DateTime, nullable=True)
     editable_snapshot = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
 
 
 class Setting(Base):
@@ -112,7 +116,7 @@ class Setting(Base):
     id = Column(Integer, primary_key=True, index=True)
     key = Column(String(255), unique=True, nullable=False, index=True)
     value = Column(Text, nullable=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
 
 class AuditLog(Base):
@@ -123,4 +127,4 @@ class AuditLog(Base):
     entity_type = Column(String(100), nullable=True)
     entity_id = Column(Integer, nullable=True)
     description = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)

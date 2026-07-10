@@ -34,13 +34,13 @@
     {% if customer_jobs %}
     <div class="list-group list-group-flush">
         {% for job in customer_jobs %}
-        <a class="list-group-item list-group-item-action py-3" href="/jobs/{{ job.id }}">
+        <a class="list-group-item list-group-item-action py-3" href="/work-orders/{{ job.id }}">
             <div class="d-flex justify-content-between gap-3">
                 <div>
                     <div class="fw-semibold">{{ job.title }}</div>
                     <div class="text-muted small">
                         {{ job.status.name if job.status else "Received" }}
-                        {% if job.requested_pickup_date %} - Pickup {{ job.requested_pickup_date }}{% endif %}
+                        {% if job.requested_pickup_date %} - Pickup / delivery {{ job.requested_pickup_date }}{% endif %}
                     </div>
                 </div>
                 <span class="text-muted">View</span>
@@ -50,7 +50,7 @@
     </div>
     {% else %}
     <div class="card-body">
-        <p class="text-muted mb-0">No jobs for this customer yet.</p>
+        <p class="text-muted mb-0">No work orders for this customer yet.</p>
     </div>
     {% endif %}
 </div>

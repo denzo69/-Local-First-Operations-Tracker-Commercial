@@ -6,17 +6,17 @@
         <h1 class="h3 mb-1">{{ t.jobs }}</h1>
         <p class="text-muted mb-0">{{ t.jobs_needing_attention }}</p>
     </div>
-    <a class="btn btn-primary" href="/jobs/new">{{ t.new_job }}</a>
+    <a class="btn btn-primary" href="{{ route_base }}/new">{{ t.new_job }}</a>
 </div>
 
 <div class="d-flex flex-wrap gap-2 mb-3">
-    <a class="btn btn-sm {% if view == 'active' %}btn-dark{% else %}btn-outline-secondary{% endif %}" href="/jobs?view=active">{{ t.active }}</a>
-    <a class="btn btn-sm {% if view == 'ready' %}btn-dark{% else %}btn-outline-secondary{% endif %}" href="/jobs?view=ready">{{ t.ready }}</a>
-    <a class="btn btn-sm {% if view == 'history' %}btn-dark{% else %}btn-outline-secondary{% endif %}" href="/jobs?view=history">{{ t.history }}</a>
-    <a class="btn btn-sm {% if view == 'all' %}btn-dark{% else %}btn-outline-secondary{% endif %}" href="/jobs?view=all">{{ t.all }}</a>
+    <a class="btn btn-sm {% if view == 'active' %}btn-dark{% else %}btn-outline-secondary{% endif %}" href="{{ route_base }}?view=active">{{ t.active }}</a>
+    <a class="btn btn-sm {% if view == 'ready' %}btn-dark{% else %}btn-outline-secondary{% endif %}" href="{{ route_base }}?view=ready">{{ t.ready }}</a>
+    <a class="btn btn-sm {% if view == 'history' %}btn-dark{% else %}btn-outline-secondary{% endif %}" href="{{ route_base }}?view=history">{{ t.history }}</a>
+    <a class="btn btn-sm {% if view == 'all' %}btn-dark{% else %}btn-outline-secondary{% endif %}" href="{{ route_base }}?view=all">{{ t.all }}</a>
 </div>
 
-<form class="mb-3" method="get" action="/jobs">
+<form class="mb-3" method="get" action="{{ route_base }}">
     <input type="hidden" name="view" value="{{ view }}">
     <div class="input-group">
         <input class="form-control" name="q" value="{{ q }}" placeholder="{{ t.search }}">
@@ -29,7 +29,7 @@
         {% if jobs %}
         <div class="list-group list-group-flush">
             {% for job in jobs %}
-            <a class="list-group-item list-group-item-action py-3" href="/jobs/{{ job.id }}">
+            <a class="list-group-item list-group-item-action py-3" href="{{ route_base }}/{{ job.id }}">
                 <div class="d-flex justify-content-between gap-3">
                     <div>
                         <div class="fw-semibold">{{ job.title }}</div>
@@ -47,11 +47,11 @@
         {% else %}
         <div class="p-4 text-muted">
             {% if view == "history" %}
-            No completed jobs in history yet.
+            No completed work orders in history yet.
             {% elif view == "ready" %}
-            No jobs ready for pickup.
+            No work orders ready.
             {% else %}
-            No jobs yet.
+            No work orders yet.
             {% endif %}
         </div>
         {% endif %}
