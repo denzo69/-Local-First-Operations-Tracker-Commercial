@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start gap-3 mb-4 no-print">
+    <div>
+        <h1 class="h3 mb-1">{{ t.receipt_work_order }}</h1>
+        <p class="text-muted mb-0">{{ job.title }}</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a class="btn btn-outline-secondary" href="/jobs/{{ job.id }}">{{ t.back }}</a>
+        <button class="btn btn-primary" type="button" onclick="window.print()">{{ t.print }}</button>
+    </div>
+</div>
+
+<section class="print-sheet bg-white p-4 border">
+    <div class="d-flex justify-content-between gap-3 border-bottom pb-3 mb-3">
+        <div>
+            <h2 class="h4 mb-1">{{ company.company_name }}</h2>
+            <div class="text-muted">{{ company.company_business_id }}</div>
+            <div class="text-muted">{{ company.company_address }}</div>
+            <div class="text-muted">{{ company.company_phone }} {{ company.company_email }}</div>
+        </div>
+        <div class="text-end">
+            <div class="fw-semibold">{{ t.receipt_number }} {{ job.receipt_number }}</div>
+            <div class="text-muted">Job #{{ job.id }}</div>
+            <div class="text-muted">{{ job.created_at.date() if job.created_at else "" }}</div>
+        </div>
+    </div>
+
+    <dl class="row">
+        <dt class="col-4">{{ t.customer }}</dt>
+        <dd class="col-8">{{ job.customer.name if job.customer else "-" }}</dd>
+        <dt class="col-4">{{ t.phone }}</dt>
+        <dd class="col-8">{{ job.customer.phone if job.customer and job.customer.phone else "-" }}</dd>
+        <dt class="col-4">{{ t.jobs }}</dt>
+        <dd class="col-8">{{ job.title }}</dd>
+        <dt class="col-4">{{ t.status }}</dt>
+        <dd class="col-8">{{ status_label(job.status.name if job.status else "Received") }}</dd>
+        <dt class="col-4">{{ t.received_date }}</dt>
+        <dd class="col-8">{{ job.arrival_date or "-" }}</dd>
+        <dt class="col-4">{{ t.pickup }}</dt>
+        <dd class="col-8">{{ job.requested_pickup_date or "-" }}</dd>
+        <dt class="col-4">{{ t.description }}</dt>
+        <dd class="col-8">{{ job.description or "-" }}</dd>
+        <dt class="col-4">{{ t.notes }}</dt>
+        <dd class="col-8">{{ job.notes or "-" }}</dd>
+    </dl>
+
+    {% if job.items %}
+    <table class="table table-sm mt-4">
+        <thead>
+            <tr>
+                <th>{{ t.description }}</th>
+                <th class="text-end">{{ t.quantity }}</th>
+                <th class="text-end">{{ t.unit_price }}</th>
+                <th class="text-end">{{ t.vat }}</th>
+                <th class="text-end">{{ t.total }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in job.items %}
+            <tr>
+                <td>{{ item.description }}</td>
+                <td class="text-end">{{ item.quantity }}</td>
+                <td class="text-end">{{ "%.2f"|format(item.unit_price) }}</td>
+                <td class="text-end">{{ item.vat_percent }}%</td>
+                <td class="text-end">{{ "%.2f"|format(item.line_total) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr>
+                <th colspan="4" class="text-end">{{ t.total }}</th>
+                <th class="text-end">{{ "%.2f"|format(job_total) }}</th>
+            </tr>
+        </tfoot>
+    </table>
+    {% endif %}
+
+    <div class="border-top pt-3 mt-4">
+        <div class="small text-muted">{{ t.customer_copy }}</div>
+    </div>
+</section>
+{% endblock %}

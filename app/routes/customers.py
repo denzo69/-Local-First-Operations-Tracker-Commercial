@@ -1,25 +1,40 @@
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.models import Customer
+from app.models import AuditLog, Customer, Job
+from app.services.audit_service import log_audit_event
+from app.template_context import templates
 
 router = APIRouter(prefix="/customers", tags=["customers"])
-templates = Jinja2Templates(directory="app/templates")
 settings = get_settings()
 
 
 @router.get("", response_class=HTMLResponse)
-def list_customers(request: Request, db: Session = Depends(get_db)):
-    customers = db.query(Customer).order_by(Customer.name.asc()).all()
+def list_customers(
+    request: Request,
+    q: str = Query(""),
+    db: Session = Depends(get_db),
+):
+    query = db.query(Customer)
+    search = q.strip()
+    if search:
+        query = query.filter(
+            Customer.name.ilike(f"%{search}%")
+            | Customer.phone.ilike(f"%{search}%")
+            | Customer.email.ilike(f"%{search}%")
+            | Customer.company_name.ilike(f"%{search}%")
+        )
+    customers = query.order_by(Customer.name.asc()).all()
     return templates.TemplateResponse(
         "customers/list.html",
         {
             "request": request,
             "app_name": settings.app_name,
+            "active_page": "customers",
+            "q": q,
             "customers": customers,
         },
     )
@@ -32,8 +47,8 @@ def new_customer(request: Request):
         {
             "request": request,
             "app_name": settings.app_name,
+            "active_page": "customers",
             "customer": None,
-            "error": None,
             "form_action": "/customers",
             "page_title": "New customer",
         },
@@ -66,6 +81,14 @@ def create_customer(
     db.add(customer)
     db.commit()
     db.refresh(customer)
+    log_audit_event(
+        db,
+        event_type="customer_created",
+        entity_type="customer",
+        entity_id=customer.id,
+        description="Customer created.",
+    )
+    db.commit()
 
     return RedirectResponse(url=f"/customers/{customer.id}", status_code=303)
 
@@ -75,13 +98,28 @@ def customer_detail(customer_id: int, request: Request, db: Session = Depends(ge
     customer = db.get(Customer, customer_id)
     if customer is None:
         raise HTTPException(status_code=404, detail="Customer not found")
+    customer_jobs = (
+        db.query(Job)
+        .filter(Job.customer_id == customer.id)
+        .order_by(Job.created_at.desc())
+        .all()
+    )
+    audit_events = (
+        db.query(AuditLog)
+        .filter(AuditLog.entity_type == "customer", AuditLog.entity_id == customer.id)
+        .order_by(AuditLog.created_at.desc())
+        .all()
+    )
 
     return templates.TemplateResponse(
         "customers/detail.html",
         {
             "request": request,
             "app_name": settings.app_name,
+            "active_page": "customers",
             "customer": customer,
+            "customer_jobs": customer_jobs,
+            "audit_events": audit_events,
         },
     )
 
@@ -97,8 +135,8 @@ def edit_customer(customer_id: int, request: Request, db: Session = Depends(get_
         {
             "request": request,
             "app_name": settings.app_name,
+            "active_page": "customers",
             "customer": customer,
-            "error": None,
             "form_action": f"/customers/{customer.id}",
             "page_title": "Edit customer",
         },
@@ -140,6 +178,11 @@ def delete_customer(customer_id: int, db: Session = Depends(get_db)):
     customer = db.get(Customer, customer_id)
     if customer is None:
         raise HTTPException(status_code=404, detail="Customer not found")
+    if customer.jobs:
+        raise HTTPException(
+            status_code=400,
+            detail="Customer has job history and cannot be deleted.",
+        )
 
     db.delete(customer)
     db.commit()

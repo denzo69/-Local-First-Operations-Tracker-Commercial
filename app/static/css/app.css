@@ -28,7 +28,8 @@ body {
 
 @media print {
     nav,
-    .btn {
+    .btn,
+    .no-print {
         display: none !important;
     }
 
@@ -39,5 +40,10 @@ body {
     main {
         width: 100%;
         max-width: 100%;
+    }
+
+    .print-sheet {
+        border: 0 !important;
+        padding: 0 !important;
     }
 }

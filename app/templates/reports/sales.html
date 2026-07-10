@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+    <div>
+        <h1 class="h3 mb-1">Reports</h1>
+        <p class="text-muted mb-0">Daily and monthly sales totals from job rows.</p>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <form class="card shadow-sm border-0 h-100" method="get" action="/reports">
+            <div class="card-body">
+                <label class="form-label" for="day">Day</label>
+                <input class="form-control" id="day" name="day" type="date" value="{{ selected_day }}">
+                <input name="month" type="hidden" value="{{ selected_month }}">
+            </div>
+            <div class="card-footer bg-white d-flex justify-content-end">
+                <button class="btn btn-outline-primary" type="submit">Show day</button>
+            </div>
+        </form>
+    </div>
+    <div class="col-md-6">
+        <form class="card shadow-sm border-0 h-100" method="get" action="/reports">
+            <div class="card-body">
+                <label class="form-label" for="month">Month</label>
+                <input class="form-control" id="month" name="month" type="month" value="{{ selected_month }}">
+                <input name="day" type="hidden" value="{{ selected_day }}">
+            </div>
+            <div class="card-footer bg-white d-flex justify-content-end">
+                <button class="btn btn-outline-primary" type="submit">Show month</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card shadow-sm border-0 dashboard-card dashboard-card-success">
+            <div class="card-body">
+                <div class="text-muted small">Day sales</div>
+                <div class="display-6 fw-semibold">{{ "%.2f"|format(day_total) }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card shadow-sm border-0 dashboard-card dashboard-card-info">
+            <div class="card-body">
+                <div class="text-muted small">Month sales</div>
+                <div class="display-6 fw-semibold">{{ "%.2f"|format(month_total) }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white fw-semibold">Day jobs</div>
+    <div class="card-body p-0">
+        {% if day_jobs %}
+        <div class="list-group list-group-flush">
+            {% for job in day_jobs %}
+            <a class="list-group-item list-group-item-action py-3" href="/jobs/{{ job.id }}">
+                <div class="d-flex justify-content-between gap-3">
+                    <div>
+                        <div class="fw-semibold">{{ job.title }}</div>
+                        <div class="text-muted small">{{ job.receipt_number or "No receipt" }}</div>
+                    </div>
+                    <div class="fw-semibold">{{ "%.2f"|format(job_total(job)) }}</div>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="p-4 text-muted">No sales rows for this day.</div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card shadow-sm border-0">
+    <div class="card-header bg-white fw-semibold">Month jobs</div>
+    <div class="card-body p-0">
+        {% if month_jobs %}
+        <div class="list-group list-group-flush">
+            {% for job in month_jobs %}
+            <a class="list-group-item list-group-item-action py-3" href="/jobs/{{ job.id }}">
+                <div class="d-flex justify-content-between gap-3">
+                    <div>
+                        <div class="fw-semibold">{{ job.title }}</div>
+                        <div class="text-muted small">{{ job.receipt_number or "No receipt" }}</div>
+                    </div>
+                    <div class="fw-semibold">{{ "%.2f"|format(job_total(job)) }}</div>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="p-4 text-muted">No sales rows for this month.</div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -104,6 +104,7 @@ Do not expose the development server directly to the public internet.
 Initial design documents live in the `docs/` directory:
 
 - [`docs/Vision.md`](docs/Vision.md)
+- [`docs/Projektisuunnitelma_v1.md`](docs/Projektisuunnitelma_v1.md)
 - [`docs/Software_Design_Document.md`](docs/Software_Design_Document.md)
 - [`docs/Architecture.md`](docs/Architecture.md)
 - [`docs/Backup_and_Failover.md`](docs/Backup_and_Failover.md)

@@ -4,46 +4,38 @@
 <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
     <div>
         <h1 class="h3 mb-1">Customers</h1>
-        <p class="text-muted mb-0">Manage customer contact details for work orders.</p>
+        <p class="text-muted mb-0">Customer register for work orders and receipts.</p>
     </div>
     <a class="btn btn-primary" href="/customers/new">+ New customer</a>
 </div>
 
+<form class="mb-3" method="get" action="/customers">
+    <div class="input-group">
+        <input class="form-control" name="q" value="{{ q }}" placeholder="Search customers, phone, email, company">
+        <button class="btn btn-outline-secondary" type="submit">Search</button>
+    </div>
+</form>
+
 <div class="card shadow-sm border-0">
-    <div class="card-header bg-white fw-semibold">Customer list</div>
     <div class="card-body p-0">
         {% if customers %}
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th>Name</th>
-                        <th>Phone</th>
-                        <th>Email</th>
-                        <th>Company</th>
-                        <th class="text-end">Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for customer in customers %}
-                    <tr>
-                        <td class="fw-semibold">{{ customer.name }}</td>
-                        <td>{{ customer.phone or "—" }}</td>
-                        <td>{{ customer.email or "—" }}</td>
-                        <td>{{ customer.company_name or "—" }}</td>
-                        <td class="text-end">
-                            <a class="btn btn-sm btn-outline-primary" href="/customers/{{ customer.id }}">Open</a>
-                            <a class="btn btn-sm btn-outline-secondary" href="/customers/{{ customer.id }}/edit">Edit</a>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+        <div class="list-group list-group-flush">
+            {% for customer in customers %}
+            <a class="list-group-item list-group-item-action py-3" href="/customers/{{ customer.id }}">
+                <div class="d-flex justify-content-between gap-3">
+                    <div>
+                        <div class="fw-semibold">{{ customer.name }}</div>
+                        <div class="text-muted small">
+                            {{ customer.company_name or customer.phone or customer.email or "No contact details yet" }}
+                        </div>
+                    </div>
+                    <span class="text-muted">View</span>
+                </div>
+            </a>
+            {% endfor %}
         </div>
         {% else %}
-        <div class="p-4 text-muted">
-            No customers yet. Create the first customer to start testing real workflow data.
-        </div>
+        <div class="p-4 text-muted">No customers yet.</div>
         {% endif %}
     </div>
 </div>

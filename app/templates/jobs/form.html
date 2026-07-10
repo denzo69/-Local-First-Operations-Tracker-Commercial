@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="mb-4">
+    <h1 class="h3 mb-1">{{ page_title }}</h1>
+    <p class="text-muted mb-0">Create a work order and connect it to a customer.</p>
+</div>
+
+{% if not customers %}
+<div class="alert alert-warning">
+    Add a customer before creating a job.
+    <a class="alert-link" href="/customers/new">Create customer</a>
+</div>
+{% endif %}
+
+<form class="card shadow-sm border-0" method="post" action="{{ form_action }}">
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-12">
+                <label class="form-label" for="title">Job title</label>
+                <input class="form-control" id="title" name="title" required placeholder="Laundry order, repair job, service task" value="{{ job.title if job else '' }}">
+            </div>
+            <div class="col-12">
+                <label class="form-label" for="customer_id">Customer</label>
+                <select class="form-select" id="customer_id" name="customer_id">
+                    <option value="">No customer selected</option>
+                    {% for customer in customers %}
+                    <option value="{{ customer.id }}" {% if job and job.customer_id == customer.id %}selected{% endif %}>{{ customer.name }}{% if customer.company_name %} - {{ customer.company_name }}{% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="arrival_date">Received date</label>
+                <input class="form-control" id="arrival_date" name="arrival_date" type="date" value="{{ job.arrival_date if job and job.arrival_date else '' }}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="requested_pickup_date">Pickup date</label>
+                <input class="form-control" id="requested_pickup_date" name="requested_pickup_date" type="date" value="{{ job.requested_pickup_date if job and job.requested_pickup_date else '' }}">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="priority">Priority</label>
+                <select class="form-select" id="priority" name="priority">
+                    <option value="normal" {% if not job or job.priority == "normal" %}selected{% endif %}>Normal</option>
+                    <option value="high" {% if job and job.priority == "high" %}selected{% endif %}>High</option>
+                    <option value="low" {% if job and job.priority == "low" %}selected{% endif %}>Low</option>
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="status_id">Status</label>
+                <select class="form-select" id="status_id" name="status_id">
+                    {% for status in statuses %}
+                    <option value="{{ status.id }}" {% if (job and job.status_id == status.id) or (not job and status.name == "Received") %}selected{% endif %}>{{ status.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12">
+                <label class="form-label" for="description">Description</label>
+                <textarea class="form-control" id="description" name="description" rows="3">{{ job.description if job and job.description else '' }}</textarea>
+            </div>
+            <div class="col-12">
+                <label class="form-label" for="notes">Notes</label>
+                <textarea class="form-control" id="notes" name="notes" rows="3">{{ job.notes if job and job.notes else '' }}</textarea>
+            </div>
+        </div>
+    </div>
+    <div class="card-footer bg-white d-flex gap-2 justify-content-end">
+        <a class="btn btn-outline-secondary" href="/jobs">Cancel</a>
+        <button class="btn btn-primary" type="submit" {% if not customers and not job %}disabled{% endif %}>Save job</button>
+    </div>
+</form>
+{% endblock %}

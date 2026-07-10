@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-start gap-3 mb-4">
+    <div>
+        <h1 class="h3 mb-1">{{ job.title }}</h1>
+        <p class="text-muted mb-0">{{ job.customer.name if job.customer else t.no_customer }}</p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-outline-secondary" href="/jobs">{{ t.back }}</a>
+        <a class="btn btn-outline-primary" href="/jobs/{{ job.id }}/edit">{{ t.edit }}</a>
+        <a class="btn btn-outline-dark" href="/jobs/{{ job.id }}/receipt">{{ t.print }}</a>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0 mb-3">
+    <div class="card-body">
+        <div class="d-flex flex-column flex-md-row justify-content-between gap-3">
+            <div>
+                <div class="text-muted small">{{ t.current_status }}</div>
+                <div class="h4 mb-0">{{ status_label(job.status.name if job.status else "Received") }}</div>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                {% for status in statuses %}
+                    {% if not job.status or status.id != job.status.id %}
+                    <form method="post" action="/jobs/{{ job.id }}/status">
+                        <input type="hidden" name="status_id" value="{{ status.id }}">
+                        <button class="btn {% if status.is_ready_state %}btn-success{% elif status.is_final %}btn-dark{% else %}btn-outline-primary{% endif %}" type="submit">
+                            {{ status_label(status.name) }}
+                        </button>
+                    </form>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0">
+    <div class="card-body">
+        <dl class="row mb-0">
+            <dt class="col-sm-3">{{ t.customer }}</dt>
+            <dd class="col-sm-9">
+                {% if job.customer %}
+                <a href="/customers/{{ job.customer.id }}">{{ job.customer.name }}</a>
+                {% else %}
+                -
+                {% endif %}
+            </dd>
+            <dt class="col-sm-3">{{ t.received_date }}</dt>
+            <dd class="col-sm-9">{{ job.arrival_date or "-" }}</dd>
+            <dt class="col-sm-3">{{ t.pickup_date }}</dt>
+            <dd class="col-sm-9">{{ job.requested_pickup_date or "-" }}</dd>
+            <dt class="col-sm-3">{{ t.status }}</dt>
+            <dd class="col-sm-9">{{ status_label(job.status.name if job.status else "Received") }}</dd>
+            <dt class="col-sm-3">{{ t.receipt_number }}</dt>
+            <dd class="col-sm-9">{{ job.receipt_number or "-" }}</dd>
+            <dt class="col-sm-3">{{ t.priority }}</dt>
+            <dd class="col-sm-9">{{ job.priority or "normal" }}</dd>
+            <dt class="col-sm-3">{{ t.description }}</dt>
+            <dd class="col-sm-9">{{ job.description or "-" }}</dd>
+            <dt class="col-sm-3">{{ t.notes }}</dt>
+            <dd class="col-sm-9">{{ job.notes or "-" }}</dd>
+        </dl>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0 mt-3">
+    <div class="card-header bg-white fw-semibold">{{ t.sales_items }}</div>
+    <div class="card-body">
+        {% if job.items %}
+        <div class="table-responsive mb-3">
+            <table class="table align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>{{ t.description }}</th>
+                        <th class="text-end">{{ t.quantity }}</th>
+                        <th class="text-end">{{ t.unit_price }}</th>
+                        <th class="text-end">{{ t.vat }}</th>
+                        <th class="text-end">{{ t.total }}</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in job.items %}
+                    <tr>
+                        <td>{{ item.description }}</td>
+                        <td class="text-end">{{ item.quantity }}</td>
+                        <td class="text-end">{{ "%.2f"|format(item.unit_price) }}</td>
+                        <td class="text-end">{{ item.vat_percent }}%</td>
+                        <td class="text-end">{{ "%.2f"|format(item.line_total) }}</td>
+                        <td class="text-end">
+                            <form method="post" action="/jobs/{{ job.id }}/items/{{ item.id }}/delete">
+                                <button class="btn btn-sm btn-outline-danger" type="submit">{{ t.remove }}</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <th colspan="4" class="text-end">{{ t.total }}</th>
+                        <th class="text-end">{{ "%.2f"|format(job_total) }}</th>
+                        <th></th>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        {% endif %}
+
+        <form class="row g-2" method="post" action="/jobs/{{ job.id }}/items">
+            <div class="col-md-4">
+                <label class="form-label" for="product_id">{{ t.product }}</label>
+                <select class="form-select" id="product_id" name="product_id">
+                    <option value="">{{ t.manual_row }}</option>
+                    {% for product in products %}
+                    <option value="{{ product.id }}">{{ product.name }} - {{ "%.2f"|format(product.unit_price) }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="description">{{ t.description }}</label>
+                <input class="form-control" id="description" name="description">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="quantity">{{ t.quantity }}</label>
+                <input class="form-control" id="quantity" name="quantity" type="number" step="0.01" value="1">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="unit_price">{{ t.unit_price }}</label>
+                <input class="form-control" id="unit_price" name="unit_price" type="number" step="0.01" value="0">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="vat_percent">{{ t.vat }}</label>
+                <input class="form-control" id="vat_percent" name="vat_percent" type="number" step="0.01" value="24">
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button class="btn btn-primary w-100" type="submit">{{ t.add_item }}</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0 mt-3">
+    <div class="card-header bg-white fw-semibold">{{ t.activity_timeline }}</div>
+    {% if audit_events %}
+    <div class="list-group list-group-flush">
+        {% for event in audit_events %}
+        <div class="list-group-item py-3">
+            <div class="fw-semibold">{{ event.description }}</div>
+            <div class="text-muted small">{{ event.created_at }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="card-body">
+        <p class="text-muted mb-0">{{ t.no_activity }}</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

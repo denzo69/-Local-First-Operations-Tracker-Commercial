@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+    <div>
+        <h1 class="h3 mb-1">{{ t.jobs }}</h1>
+        <p class="text-muted mb-0">{{ t.jobs_needing_attention }}</p>
+    </div>
+    <a class="btn btn-primary" href="/jobs/new">{{ t.new_job }}</a>
+</div>
+
+<div class="d-flex flex-wrap gap-2 mb-3">
+    <a class="btn btn-sm {% if view == 'active' %}btn-dark{% else %}btn-outline-secondary{% endif %}" href="/jobs?view=active">{{ t.active }}</a>
+    <a class="btn btn-sm {% if view == 'ready' %}btn-dark{% else %}btn-outline-secondary{% endif %}" href="/jobs?view=ready">{{ t.ready }}</a>
+    <a class="btn btn-sm {% if view == 'history' %}btn-dark{% else %}btn-outline-secondary{% endif %}" href="/jobs?view=history">{{ t.history }}</a>
+    <a class="btn btn-sm {% if view == 'all' %}btn-dark{% else %}btn-outline-secondary{% endif %}" href="/jobs?view=all">{{ t.all }}</a>
+</div>
+
+<form class="mb-3" method="get" action="/jobs">
+    <input type="hidden" name="view" value="{{ view }}">
+    <div class="input-group">
+        <input class="form-control" name="q" value="{{ q }}" placeholder="{{ t.search }}">
+        <button class="btn btn-outline-secondary" type="submit">{{ t.search }}</button>
+    </div>
+</form>
+
+<div class="card shadow-sm border-0">
+    <div class="card-body p-0">
+        {% if jobs %}
+        <div class="list-group list-group-flush">
+            {% for job in jobs %}
+            <a class="list-group-item list-group-item-action py-3" href="/jobs/{{ job.id }}">
+                <div class="d-flex justify-content-between gap-3">
+                    <div>
+                        <div class="fw-semibold">{{ job.title }}</div>
+                        <div class="text-muted small">
+                            {{ job.customer.name if job.customer else t.no_customer }}
+                            - {{ status_label(job.status.name if job.status else "Received") }}
+                            {% if job.requested_pickup_date %} - {{ t.pickup }} {{ job.requested_pickup_date }}{% endif %}
+                        </div>
+                    </div>
+                    <span class="text-muted">{{ t.view }}</span>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="p-4 text-muted">
+            {% if view == "history" %}
+            No completed jobs in history yet.
+            {% elif view == "ready" %}
+            No jobs ready for pickup.
+            {% else %}
+            No jobs yet.
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+    <div>
+        <h1 class="h3 mb-1">{{ t.products }}</h1>
+        <p class="text-muted mb-0">Price list for job item rows and sales totals.</p>
+    </div>
+    <a class="btn btn-primary" href="/products/new">{{ t.new_product }}</a>
+</div>
+
+{% if request.query_params.get("imported") %}
+<div class="alert alert-success">{{ request.query_params.get("imported") }} products imported.</div>
+{% endif %}
+
+<form class="card shadow-sm border-0 mb-3" method="post" action="/products/import" enctype="multipart/form-data">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-8">
+                <label class="form-label" for="csv_file">Import price list CSV</label>
+                <input class="form-control" id="csv_file" name="csv_file" type="file" accept=".csv,text/csv" required>
+            </div>
+            <div class="col-md-4">
+                <button class="btn btn-outline-primary w-100" type="submit">Import products</button>
+            </div>
+        </div>
+        <div class="form-text">Columns: name, description, unit_price, vat_percent, unit. Existing products are updated by name.</div>
+    </div>
+</form>
+
+<div class="card shadow-sm border-0">
+    <div class="card-body p-0">
+        {% if products %}
+        <div class="list-group list-group-flush">
+            {% for product in products %}
+            <a class="list-group-item list-group-item-action py-3" href="/products/{{ product.id }}/edit">
+                <div class="d-flex justify-content-between gap-3">
+                    <div>
+                        <div class="fw-semibold">{{ product.name }}</div>
+                        <div class="text-muted small">{{ product.unit }} - VAT {{ product.vat_percent }}%{% if not product.is_active %} - inactive{% endif %}</div>
+                    </div>
+                    <div class="fw-semibold">{{ "%.2f"|format(product.unit_price) }}</div>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="p-4 text-muted">No products yet.</div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
