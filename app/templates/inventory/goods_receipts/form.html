@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ t.new_goods_receipt }}</h1>
+{% if not suppliers %}
+<div class="alert alert-warning">{{ t.create_supplier_first }} <a href="/inventory/suppliers">{{ t.suppliers }}</a></div>
+{% endif %}
+<form method="post" action="/inventory/goods-receipts" class="card p-3">
+    <div class="row g-3">
+        <div class="col-md-4">
+            <label class="form-label" for="supplier_id">{{ t.supplier }}</label>
+            <select class="form-select" id="supplier_id" name="supplier_id" required>
+                {% for supplier in suppliers %}<option value="{{ supplier.id }}">{{ supplier.name }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label" for="receipt_date">{{ t.date }}</label>
+            <input class="form-control" id="receipt_date" name="receipt_date" type="date" value="{{ today }}" required>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label" for="received_by_user_id">{{ t.received_by }}</label>
+            <select class="form-select" id="received_by_user_id" name="received_by_user_id" required>
+                {% for user in users %}<option value="{{ user.id }}">{{ user.name }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="col-md-6"><label class="form-label" for="delivery_number">{{ t.delivery_number }}</label><input class="form-control" id="delivery_number" name="delivery_number"></div>
+        <div class="col-md-6"><label class="form-label" for="invoice_number">{{ t.invoice_number }}</label><input class="form-control" id="invoice_number" name="invoice_number"></div>
+        <div class="col-md-4"><label class="form-label" for="freight_total_ex_vat">{{ t.freight_ex_vat }}</label><input class="form-control" id="freight_total_ex_vat" name="freight_total_ex_vat" value="0"></div>
+        <div class="col-md-4"><label class="form-label" for="other_costs_total_ex_vat">{{ t.other_costs_ex_vat }}</label><input class="form-control" id="other_costs_total_ex_vat" name="other_costs_total_ex_vat" value="0"></div>
+        <div class="col-md-4">
+            <label class="form-label" for="allocation_method">{{ t.allocation_method }}</label>
+            <select class="form-select" id="allocation_method" name="allocation_method">
+                <option value="by_value">{{ t.by_purchase_value }}</option>
+                <option value="by_quantity">{{ t.by_quantity }}</option>
+            </select>
+        </div>
+    </div>
+    <button class="btn btn-primary mt-3" type="submit" {% if not suppliers %}disabled{% endif %}>{{ t.save }}</button>
+</form>
+{% endblock %}

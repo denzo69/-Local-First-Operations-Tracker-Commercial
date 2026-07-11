@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ t.suppliers }}</h1>
+<form method="post" action="/inventory/suppliers" class="card p-3 mb-3">
+    <label class="form-label" for="name">{{ t.supplier }}</label>
+    <input class="form-control" id="name" name="name" required>
+    <button class="btn btn-primary mt-3" type="submit">{{ t.save }}</button>
+</form>
+<div class="card">
+    <div class="table-responsive responsive-card-table">
+        <table class="table mb-0">
+            <thead><tr><th>{{ t.supplier }}</th><th>{{ t.status }}</th></tr></thead>
+            <tbody>
+            {% for supplier in suppliers %}
+            <tr><td data-label="{{ t.supplier }}">{{ supplier.name }}</td><td data-label="{{ t.status }}">{{ t.active if supplier.is_active else 'Inactive' }}</td></tr>
+            {% else %}
+            <tr><td colspan="2" class="text-muted">{{ t.create_supplier_first }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

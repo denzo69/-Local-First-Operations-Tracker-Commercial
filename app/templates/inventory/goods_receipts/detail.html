@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1>{{ t.goods_receipt }} #{{ receipt.id }}</h1>
+        <p class="text-muted">{{ receipt.supplier.name if receipt.supplier else "-" }} / {{ receipt.receipt_date }} / {{ receipt.status }}</p>
+    </div>
+    <a class="btn btn-outline-secondary" href="/inventory/goods-receipts">{{ t.back }}</a>
+</div>
+
+{% if receipt.status == "draft" %}
+<form class="card p-3 mb-3" method="post" action="/inventory/goods-receipts/{{ receipt.id }}/lines">
+    <h2 class="h5">{{ t.add_item }}</h2>
+    <div class="row g-3">
+        <div class="col-md-3">
+            <label class="form-label" for="product_id">{{ t.product }}</label>
+            <select class="form-select" id="product_id" name="product_id" required>
+                {% for product in products %}<option value="{{ product.id }}">{{ product.name }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label" for="destination_location_id">{{ t.location }}</label>
+            <select class="form-select" id="destination_location_id" name="destination_location_id" required>
+                {% for location in locations %}<option value="{{ location.id }}">{{ location.warehouse.code }} / {{ location.code }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2"><label class="form-label" for="quantity_value">{{ t.quantity }}</label><input class="form-control" id="quantity_value" name="quantity_value" value="1"></div>
+        <div class="col-md-2"><label class="form-label" for="purchase_unit_price_ex_vat">{{ t.purchase_price_ex_vat }}</label><input class="form-control" id="purchase_unit_price_ex_vat" name="purchase_unit_price_ex_vat" value="0"></div>
+        <div class="col-md-2"><label class="form-label" for="vat_rate">{{ t.vat }} %</label><input class="form-control" id="vat_rate" name="vat_rate" value="24"></div>
+    </div>
+    <button class="btn btn-outline-primary mt-3" type="submit">{{ t.add_item }}</button>
+</form>
+{% endif %}
+
+{% if preview %}
+<div class="card mb-3">
+    <div class="card-header">{{ t.landed_cost_preview }}</div>
+    <div class="table-responsive responsive-card-table">
+        <table class="table mb-0">
+            <thead><tr><th>{{ t.product }}</th><th>{{ t.quantity }}</th><th>{{ t.purchase_value_ex_vat }}</th><th>{{ t.freight_ex_vat }}</th><th>{{ t.other_costs_ex_vat }}</th><th>{{ t.landed_unit_cost }}</th><th>{{ t.projected_average_cost }}</th><th>{{ t.projected_inventory_value }}</th></tr></thead>
+            <tbody>
+            {% for item in preview.lines %}
+            <tr>
+                <td data-label="{{ t.product }}">{{ item.line.product.name }}</td>
+                <td data-label="{{ t.quantity }}">{{ item.line.quantity }}</td>
+                <td data-label="{{ t.purchase_value_ex_vat }}">{{ item.purchase_value_ex_vat }}</td>
+                <td data-label="{{ t.freight_ex_vat }}">{{ item.allocated_freight_ex_vat }}</td>
+                <td data-label="{{ t.other_costs_ex_vat }}">{{ item.allocated_other_costs_ex_vat }}</td>
+                <td data-label="{{ t.landed_unit_cost }}">{{ item.landed_unit_cost_ex_vat }}</td>
+                <td data-label="{{ t.projected_average_cost }}">{{ item.projected_weighted_average_cost }}</td>
+                <td data-label="{{ t.projected_inventory_value }}">{{ item.projected_inventory_value_ex_vat }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+<div class="card p-3 mb-3">
+    <h2 class="h5">{{ t.how_calculated }}</h2>
+    {% for item in preview.lines %}
+    <p class="mb-1"><strong>{{ item.line.product.name }}</strong></p>
+    <pre class="mb-3">Existing stock: {{ item.calculation.old_quantity }} x {{ item.calculation.old_average_cost }} = {{ item.calculation.old_value }}
+New receipt: {{ item.calculation.new_quantity }} x {{ item.calculation.new_landed_unit_cost }} = {{ item.calculation.new_value }}
+Combined: {{ item.calculation.combined_value }} / {{ item.calculation.combined_quantity }} = {{ item.calculation.new_average_cost }}</pre>
+    {% endfor %}
+    <div>{{ t.purchase_total_ex_vat }}: <strong>{{ preview.purchase_total_ex_vat }}</strong></div>
+    <div>{{ t.freight_ex_vat }}: <strong>{{ preview.freight_total_ex_vat }}</strong></div>
+    <div>{{ t.other_costs_ex_vat }}: <strong>{{ preview.other_costs_total_ex_vat }}</strong></div>
+    <div>{{ t.total_landed_cost }}: <strong>{{ preview.total_landed_cost_ex_vat }}</strong></div>
+    <div>{{ t.vat }}: <strong>{{ preview.vat_total }}</strong></div>
+    <div>{{ t.total }} {{ t.received }}: <strong>{{ preview.total_inc_vat }}</strong></div>
+</div>
+{% endif %}
+
+{% if receipt.status == "draft" and receipt.lines %}
+<form method="post" action="/inventory/goods-receipts/{{ receipt.id }}/post" class="card p-3 mb-3">
+    <label class="form-label" for="posted_by_user_id">{{ t.posted_by }}</label>
+    <select class="form-select mb-2" id="posted_by_user_id" name="posted_by_user_id">
+        {% for user in users %}<option value="{{ user.id }}">{{ user.name }}</option>{% endfor %}
+    </select>
+    <button class="btn btn-primary" type="submit">{{ t.post_goods_receipt }}</button>
+</form>
+{% elif receipt.status == "posted" %}
+<form method="post" action="/inventory/goods-receipts/{{ receipt.id }}/cancel" class="card p-3">
+    <h2 class="h5">{{ t.cancel_goods_receipt }}</h2>
+    <select class="form-select mb-2" name="user_id">
+        {% for user in users %}<option value="{{ user.id }}">{{ user.name }}</option>{% endfor %}
+    </select>
+    <input class="form-control mb-2" name="reason" placeholder="{{ t.reason }}" required>
+    <button class="btn btn-outline-danger" type="submit">{{ t.cancel_goods_receipt }}</button>
+</form>
+{% endif %}
+{% endblock %}

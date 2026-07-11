@@ -20,6 +20,7 @@ from app.routes import (
     cash_registers,
     customers,
     daily_closings,
+    inventory,
     jobs,
     products,
     reports,
@@ -67,6 +68,7 @@ app.include_router(cash_registers.router)
 app.include_router(shifts.router)
 app.include_router(sales.router)
 app.include_router(daily_closings.router)
+app.include_router(inventory.router)
 app.include_router(seller_reports.router)
 app.include_router(reports.router)
 app.include_router(settings_routes.router)

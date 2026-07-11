@@ -50,6 +50,9 @@ The app is not intended to be exposed directly to the public internet.
 - Read-only browsing for historical daily closing snapshot versions
 - Seller reports for daily, weekly, and monthly sales metrics
 - Sales report totals
+- Goods receipts with freight and additional landed cost allocation
+- Weighted-average inventory cost and ex-VAT inventory valuation
+- Inventory movement ledger, receipt cancellation by reversal, and valuation reports
 - Audit log
 - SQLite backups using SQLite's backup API
 - Backup restore, health status, and retention cleanup
@@ -98,6 +101,33 @@ Security notes:
 - Signed HTTP-only session cookies are used for local browser sessions.
 - Admin and Manager roles can access administration routes. Read only users cannot perform write requests.
 - The app is still not intended to be exposed directly to the public internet.
+
+## Inventory Costing
+
+Inventory valuation is based on ex-VAT cost. VAT is stored and shown, but deductible VAT is not included in inventory value by default.
+
+Goods receipts are created as drafts. Draft receipts do not affect stock, balances, weighted average cost, or valuation. Posting a receipt allocates freight and other landed costs, creates inventory movements, updates location balances, updates product-level totals, and writes audit events in one transaction.
+
+Default landed cost allocation is by purchase value:
+
+```text
+line share = line purchase value / total receipt purchase value
+allocated freight = receipt freight total * line share
+allocated other costs = receipt other costs total * line share
+landed unit cost = (line purchase value + allocated freight + allocated other costs) / quantity
+```
+
+Quantity-based allocation is also supported. Monetary allocations are rounded to 2 decimals and the final rounding remainder is assigned to the last line deterministically, so allocated freight and additional costs reconcile exactly to the receipt totals.
+
+Weighted average cost uses 6 decimal places internally:
+
+```text
+old value = old quantity * old weighted average cost
+new receipt value = received quantity * landed unit cost
+new average cost = (old value + new receipt value) / (old quantity + received quantity)
+```
+
+Inventory value is stored as the actual ex-VAT movement value rounded to 2 decimals. Negative stock is rejected by default because it would make weighted average cost ambiguous. Posted receipts are immutable; cancellation creates reversal movements instead of deleting history.
 
 ## Technology Stack
 

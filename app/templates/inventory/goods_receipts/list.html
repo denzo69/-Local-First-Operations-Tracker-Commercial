@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1>{{ t.goods_receipts }}</h1>
+        <p class="text-muted">{{ t.goods_receipts_help }}</p>
+    </div>
+    <a class="btn btn-primary" href="/inventory/goods-receipts/new">{{ t.new_goods_receipt }}</a>
+</div>
+<div class="card">
+    <div class="table-responsive responsive-card-table">
+        <table class="table mb-0">
+            <thead><tr><th>{{ t.date }}</th><th>{{ t.supplier }}</th><th>{{ t.delivery_number }}</th><th>{{ t.status }}</th><th>{{ t.total }}</th><th></th></tr></thead>
+            <tbody>
+            {% for receipt in receipts %}
+            <tr>
+                <td data-label="{{ t.date }}">{{ receipt.receipt_date }}</td>
+                <td data-label="{{ t.supplier }}">{{ receipt.supplier.name if receipt.supplier else "-" }}</td>
+                <td data-label="{{ t.delivery_number }}">{{ receipt.delivery_number or "-" }}</td>
+                <td data-label="{{ t.status }}">{{ receipt.status }}</td>
+                <td data-label="{{ t.total }}">{{ receipt.freight_total_ex_vat + receipt.other_costs_total_ex_vat }}</td>
+                <td data-label="{{ t.view }}" class="text-end"><a href="/inventory/goods-receipts/{{ receipt.id }}">{{ t.view }}</a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" class="text-muted">{{ t.no_goods_receipts }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

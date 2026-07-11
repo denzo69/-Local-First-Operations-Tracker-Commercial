@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -75,10 +75,173 @@ class Product(Base):
     unit = Column(String(50), default="pcs")
     is_active = Column(Boolean, default=True)
     is_stock_item = Column(Boolean, default=False)
+    current_weighted_average_cost_ex_vat = Column(Numeric(18, 6), nullable=True)
+    current_inventory_quantity = Column(Numeric(18, 3), default=0)
+    current_inventory_value_ex_vat = Column(Numeric(18, 2), default=0)
+    current_purchase_price_ex_vat = Column(Numeric(12, 2), nullable=True)
+    current_purchase_price_inc_vat = Column(Numeric(12, 2), nullable=True)
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
     job_items = relationship("JobItem", back_populates="product")
+    inventory_balances = relationship("InventoryBalance", back_populates="product")
+    inventory_movements = relationship("InventoryMovement", back_populates="product")
+
+
+class Supplier(Base):
+    __tablename__ = "suppliers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False, index=True)
+    business_id = Column(String(100), nullable=True)
+    contact_name = Column(String(255), nullable=True)
+    email = Column(String(255), nullable=True)
+    phone = Column(String(100), nullable=True)
+    address = Column(Text, nullable=True)
+    notes = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
+    goods_receipts = relationship("GoodsReceipt", back_populates="supplier")
+
+
+class Warehouse(Base):
+    __tablename__ = "warehouses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False, index=True)
+    code = Column(String(50), nullable=False, unique=True, index=True)
+    description = Column(Text, nullable=True)
+    address = Column(Text, nullable=True)
+    is_external = Column(Boolean, default=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
+    locations = relationship("WarehouseLocation", back_populates="warehouse")
+
+
+class WarehouseLocation(Base):
+    __tablename__ = "warehouse_locations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    warehouse_id = Column(Integer, ForeignKey("warehouses.id"), nullable=False)
+    parent_id = Column(Integer, ForeignKey("warehouse_locations.id"), nullable=True)
+    code = Column(String(50), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    location_type = Column(String(50), default="bin")
+    is_active = Column(Boolean, default=True)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
+    warehouse = relationship("Warehouse", back_populates="locations")
+    parent = relationship("WarehouseLocation", remote_side=[id])
+    balances = relationship("InventoryBalance", back_populates="warehouse_location")
+
+
+class InventoryBalance(Base):
+    __tablename__ = "inventory_balances"
+    __table_args__ = (
+        UniqueConstraint("product_id", "warehouse_location_id", name="ux_inventory_balance_product_location"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
+    warehouse_location_id = Column(Integer, ForeignKey("warehouse_locations.id"), nullable=False)
+    quantity_on_hand = Column(Numeric(18, 3), default=0)
+    quantity_reserved = Column(Numeric(18, 3), default=0)
+    quantity_available = Column(Numeric(18, 3), default=0)
+    weighted_average_cost_ex_vat = Column(Numeric(18, 6), nullable=True)
+    inventory_value_ex_vat = Column(Numeric(18, 2), default=0)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
+    product = relationship("Product", back_populates="inventory_balances")
+    warehouse_location = relationship("WarehouseLocation", back_populates="balances")
+
+
+class GoodsReceipt(Base):
+    __tablename__ = "goods_receipts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False)
+    receipt_date = Column(Date, nullable=False, index=True)
+    delivery_number = Column(String(100), nullable=True, index=True)
+    invoice_number = Column(String(100), nullable=True, index=True)
+    freight_total_ex_vat = Column(Numeric(12, 2), default=0)
+    other_costs_total_ex_vat = Column(Numeric(12, 2), default=0)
+    allocation_method = Column(String(50), default="by_value")
+    status = Column(String(50), default="draft", index=True)
+    received_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    posted_at = Column(DateTime, nullable=True)
+    cancelled_at = Column(DateTime, nullable=True)
+    cancellation_reason = Column(Text, nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
+    supplier = relationship("Supplier", back_populates="goods_receipts")
+    received_by = relationship("User", foreign_keys=[received_by_user_id])
+    lines = relationship("GoodsReceiptLine", back_populates="goods_receipt")
+    movements = relationship("InventoryMovement", back_populates="goods_receipt")
+
+
+class GoodsReceiptLine(Base):
+    __tablename__ = "goods_receipt_lines"
+
+    id = Column(Integer, primary_key=True, index=True)
+    goods_receipt_id = Column(Integer, ForeignKey("goods_receipts.id"), nullable=False)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
+    destination_location_id = Column(Integer, ForeignKey("warehouse_locations.id"), nullable=False)
+    quantity = Column(Numeric(18, 3), nullable=False)
+    purchase_unit_price_ex_vat = Column(Numeric(12, 2), nullable=False)
+    vat_rate = Column(Numeric(5, 2), default=24)
+    purchase_unit_price_inc_vat = Column(Numeric(12, 2), nullable=False)
+    allocated_freight_ex_vat = Column(Numeric(12, 2), default=0)
+    allocated_other_costs_ex_vat = Column(Numeric(12, 2), default=0)
+    landed_unit_cost_ex_vat = Column(Numeric(18, 6), nullable=True)
+    line_total_ex_vat = Column(Numeric(12, 2), default=0)
+    created_at = Column(DateTime, default=utc_now)
+
+    goods_receipt = relationship("GoodsReceipt", back_populates="lines")
+    product = relationship("Product")
+    destination_location = relationship("WarehouseLocation")
+
+
+class InventoryMovement(Base):
+    __tablename__ = "inventory_movements"
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
+    movement_type = Column(String(50), nullable=False, index=True)
+    quantity = Column(Numeric(18, 3), nullable=False)
+    warehouse_location_id = Column(Integer, ForeignKey("warehouse_locations.id"), nullable=True)
+    from_location_id = Column(Integer, ForeignKey("warehouse_locations.id"), nullable=True)
+    to_location_id = Column(Integer, ForeignKey("warehouse_locations.id"), nullable=True)
+    unit_cost_ex_vat = Column(Numeric(18, 6), nullable=False)
+    total_cost_ex_vat = Column(Numeric(18, 2), nullable=False)
+    goods_receipt_id = Column(Integer, ForeignKey("goods_receipts.id"), nullable=True)
+    sale_id = Column(Integer, ForeignKey("sales.id"), nullable=True)
+    reference = Column(String(255), nullable=True)
+    occurred_at = Column(DateTime, default=utc_now, index=True)
+    created_at = Column(DateTime, default=utc_now)
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    old_average_cost_ex_vat = Column(Numeric(18, 6), nullable=True)
+    new_average_cost_ex_vat = Column(Numeric(18, 6), nullable=True)
+    old_quantity = Column(Numeric(18, 3), nullable=True)
+    new_quantity = Column(Numeric(18, 3), nullable=True)
+    old_inventory_value_ex_vat = Column(Numeric(18, 2), nullable=True)
+    new_inventory_value_ex_vat = Column(Numeric(18, 2), nullable=True)
+    reversal_of_movement_id = Column(Integer, ForeignKey("inventory_movements.id"), nullable=True)
+
+    product = relationship("Product", back_populates="inventory_movements")
+    warehouse_location = relationship("WarehouseLocation", foreign_keys=[warehouse_location_id])
+    from_location = relationship("WarehouseLocation", foreign_keys=[from_location_id])
+    to_location = relationship("WarehouseLocation", foreign_keys=[to_location_id])
+    goods_receipt = relationship("GoodsReceipt", back_populates="movements")
+    created_by = relationship("User", foreign_keys=[created_by_user_id])
+    reversal_of_movement = relationship("InventoryMovement", remote_side=[id])
 
 
 class JobItem(Base):

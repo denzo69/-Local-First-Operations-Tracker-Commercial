@@ -20,8 +20,19 @@ def test_alembic_upgrade_head_creates_current_schema(tmp_path):
     assert "sales" in tables
     assert "refunds" in tables
     assert "daily_closing_snapshots" in tables
+    assert "suppliers" in tables
+    assert "warehouses" in tables
+    assert "warehouse_locations" in tables
+    assert "inventory_balances" in tables
+    assert "goods_receipts" in tables
+    assert "goods_receipt_lines" in tables
+    assert "inventory_movements" in tables
     user_columns = {column["name"] for column in inspector.get_columns("users")}
     assert "password_hash" in user_columns
+    product_columns = {column["name"] for column in inspector.get_columns("products")}
+    assert "current_weighted_average_cost_ex_vat" in product_columns
+    assert "current_inventory_quantity" in product_columns
+    assert "current_inventory_value_ex_vat" in product_columns
 
     shift_indexes = {index["name"] for index in inspector.get_indexes("shifts")}
     assert "ux_open_shift_seller" in shift_indexes
@@ -30,4 +41,4 @@ def test_alembic_upgrade_head_creates_current_schema(tmp_path):
     with engine.connect() as connection:
         version = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
 
-    assert version == "3f0d1c9a8b22"
+    assert version == "7c2a91f4d8e3"
