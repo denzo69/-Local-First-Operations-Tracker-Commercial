@@ -1,4 +1,5 @@
 from datetime import date
+from pathlib import Path
 
 from fastapi import Request
 from fastapi.templating import Jinja2Templates
@@ -27,7 +28,7 @@ def inject_global_template_context(request: Request) -> dict:
 
 
 _jinja_templates = Jinja2Templates(
-    directory="app/templates",
+    directory=Path(__file__).resolve().parent / "templates",
     context_processors=[inject_global_template_context],
 )
 

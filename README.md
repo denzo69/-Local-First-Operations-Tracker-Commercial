@@ -2,6 +2,12 @@
 
 A configurable local-first work order and operations tracker for small businesses.
 
+## Portfolio Summary
+
+This project demonstrates a pragmatic FastAPI business application built around real small-business workflows: work orders, customer history, product pricing, receipts, seller shifts, sales, refunds, cash handling, daily closing, immutable financial snapshots, backups, and bilingual Finnish/English UI support.
+
+The goal is not to imitate a SaaS landing page. The app focuses on operational correctness, auditability, local-first use, and maintainable server-rendered workflows that can run on a company-owned computer and be accessed from nearby devices.
+
 ## Current MVP Status
 
 This repository contains an early but usable FastAPI MVP. It is intended to run on one company-owned Windows computer and serve other computers, tablets, and phones through a browser on the local network or through Tailscale.
@@ -31,6 +37,8 @@ The app is not intended to be exposed directly to the public internet.
 - Audit log
 - SQLite backups using SQLite's backup API
 - Backup restore, health status, and retention cleanup
+- Alembic baseline migration for the current schema
+- Centralized HTML and JSON error handling
 - GitHub Actions pytest workflow for push and pull request checks
 - LAN/Tailscale run script support
 
@@ -42,7 +50,7 @@ The app is not intended to be exposed directly to the public internet.
 - No cloud deployment, Docker, PostgreSQL, or object storage
 - No native mobile application
 - No automatic background backup scheduler yet
-- Existing SQLite databases are not migrated automatically when model definitions change
+- Alembic has a baseline migration for new databases, but existing SQLite databases are not migrated automatically on application startup
 - Receipt numbering is local-MVP safe, but not designed for high-concurrency multi-server use
 - Money columns now use SQLAlchemy `Numeric`; existing SQLite columns may still have older storage affinity until a future migration rebuilds the tables
 - Bootstrap CSS and JavaScript are bundled locally under `app/static/vendor/bootstrap`; the app does not require a CDN for the normal UI
@@ -112,6 +120,12 @@ Run the full test suite:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest
+```
+
+Create or upgrade a database through Alembic:
+
+```powershell
+.\.venv\Scripts\python.exe -m alembic upgrade head
 ```
 
 ## Local Network And Tailscale Access

@@ -368,6 +368,22 @@ button:focus-visible,
     font-size: .8rem;
 }
 
+.error-page {
+    display: grid;
+    gap: 1.25rem;
+    max-width: 760px;
+}
+
+.error-page h2 {
+    margin: 0 0 .5rem;
+}
+
+.action-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .75rem;
+}
+
 @media (min-width: 992px) {
     .app-shell {
         margin-left: var(--sidebar-width);
