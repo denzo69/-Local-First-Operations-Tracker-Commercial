@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1>Cash registers</h1>
+        <p class="text-muted">Registers used for shifts and cash reconciliation.</p>
+    </div>
+    <a class="btn btn-primary" href="/cash-registers/new">New register</a>
+</div>
+<div class="card">
+    <div class="table-responsive">
+        <table class="table mb-0">
+            <thead><tr><th>Name</th><th>Location</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+            {% for register in registers %}
+            <tr>
+                <td>{{ register.name }}</td>
+                <td>{{ register.location or "-" }}</td>
+                <td>{{ "Active" if register.is_active else "Inactive" }}</td>
+                <td class="text-end"><a href="/cash-registers/{{ register.id }}/edit">Edit</a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" class="text-muted">No cash registers yet.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

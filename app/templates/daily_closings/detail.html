@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ t.daily_closing }} {{ closing.business_date }}</h1>
+<p class="text-muted">
+    {{ t.status }}: {{ closing.status }} -
+    {{ t.version }} {{ snapshot_row.version }} -
+    {{ t.closed_by }} {{ snapshot.closed_by_name or (closing.created_by.name if closing.created_by else "-") }} -
+    {{ closing.closed_at }}
+</p>
+<div class="row g-3 mb-3">
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.gross_sales }}</div><strong>{{ snapshot.gross_sales }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.refunds }}</div><strong>{{ snapshot.total_refunds }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.net_sales }}</div><strong>{{ snapshot.net_sales }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.cash_over_short }}</div><strong>{{ snapshot.cash_over_short }}</strong></div></div>
+</div>
+<div class="row g-3">
+    <div class="col-md-4">
+        <div class="card p-3">
+            <h2 class="h5">{{ t.payment_method }}</h2>
+            {% for item in snapshot.payment_totals %}
+            <div>{{ item.payment_method }}: {{ item.gross_received }} / {{ item.refunds }} / {{ item.net }}</div>
+            {% else %}<div class="text-muted">{{ t.no_payments }}</div>{% endfor %}
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card p-3">
+            <h2 class="h5">{{ t.vat }}</h2>
+            {% for item in snapshot.vat_totals %}
+            <div>{{ item.vat_rate }}%: {{ item.gross_sales }} {{ t.gross }}, {{ item.refunds }} {{ t.refunds }}, {{ item.net_vat }} {{ t.net_vat }}</div>
+            {% else %}<div class="text-muted">{{ t.no_vat_rows }}</div>{% endfor %}
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card p-3">
+            <h2 class="h5">{{ t.seller_reports }}</h2>
+            {% for item in snapshot.seller_totals %}
+            <div>#{{ item.seller_id }} {{ item.seller_name }}: {{ item.gross_sales }} / {{ item.refunds }} / {{ item.net_sales }}</div>
+            {% else %}<div class="text-muted">{{ t.no_seller_sales }}</div>{% endfor %}
+        </div>
+    </div>
+</div>
+<div class="card p-3 mt-3">
+    <h2 class="h5">{{ t.version }}</h2>
+    {% for item in snapshots %}
+    <a href="/daily-closings/{{ closing.id }}/snapshots/{{ item.version }}">
+        {{ t.version }} {{ item.version }} - {{ item.created_at }} - {{ item.created_by.name if item.created_by else "-" }}
+    </a>{% if not loop.last %}<br>{% endif %}
+    {% endfor %}
+</div>
+{% if closing.status == "closed" %}
+<form class="card p-3 mt-3" method="post" action="/daily-closings/{{ closing.id }}/reopen">
+    <h2 class="h5">{{ t.reopen }}</h2>
+    <div class="alert alert-warning">{{ t.reopening_unlocks_business_date }} {{ t.reclosing_creates_new_snapshot }}</div>
+    <select class="form-select mb-2" name="user_id">
+        {% for user in users %}
+        <option value="{{ user.id }}">{{ user.name }} - {{ user.role.name if user.role else "-" }}</option>
+        {% endfor %}
+    </select>
+    <label class="form-label" for="reason">{{ t.reopen_reason }}</label>
+    <input class="form-control mb-2" id="reason" name="reason" required>
+    <button class="btn btn-outline-warning" type="submit">{{ t.reopen }}</button>
+</form>
+{% endif %}
+{% endblock %}

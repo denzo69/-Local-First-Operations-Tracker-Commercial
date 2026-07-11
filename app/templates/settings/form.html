@@ -44,8 +44,9 @@
             <div class="col-md-6">
                 <label class="form-label" for="language">{{ t.language }}</label>
                 <select class="form-select" id="language" name="language">
-                    <option value="en" {% if settings_values.language == "en" %}selected{% endif %}>{{ t.english }}</option>
-                    <option value="fi" {% if settings_values.language == "fi" %}selected{% endif %}>{{ t.finnish }}</option>
+                    {% for code, label in supported_languages.items() %}
+                    <option value="{{ code }}" {% if settings_values.language == code %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
                 </select>
             </div>
         </div>

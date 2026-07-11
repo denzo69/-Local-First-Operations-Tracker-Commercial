@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1>{{ t.shifts }}</h1>
+    </div>
+    <a class="btn btn-primary" href="/shifts/open">{{ t.open_shift }}</a>
+</div>
+<div class="card">
+    <div class="table-responsive">
+        <table class="table mb-0">
+            <thead><tr><th>{{ t.date }}</th><th>{{ t.seller }}</th><th>{{ t.cash_register }}</th><th>{{ t.status }}</th><th>{{ t.expected_cash }}</th><th>{{ t.counted_cash }}</th><th></th></tr></thead>
+            <tbody>
+            {% for shift in shifts %}
+            <tr>
+                <td>{{ shift.business_date }}</td>
+                <td>{{ shift.seller.name if shift.seller else "-" }}</td>
+                <td>{{ shift.cash_register.name if shift.cash_register else "-" }}</td>
+                <td>{{ shift.status }}</td>
+                <td>{{ shift.expected_closing_cash or "-" }}</td>
+                <td>{{ shift.counted_closing_cash or "-" }}</td>
+                <td class="text-end"><a href="/shifts/{{ shift.id }}">{{ t.view }}</a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-muted">{{ t.no_shifts_yet }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

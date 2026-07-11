@@ -17,6 +17,11 @@ DEFAULT_SETTINGS = {
     "language": "en",
 }
 
+SUPPORTED_LANGUAGES = {
+    "en": "English",
+    "fi": "Suomi",
+}
+
 
 def get_app_settings(db: Session) -> dict[str, str]:
     values = DEFAULT_SETTINGS.copy()
@@ -24,6 +29,13 @@ def get_app_settings(db: Session) -> dict[str, str]:
     for row in rows:
         values[row.key] = row.value or ""
     return values
+
+
+def get_current_language(db: Session) -> str:
+    language = get_app_settings(db).get("language") or DEFAULT_SETTINGS["language"]
+    if language not in SUPPORTED_LANGUAGES:
+        return DEFAULT_SETTINGS["language"]
+    return language
 
 
 def set_app_settings(db: Session, values: dict[str, str]) -> None:

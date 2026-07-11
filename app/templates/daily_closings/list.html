@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1>{{ t.daily_closing }}</h1>
+        <p class="text-muted">Closing freezes the business date until an authorized reopen is recorded.</p>
+    </div>
+</div>
+{% if open_shifts %}
+<div class="alert alert-warning">
+    Close open shifts before daily closing:
+    {% for shift in open_shifts %}
+    <a href="/shifts/{{ shift.id }}">#{{ shift.id }} {{ shift.business_date }} {{ shift.seller.name if shift.seller else "" }}</a>{% if not loop.last %}, {% endif %}
+    {% endfor %}
+</div>
+{% endif %}
+<form method="post" action="/daily-closings" class="card p-3 mb-3">
+    <div class="alert alert-info">Daily closing stores an immutable snapshot and locks financial writes for the selected date.</div>
+    <div class="row g-3 align-items-end">
+        <div class="col-md-4">
+            <label class="form-label" for="business_date">{{ t.business_date }}</label>
+            <input class="form-control" id="business_date" type="date" name="business_date" value="{{ today }}" required>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label" for="created_by_user_id">{{ t.closed_by }}</label>
+            <select class="form-select" id="created_by_user_id" name="created_by_user_id" required>
+                {% for user in users %}
+                <option value="{{ user.id }}">{{ user.name }} - {{ user.role.name if user.role else "-" }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-4"><button class="btn btn-primary" type="submit">{{ t.close_business_day }}</button></div>
+    </div>
+</form>
+<div class="card">
+    <div class="table-responsive">
+        <table class="table mb-0">
+            <thead>
+            <tr>
+                <th>{{ t.business_date }}</th>
+                <th>{{ t.status }}</th>
+                <th>{{ t.version }}</th>
+                <th>{{ t.gross_sales }}</th>
+                <th>{{ t.refunds }}</th>
+                <th>{{ t.net_sales }}</th>
+                <th>{{ t.expected_cash }}</th>
+                <th>{{ t.counted_cash }}</th>
+                <th>{{ t.cash_over_short }}</th>
+                <th>{{ t.closed_by }}</th>
+                <th>{{ t.closed_at }}</th>
+                <th></th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for closing in closings %}
+            <tr>
+                <td>{{ closing.business_date }}</td>
+                <td>{{ closing.status }}</td>
+                <td>{{ closing.current_version }}</td>
+                <td>{{ closing.total_sales }}</td>
+                <td>{{ closing.total_refunds }}</td>
+                <td>{{ closing.total_sales - closing.total_refunds }}</td>
+                <td>{{ closing.expected_cash }}</td>
+                <td>{{ closing.counted_cash }}</td>
+                <td>{{ closing.cash_over_short }}</td>
+                <td>{{ closing.created_by.name if closing.created_by else "-" }}</td>
+                <td>{{ closing.closed_at }}</td>
+                <td class="text-end"><a href="/daily-closings/{{ closing.id }}">{{ t.view }}</a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="12" class="text-muted">No daily closings yet.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
