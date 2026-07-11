@@ -45,7 +45,7 @@ The app is not intended to be exposed directly to the public internet.
 - Existing SQLite databases are not migrated automatically when model definitions change
 - Receipt numbering is local-MVP safe, but not designed for high-concurrency multi-server use
 - Money columns now use SQLAlchemy `Numeric`; existing SQLite columns may still have older storage affinity until a future migration rebuilds the tables
-- Bootstrap is still loaded from CDN in the normal UI; print views use local print CSS
+- Bootstrap CSS and JavaScript are bundled locally under `app/static/vendor/bootstrap`; the app does not require a CDN for the normal UI
 - Sales UI creates one sale line and one payment today. The data model is prepared for more rows, but split/partial payments and multi-line sale finalization are not yet implemented.
 - Multi-VAT refunds are rejected until line-level refund allocation is implemented.
 
