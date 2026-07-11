@@ -6,6 +6,7 @@ from app.config import get_settings
 from app.database import get_db
 from app.services.audit_service import log_audit_event
 from app.services.backup_service import backup_health, cleanup_retention, create_backup, list_backups, restore_backup
+from app.services.backup_scheduler_service import get_backup_scheduler_status
 from app.services.maintenance_service import maintenance_mode
 from app.template_context import templates
 
@@ -23,6 +24,7 @@ def show_backups(request: Request):
             "active_page": "backups",
             "backups": list_backups(),
             "health": backup_health(),
+            "scheduler": get_backup_scheduler_status(),
         },
     )
 
@@ -32,7 +34,7 @@ def show_backups(request: Request):
 def create_manual_backup(db: Session = Depends(get_db)):
     try:
         backup = create_backup()
-        cleanup_retention()
+        cleanup_retention(keep=settings.backup_retention_count)
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     log_audit_event(

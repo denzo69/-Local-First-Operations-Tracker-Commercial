@@ -37,6 +37,7 @@ The app is not intended to be exposed directly to the public internet.
 - Audit log
 - SQLite backups using SQLite's backup API
 - Backup restore, health status, and retention cleanup
+- Automatic background backup scheduler with configurable interval and retention
 - Alembic baseline migration for the current schema
 - Centralized HTML and JSON error handling
 - GitHub Actions pytest workflow for push and pull request checks
@@ -48,7 +49,7 @@ The app is not intended to be exposed directly to the public internet.
 - Some operational forms still preserve seller/admin selectors for MVP workflows. Route-level session checks now protect access, but deeper current-user ownership enforcement is still a future hardening step.
 - No cloud deployment, Docker, PostgreSQL, or object storage
 - No native mobile application
-- No automatic background backup scheduler yet
+- Backup scheduler is in-process and intended for the local single-computer deployment model; use an external scheduler for stricter production guarantees
 - Alembic has a baseline migration for new databases, but existing SQLite databases are not migrated automatically on application startup
 - Receipt numbering is local-MVP safe, but not designed for high-concurrency multi-server use
 - Money columns now use SQLAlchemy `Numeric`; existing SQLite columns may still have older storage affinity until a future migration rebuilds the tables
@@ -135,6 +136,14 @@ Create or upgrade a database through Alembic:
 
 ```powershell
 .\.venv\Scripts\python.exe -m alembic upgrade head
+```
+
+Optional backup scheduler environment settings:
+
+```text
+BACKUP_SCHEDULER_ENABLED=true
+BACKUP_SCHEDULER_INTERVAL_MINUTES=1440
+BACKUP_RETENTION_COUNT=50
 ```
 
 ## Local Network And Tailscale Access

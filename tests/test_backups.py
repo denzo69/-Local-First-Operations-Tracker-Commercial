@@ -12,6 +12,7 @@ from app.services.backup_service import (
     restore_backup,
     validate_sqlite_database,
 )
+from app.services.backup_scheduler_service import BackupScheduler, get_backup_scheduler_status
 
 
 def test_backups_page_loads_and_backup_can_be_created():
@@ -22,6 +23,7 @@ def test_backups_page_loads_and_backup_can_be_created():
     assert page_response.status_code == 200
     assert "Create backup" in page_response.text
     assert "Backup status" in page_response.text
+    assert "Automatic backup scheduler" in page_response.text
     assert create_response.status_code == 303
     assert create_response.headers["location"] == "/backups"
 
@@ -57,6 +59,28 @@ def test_backup_retention_keeps_newest_files():
     assert removed >= 1
     assert second.name in remaining_names
     assert first.name not in remaining_names
+
+
+def test_backup_scheduler_run_once_creates_backup_and_applies_retention():
+    scheduler = BackupScheduler(interval_minutes=1440, retention_count=1)
+    first = scheduler.run_once()
+    second = scheduler.run_once()
+    remaining_names = {backup.name for backup in list_backups()}
+
+    assert first is not None
+    assert second is not None
+    assert scheduler.run_count == 2
+    assert scheduler.last_backup_name == second.name
+    assert scheduler.last_error is None
+    assert second.name in remaining_names
+    assert first.name not in remaining_names
+
+
+def test_backup_scheduler_status_reflects_disabled_test_configuration():
+    status = get_backup_scheduler_status()
+
+    assert status.enabled is False
+    assert status.running is False
 
 
 def test_backup_health_reports_latest_backup():

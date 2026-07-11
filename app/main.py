@@ -31,6 +31,7 @@ from app.routes import (
     work_orders,
 )
 from app.services.i18n_service import get_translations
+from app.services.backup_scheduler_service import start_backup_scheduler, stop_backup_scheduler
 from app.services.maintenance_service import is_maintenance_active
 from app.services.money_service import sum_money
 from app.services.settings_service import get_app_settings
@@ -43,7 +44,11 @@ BASE_DIR = Path(__file__).resolve().parent
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    yield
+    start_backup_scheduler()
+    try:
+        yield
+    finally:
+        stop_backup_scheduler()
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)

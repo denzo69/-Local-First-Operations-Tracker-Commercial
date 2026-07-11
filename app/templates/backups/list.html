@@ -13,6 +13,25 @@
 
 <div class="card shadow-sm border-0 mb-3">
     <div class="card-body">
+        <div class="fw-semibold">{{ t.backup_scheduler }}: {{ t.on if scheduler.enabled else t.off }}</div>
+        <div class="text-muted">
+            {{ t.every }} {{ scheduler.interval_minutes }} {{ t.minutes }} · {{ t.keep_newest }} {{ scheduler.retention_count }} {{ t.backups|lower }} ·
+            {{ t.running if scheduler.running else t.not_running }}
+        </div>
+        {% if scheduler.next_run_at %}
+        <div class="text-muted small">{{ t.next_run }}: {{ scheduler.next_run_at }}</div>
+        {% endif %}
+        {% if scheduler.last_backup_name %}
+        <div class="text-muted small">{{ t.last_scheduled_backup }}: {{ scheduler.last_backup_name }} at {{ scheduler.last_run_at }}</div>
+        {% endif %}
+        {% if scheduler.last_error %}
+        <div class="text-danger small">{{ t.last_scheduler_error }}: {{ scheduler.last_error }}</div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card shadow-sm border-0 mb-3">
+    <div class="card-body">
         <div class="fw-semibold">Backup status: {{ health.status|upper }}</div>
         <div class="text-muted">{{ health.message }}</div>
         {% if health.last_backup %}
