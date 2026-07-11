@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="auth-card panel">
+    <div>
+        <p class="eyebrow">{{ t.first_run }}</p>
+        <h2>{{ t.create_first_admin }}</h2>
+        <p class="text-muted">{{ t.create_first_admin_help }}</p>
+    </div>
+
+    {% if error_key %}
+    <div class="alert alert-danger">{{ t[error_key] }}</div>
+    {% endif %}
+
+    <form method="post" action="/setup" class="stacked-form">
+        <div>
+            <label class="form-label" for="name">Name</label>
+            <input class="form-control" id="name" name="name" autocomplete="name" required autofocus>
+        </div>
+        <div>
+            <label class="form-label" for="login_name">{{ t.login_name }}</label>
+            <input class="form-control" id="login_name" name="login_name" autocomplete="username" required>
+        </div>
+        <div>
+            <label class="form-label" for="password">{{ t.password }}</label>
+            <input class="form-control" id="password" name="password" type="password" autocomplete="new-password" minlength="8" required>
+        </div>
+        <button class="btn btn-primary" type="submit">{{ t.create_first_admin }}</button>
+    </form>
+</section>
+{% endblock %}

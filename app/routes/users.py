@@ -6,6 +6,7 @@ from app.config import get_settings
 from app.database import get_db
 from app.models import User
 from app.services.audit_service import log_audit_event
+from app.services.auth_service import hash_password
 from app.services.sales_service import ensure_default_roles
 from app.template_context import templates
 
@@ -48,6 +49,7 @@ def new_user(request: Request, db: Session = Depends(get_db)):
 def create_user(
     name: str = Form(...),
     login_name: str = Form(""),
+    password: str = Form(""),
     role_id: int = Form(...),
     is_active: str | None = Form(None),
     db: Session = Depends(get_db),
@@ -57,9 +59,15 @@ def create_user(
     roles = ensure_default_roles(db)
     if role_id not in {role.id for role in roles}:
         raise HTTPException(status_code=400, detail="Selected role was not found")
+    login_value = login_name.strip() or None
+    if login_value and db.query(User).filter(User.login_name == login_value).first():
+        raise HTTPException(status_code=400, detail="Login name is already in use")
+    if password and len(password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
     user = User(
         name=name.strip(),
-        login_name=login_name.strip() or None,
+        login_name=login_value,
+        password_hash=hash_password(password) if password else None,
         role_id=role_id,
         is_active=is_active == "on",
     )
@@ -99,6 +107,7 @@ def update_user(
     user_id: int,
     name: str = Form(...),
     login_name: str = Form(""),
+    password: str = Form(""),
     role_id: int = Form(...),
     is_active: str | None = Form(None),
     db: Session = Depends(get_db),
@@ -111,8 +120,17 @@ def update_user(
     roles = ensure_default_roles(db)
     if role_id not in {role.id for role in roles}:
         raise HTTPException(status_code=400, detail="Selected role was not found")
+    login_value = login_name.strip() or None
+    if login_value:
+        existing = db.query(User).filter(User.login_name == login_value, User.id != user.id).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Login name is already in use")
+    if password and len(password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
     user.name = name.strip()
-    user.login_name = login_name.strip() or None
+    user.login_name = login_value
+    if password:
+        user.password_hash = hash_password(password)
     user.role_id = role_id
     user.is_active = is_active == "on"
     db.commit()

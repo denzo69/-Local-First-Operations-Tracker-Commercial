@@ -46,6 +46,7 @@ def ensure_sqlite_schema_compatibility(engine: Engine) -> list[str]:
             "created_by_user_id",
             "INTEGER",
         )
+        _add_column_if_missing(connection, "users", "password_hash", "VARCHAR(255)")
         diagnostics.extend(
             _create_partial_unique_index_if_safe(
                 connection,

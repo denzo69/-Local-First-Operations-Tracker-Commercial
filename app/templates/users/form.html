@@ -11,6 +11,11 @@
         <input class="form-control" id="login_name" name="login_name" value="{{ user.login_name if user and user.login_name else '' }}">
     </div>
     <div class="mb-3">
+        <label class="form-label" for="password">{{ "New password" if user else "Password" }}</label>
+        <input class="form-control" id="password" name="password" type="password" autocomplete="new-password" minlength="8">
+        <div class="form-text">{{ "Leave empty to keep the current password." if user else "Leave empty to create an operational user without login access." }}</div>
+    </div>
+    <div class="mb-3">
         <label class="form-label" for="role_id">Role</label>
         <select class="form-select" id="role_id" name="role_id" required>
             {% for role in roles %}

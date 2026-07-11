@@ -94,6 +94,14 @@
         <div class="topbar-status">
             <span>{{ t.open_shift_status }}: <strong>{{ open_shift_count }}</strong></span>
             <span>{{ t.language_status }}: <strong>{{ language|upper }}</strong></span>
+            {% if is_authenticated %}
+            <span>{{ current_user.role.name if current_user.role else "User" }}: <strong>{{ current_user.name }}</strong></span>
+            <form method="post" action="/logout" class="m-0">
+                <button class="btn btn-outline-secondary btn-sm" type="submit">{{ t.logout }}</button>
+            </form>
+            {% else %}
+            <a class="btn btn-outline-secondary btn-sm" href="/login">{{ t.login }}</a>
+            {% endif %}
             <a class="btn btn-primary btn-sm" href="{{ quick_action_url|default('/work-orders/new') }}">{{ quick_action_label|default(t.create_work_order) }}</a>
         </div>
     </header>

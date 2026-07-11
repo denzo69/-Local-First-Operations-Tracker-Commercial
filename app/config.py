@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     backup_dir: str = "./backups"
     host: str = "127.0.0.1"
     port: int = 8000
+    secret_key: str = "change-me-local-development-secret"
+    password_iterations: int = 260_000
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

@@ -11,6 +11,7 @@ TEST_BACKUPS = TEST_ROOT / "backups"
 
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB.as_posix()}"
 os.environ["BACKUP_DIR"] = str(TEST_BACKUPS)
+os.environ["PASSWORD_ITERATIONS"] = "1000"
 
 from app.database import Base, SessionLocal, engine, init_db  # noqa: E402
 from app.models import AuditLog, Customer, Job, JobItem, JobStatus, Product, Setting  # noqa: E402
