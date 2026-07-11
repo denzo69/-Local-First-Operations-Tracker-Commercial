@@ -1,98 +1,47 @@
 # Local-First Operations Tracker
 
-A configurable local-first work order and operations tracker for small businesses.
+A local-first work order, sales, cash-shift, and daily-closing system for small businesses.
 
-## Current MVP Status
+The app solves a common small-business operations problem: work orders, customer history, price rows, sales, cash reconciliation, refunds, receipts, and daily closing are often scattered across notebooks, spreadsheets, and payment terminals. This MVP brings those workflows into one browser-based system that runs on a company-owned Windows computer and can be used over LAN or Tailscale.
 
-This repository contains an early but usable FastAPI MVP. It is intended to run on one company-owned Windows computer and serve other computers, tablets, and phones through a browser on the local network or through Tailscale.
+## Highlights
 
-The app is not intended to be exposed directly to the public internet.
-
-## Implemented Features
-
-- Dashboard with real work order counts and attention lists
-- Customer CRUD and customer work order history
-- Work Order CRUD through `/work-orders`
-- Legacy `/jobs` routes kept for backwards compatibility
-- Configurable work order statuses in Settings
-- Products and services with CSV price list import
-- Work order item rows with VAT-inclusive pricing
-- Sequential receipt numbers independent from database IDs
-- Printable receipt / work order preview with stored print snapshot
-- Settings for company details, VAT default, receipt prefix, and language
-- Finnish and English UI text baseline
-- Seller accounts and operational roles for Admin, Manager, Seller, and Read only
-- Cash registers and seller shifts with starting cash, cash movements, closing count, expected cash, and over/short calculation
+- Customer and Work Order CRUD with attention lists for overdue, due, and ready work
+- Product/service catalog with CSV price-list import and VAT-inclusive pricing
+- Sequential receipt numbers independent from raw database IDs
+- Seller accounts, cash registers, cash shifts, cash movements, and over/short calculation
 - Sales, payments, and refunds stored separately from Work Orders
-- Daily closing with immutable versioned snapshots, closed-day write lock, VAT/payment/seller summaries, and authorized reopen flow
-- Read-only browsing for historical daily closing snapshot versions
-- Seller reports for daily, weekly, and monthly sales metrics
-- Sales report totals
-- Audit log
-- SQLite backups using SQLite's backup API
-- Backup restore, health status, and retention cleanup
-- GitHub Actions pytest workflow for push and pull request checks
-- LAN/Tailscale run script support
+- Immutable daily closing snapshots with version history and closed-day write locking
+- Finnish and English UI baseline with persistent language setting
+- SQLite backup, restore, retention, and health checks using SQLite's backup API
 
-## Known Limitations
+## Architecture
 
-- No authentication or user permissions yet
-- Seller and admin IDs are still selected from forms. Role checks are business-rule validation only and must not be treated as secure authorization.
-- Daily closing reopen currently depends on selected Admin/Manager IDs until a real current-user/session mechanism exists.
-- No cloud deployment, Docker, PostgreSQL, or object storage
-- No native mobile application
-- No automatic background backup scheduler yet
-- Existing SQLite databases are not migrated automatically when model definitions change
-- Receipt numbering is local-MVP safe, but not designed for high-concurrency multi-server use
-- Money columns now use SQLAlchemy `Numeric`; existing SQLite columns may still have older storage affinity until a future migration rebuilds the tables
-- Bootstrap is still loaded from CDN in the normal UI; print views use local print CSS
-- Sales UI creates one sale line and one payment today. The data model is prepared for more rows, but split/partial payments and multi-line sale finalization are not yet implemented.
-- Multi-VAT refunds are rejected until line-level refund allocation is implemented.
+- Server-rendered FastAPI and Jinja2 application
+- SQLite local database for the MVP deployment model
+- SQLAlchemy models with service-layer business rules
+- Bootstrap served from local static files under `/static/vendor/bootstrap/`
+- Local-first Windows/LAN/Tailscale positioning; no cloud dependency required
 
-## Sales, Shifts, Refunds, And Daily Closing
+See [docs/Architecture.md](docs/Architecture.md) and [docs/Database.md](docs/Database.md).
 
-Work Orders, Sales, Payments, and Refunds are separate business objects. A Sale may link to a Work Order, but a Work Order is not treated as the payment record.
+## Current Status
 
-Daily closing rules:
+MVP maturity: early but usable for demonstration and local workflow validation. The accounting-related workflows have guardrails for daily closing snapshots, closed-day locks, refund limits, and cash-shift reconciliation, but this is not production-secure yet.
 
-- All shifts for the business date must be closed before the day can be closed.
-- Closing creates a stored immutable snapshot with a version number.
-- A closed business date blocks new shifts, sales, refunds, cash movements, and shift closing for that date.
-- Only reopening the Daily Closing unlocks that date.
-- Re-closing after reopen creates a new snapshot version and preserves older snapshot rows.
-- Refunds cannot exceed the original sale total cumulatively.
-- Refunds are recorded on the current open refund shift and the refunding seller, not on the original sale shift.
-- The original sale remains on its original sale date and seller. Later refunds reduce the refund day and refunding seller totals.
-- Refund VAT is stored with the refund. Single-VAT sales are supported; multi-VAT refunds require future line allocation.
-- Snapshot version history is available from the Daily Closing detail page.
+Verified locally:
 
-Security limitation:
+- Python 3.14.6
+- Tests: 85 passed, 0 failed, 0 skipped, 407 warnings
+- Coverage baseline: 85% measured with `pytest-cov`
 
-- The current MVP has no login session or authenticated current user. Forms that ask for seller/admin users are operational placeholders, not security controls.
+Security limitation: there is no real authentication/session/current-user system yet. Current role checks are business-rule validation, not secure identity verification.
 
-## Technology Stack
-
-- Python
-- FastAPI
-- SQLite
-- SQLAlchemy classic Column models
-- Jinja2
-- Bootstrap
-- Pytest
-- Uvicorn
-
-## Quick Start On Windows
-
-Clone the repository:
+## Quick Start
 
 ```powershell
 git clone https://github.com/denzo69/Local-First-Operations-Tracker.git
 cd Local-First-Operations-Tracker
-```
-
-Start the local development server:
-
-```powershell
 .\run.bat
 ```
 
@@ -102,64 +51,39 @@ Open:
 http://127.0.0.1:8000
 ```
 
-Health check:
-
-```text
-http://127.0.0.1:8000/health
-```
-
-Run the full test suite:
+Run tests:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-## Local Network And Tailscale Access
-
-Use the LAN script when another device should access the app:
+Run tests with coverage:
 
 ```powershell
-.\run-lan.bat
+.\.venv\Scripts\python.exe -m pytest --cov=app --cov-report=term-missing --cov-report=xml --cov-report=html
 ```
 
-Then open the server computer's LAN or Tailscale address in a browser, for example:
+## Screenshots
 
-```text
-http://100.x.x.x:8002
-```
-
-Only use this on trusted private networks or Tailscale. Do not port-forward the development server to the public internet.
-
-## Data And Backups
-
-Default local database:
-
-```text
-data/app.sqlite
-```
-
-Default backup folder:
-
-```text
-backups/
-```
-
-Backups are created with SQLite's backup API, validated with `PRAGMA integrity_check`, and listed in the Backups page. Restore creates a safety backup before replacing the current database.
-
-## Print Snapshots
-
-Opening the printable receipt / work order route creates one stored snapshot for that document type. Later edits to the live work order do not rewrite the stored snapshot. Reopening the same printable route reuses the existing document number and snapshot.
+No repository screenshots are currently included. This section intentionally avoids broken image links.
 
 ## Documentation
 
-Design documents live in `docs/`:
+- [Operations](docs/Operations.md)
+- [Backups](docs/Backups.md)
+- [Security](docs/Security.md)
+- [Development](docs/Development.md)
+- [Architecture](docs/Architecture.md)
+- [Database](docs/Database.md)
+- [API](docs/API.md)
+- [Roadmap](docs/Roadmap.md)
+- [Vision](docs/Vision.md)
 
-- `docs/Vision.md`
-- `docs/Projektisuunnitelma_v1.md`
-- `docs/Software_Design_Document.md`
-- `docs/Architecture.md`
-- `docs/Backup_and_Failover.md`
-- `docs/Database.md`
-- `docs/API.md`
-- `docs/Roadmap.md`
-- `docs/UI/Wireframes.md`
+## Known Limitations
+
+- No authentication, sessions, CSRF protection, or secure current-user enforcement yet
+- No Alembic migrations, Docker, PostgreSQL, cloud deployment, or native mobile app
+- Seller/admin IDs are still selected from forms in operational flows
+- Multi-VAT refunds are blocked until line-level refund allocation exists
+- Sales UI currently creates one sale line and one payment
+- Receipt numbering is local-MVP safe, but not designed for high-concurrency multi-server deployment

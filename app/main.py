@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from datetime import date, timedelta
+from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
@@ -9,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db, init_db
+from app.error_handling import configure_logging, install_error_handling
 from app.models import Job
 from app.routes import (
     audit_log,
@@ -33,6 +35,7 @@ from app.services.settings_service import get_app_settings
 from app.template_context import templates
 
 settings = get_settings()
+configure_logging()
 
 
 @asynccontextmanager
@@ -43,6 +46,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+install_error_handling(app)
 app.include_router(backups.router)
 app.include_router(customers.router)
 app.include_router(work_orders.router)
@@ -66,7 +70,13 @@ async def block_writes_during_maintenance(request: Request, call_next):
         and request.method not in {"GET", "HEAD", "OPTIONS"}
         and not request.url.path.endswith("/restore")
     ):
-        return PlainTextResponse("Maintenance in progress", status_code=503)
+        request_id = request.headers.get("X-Request-ID") or str(uuid4())
+        request.state.request_id = request_id
+        return PlainTextResponse(
+            "Maintenance in progress",
+            status_code=503,
+            headers={"X-Request-ID": request_id},
+        )
     return await call_next(request)
 
 

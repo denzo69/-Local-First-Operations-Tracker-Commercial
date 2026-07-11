@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card p-4">
+    <h1>{{ status_code }} - {{ title }}</h1>
+    <p>{{ message }}</p>
+    <p class="text-muted">Request ID: {{ request_id }}</p>
+    {% if details %}
+    <ul>
+        {% for detail in details %}
+        <li>{{ detail.loc|join(".") }}: {{ detail.msg }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+    <a class="btn btn-primary" href="/">{{ t.dashboard }}</a>
+</div>
+{% endblock %}

@@ -85,3 +85,4 @@ def test_write_routes_are_blocked_during_maintenance():
             response = client.post("/customers", data={"name": "Blocked Customer"})
 
     assert response.status_code == 503
+    assert "X-Request-ID" in response.headers

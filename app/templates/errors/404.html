@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card p-4">
+    <h1>{{ status_code }} - {{ title }}</h1>
+    <p>{{ message }}</p>
+    <p class="text-muted">Request ID: {{ request_id }}</p>
+    <a class="btn btn-primary" href="/">{{ t.dashboard }}</a>
+</div>
+{% endblock %}
