@@ -156,7 +156,7 @@ class User(Base):
 
     role = relationship("Role", back_populates="users")
     shifts = relationship("Shift", back_populates="seller")
-    sales = relationship("Sale", back_populates="seller")
+    sales = relationship("Sale", foreign_keys="Sale.seller_id", back_populates="seller")
 
 
 class CashRegister(Base):
@@ -201,9 +201,13 @@ class Sale(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     seller_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    sold_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     shift_id = Column(Integer, ForeignKey("shifts.id"), nullable=False)
+    cash_register_id = Column(Integer, ForeignKey("cash_registers.id"), nullable=True, index=True)
     work_order_id = Column(Integer, ForeignKey("jobs.id"), nullable=True)
     document_number = Column(String(100), nullable=True, unique=True, index=True)
+    created_at = Column(DateTime, default=utc_now)
     sold_at = Column(DateTime, default=utc_now, index=True)
     payment_method = Column(String(50), nullable=False)
     subtotal = Column(Numeric(12, 2), default=0)
@@ -212,8 +216,15 @@ class Sale(Base):
     total = Column(Numeric(12, 2), default=0)
     vat_breakdown_json = Column(Text, nullable=True)
     status = Column(String(50), default="completed", index=True)
+    seller_override_reason = Column(Text, nullable=True)
+    seller_overridden_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    seller_overridden_at = Column(DateTime, nullable=True)
 
-    seller = relationship("User", back_populates="sales")
+    seller = relationship("User", foreign_keys=[seller_id], back_populates="sales")
+    sold_by = relationship("User", foreign_keys=[sold_by_user_id])
+    created_by = relationship("User", foreign_keys=[created_by_user_id])
+    seller_overridden_by = relationship("User", foreign_keys=[seller_overridden_by_user_id])
+    cash_register = relationship("CashRegister")
     shift = relationship("Shift", back_populates="sales")
     work_order = relationship("Job", back_populates="sales")
     lines = relationship("SaleLine", back_populates="sale")

@@ -49,6 +49,15 @@
                     {% endfor %}
                 </select>
             </div>
+            <div class="col-md-6">
+                <label class="form-label" for="sale_seller_selection_mode">{{ t.sale_seller_selection_mode }}</label>
+                <select class="form-select" id="sale_seller_selection_mode" name="sale_seller_selection_mode">
+                    {% for code, label in seller_selection_modes.items() %}
+                    <option value="{{ code }}" {% if settings_values.sale_seller_selection_mode == code %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+                <div class="form-text">{{ t.sale_seller_selection_mode_help }}</div>
+            </div>
         </div>
     </div>
     <div class="card-footer bg-white d-flex justify-content-end">

@@ -9,6 +9,7 @@ from app.routes.jobs import ensure_default_job_statuses
 from app.services.audit_service import log_audit_event
 from app.services.settings_service import (
     DEFAULT_SETTINGS,
+    SALE_SELLER_SELECTION_MODES,
     SUPPORTED_LANGUAGES,
     get_app_settings,
     get_current_language,
@@ -30,6 +31,7 @@ def edit_settings(request: Request, db: Session = Depends(get_db)):
             "active_page": "settings",
             "settings_values": get_app_settings(db),
             "supported_languages": SUPPORTED_LANGUAGES,
+            "seller_selection_modes": SALE_SELLER_SELECTION_MODES,
         },
     )
 
@@ -44,10 +46,16 @@ def update_settings(
     default_vat_percent: str = Form(DEFAULT_SETTINGS["default_vat_percent"]),
     receipt_prefix: str = Form(DEFAULT_SETTINGS["receipt_prefix"]),
     language: str | None = Form(None),
+    sale_seller_selection_mode: str = Form(DEFAULT_SETTINGS["sale_seller_selection_mode"]),
     db: Session = Depends(get_db),
 ):
     current_language = get_current_language(db)
     selected_language = language if language in SUPPORTED_LANGUAGES else current_language
+    selected_seller_mode = (
+        sale_seller_selection_mode
+        if sale_seller_selection_mode in SALE_SELLER_SELECTION_MODES
+        else DEFAULT_SETTINGS["sale_seller_selection_mode"]
+    )
 
     set_app_settings(
         db,
@@ -60,6 +68,7 @@ def update_settings(
             "default_vat_percent": default_vat_percent.strip() or "24",
             "receipt_prefix": receipt_prefix.strip(),
             "language": selected_language,
+            "sale_seller_selection_mode": selected_seller_mode,
         },
     )
     log_audit_event(

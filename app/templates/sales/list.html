@@ -2,28 +2,28 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
-        <h1>Sales</h1>
-        <p class="text-muted">Sales and payments, optionally linked to Work Orders.</p>
+        <h1>{{ t.sales }}</h1>
+        <p class="text-muted">{{ t.sales_list_help }}</p>
     </div>
-    <a class="btn btn-primary" href="/sales/new">New sale</a>
+    <a class="btn btn-primary" href="/sales/new">{{ t.new_sale }}</a>
 </div>
 <div class="card">
     <div class="table-responsive responsive-card-table">
         <table class="table mb-0">
-            <thead><tr><th>Time</th><th>Seller</th><th>Work Order</th><th>Payment</th><th>Total</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>{{ t.time }}</th><th>{{ t.sold_by }}</th><th>{{ t.work_order }}</th><th>{{ t.payment }}</th><th>{{ t.total }}</th><th>{{ t.status }}</th><th></th></tr></thead>
             <tbody>
             {% for sale in sales %}
             <tr>
-                <td data-label="Time">{{ sale.sold_at }}</td>
-                <td data-label="Seller">{{ sale.seller.name if sale.seller else "-" }}</td>
-                <td data-label="Work Order">{% if sale.work_order %}<a href="/work-orders/{{ sale.work_order.id }}">{{ sale.work_order.title }}</a>{% else %}-{% endif %}</td>
-                <td data-label="Payment">{{ sale.payment_method }}</td>
-                <td data-label="Total">{{ sale.total }}</td>
-                <td data-label="Status">{{ sale.status }}</td>
-                <td data-label="Action" class="text-end"><a href="/sales/{{ sale.id }}">View</a></td>
+                <td data-label="{{ t.time }}">{{ sale.sold_at }}</td>
+                <td data-label="{{ t.sold_by }}">{{ (sale.sold_by.name if sale.sold_by else sale.seller.name) if sale.seller or sale.sold_by else "-" }}</td>
+                <td data-label="{{ t.work_order }}">{% if sale.work_order %}<a href="/work-orders/{{ sale.work_order.id }}">{{ sale.work_order.title }}</a>{% else %}-{% endif %}</td>
+                <td data-label="{{ t.payment }}">{{ sale.payment_method }}</td>
+                <td data-label="{{ t.total }}">{{ sale.total }}</td>
+                <td data-label="{{ t.status }}">{{ sale.status }}</td>
+                <td data-label="{{ t.action }}" class="text-end"><a href="/sales/{{ sale.id }}">{{ t.view }}</a></td>
             </tr>
             {% else %}
-            <tr><td colspan="7" class="text-muted">No sales yet.</td></tr>
+            <tr><td colspan="7" class="text-muted">{{ t.no_sales_yet }}</td></tr>
             {% endfor %}
             </tbody>
         </table>

@@ -15,6 +15,13 @@ DEFAULT_SETTINGS = {
     "next_receipt_sequence": "1",
     "receipt_sequence_year": "",
     "language": "en",
+    "sale_seller_selection_mode": "shift_owner",
+}
+
+SALE_SELLER_SELECTION_MODES = {
+    "authenticated_user": "Authenticated user",
+    "shift_owner": "Shift owner",
+    "selectable_active_seller": "Selectable active seller",
 }
 
 SUPPORTED_LANGUAGES = {

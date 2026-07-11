@@ -3,6 +3,7 @@ from collections import defaultdict
 from datetime import UTC, date, datetime, time
 from decimal import Decimal, InvalidOperation
 
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -39,6 +40,12 @@ PAYMENT_METHODS = {
     "bank_transfer": "Bank transfer",
     "mobile": "Mobile",
     "other": "Other",
+}
+
+SALE_SELLER_SELECTION_MODES = {
+    "authenticated_user",
+    "shift_owner",
+    "selectable_active_seller",
 }
 
 VAT_PERCENT_MAX = Decimal("100")
@@ -108,6 +115,44 @@ def require_operational_user(user: User | None) -> User:
     if not user.role or user.role.code not in OPERATIONAL_ROLE_CODES:
         raise ValueError("User role is not allowed to perform financial writes.")
     return user
+
+
+def require_sales_credit_user(user: User | None) -> User:
+    return require_operational_user(user)
+
+
+def user_can_override_sale_seller(user: User | None) -> bool:
+    return bool(user and user.is_active and user.role and user.role.code in {"admin", "manager"})
+
+
+def resolve_sale_seller(
+    db: Session,
+    *,
+    shift: Shift,
+    selected_seller_id: int | None,
+    created_by_user_id: int | None,
+    seller_selection_mode: str,
+) -> tuple[User, User | None]:
+    mode = (
+        seller_selection_mode
+        if seller_selection_mode in SALE_SELLER_SELECTION_MODES
+        else "shift_owner"
+    )
+    operator = db.get(User, created_by_user_id) if created_by_user_id else None
+    if operator is not None:
+        require_operational_user(operator)
+
+    if mode == "authenticated_user" and operator is not None:
+        sold_by_id = operator.id
+    elif mode == "selectable_active_seller":
+        sold_by_id = selected_seller_id or shift.seller_id
+    elif operator is not None and user_can_override_sale_seller(operator) and selected_seller_id:
+        sold_by_id = selected_seller_id
+    else:
+        sold_by_id = shift.seller_id
+
+    sold_by = require_sales_credit_user(db.get(User, sold_by_id))
+    return sold_by, operator
 
 
 def require_closing_manager(user: User | None) -> User:
@@ -208,14 +253,20 @@ def create_sale_with_payment(
     work_order_id: int | None = None,
     product_id: int | None = None,
     work_order_item_id: int | None = None,
+    created_by_user_id: int | None = None,
+    seller_selection_mode: str = "shift_owner",
 ) -> Sale:
     shift = db.get(Shift, shift_id)
     if shift is None or shift.status != "open":
         raise ValueError("Sale requires an open shift.")
     assert_business_date_open(db, shift.business_date)
-    seller = require_operational_user(db.get(User, seller_id))
-    if shift.seller_id != seller_id:
-        raise ValueError("Sale seller must match shift seller.")
+    sold_by, operator = resolve_sale_seller(
+        db,
+        shift=shift,
+        selected_seller_id=seller_id,
+        created_by_user_id=created_by_user_id,
+        seller_selection_mode=seller_selection_mode,
+    )
     require_payment_method(payment_method)
 
     work_order = db.get(Job, work_order_id) if work_order_id else None
@@ -252,8 +303,11 @@ def create_sale_with_payment(
         }
     }
     sale = Sale(
-        seller_id=seller_id,
+        seller_id=sold_by.id,
+        sold_by_user_id=sold_by.id,
+        created_by_user_id=operator.id if operator is not None else sold_by.id,
         shift_id=shift_id,
+        cash_register_id=shift.cash_register_id,
         work_order_id=work_order_id,
         payment_method=payment_method,
         subtotal=subtotal,
@@ -282,7 +336,7 @@ def create_sale_with_payment(
         Payment(
             sale_id=sale.id,
             shift_id=shift_id,
-            seller_id=seller_id,
+            seller_id=sold_by.id,
             payment_method=payment_method,
             amount=line_total,
         )
@@ -292,7 +346,56 @@ def create_sale_with_payment(
         event_type="sale.created",
         entity_type="sale",
         entity_id=sale.id,
-        description=f"Sale created for {line_total} by {seller.name}.",
+        description=(
+            f"Sale created for {line_total}; sold by {sold_by.id}/{sold_by.name}; "
+            f"operator {operator.id if operator else sold_by.id}/"
+            f"{operator.name if operator else sold_by.name}; shift {shift.id}; "
+            f"cash register {shift.cash_register_id}."
+        ),
+    )
+    db.commit()
+    db.refresh(sale)
+    return sale
+
+
+def correct_sale_seller(
+    db: Session,
+    *,
+    sale_id: int,
+    new_sold_by_user_id: int,
+    corrected_by_user_id: int,
+    reason: str,
+) -> Sale:
+    sale = db.get(Sale, sale_id)
+    if sale is None:
+        raise ValueError("Sale not found.")
+    corrected_by = db.get(User, corrected_by_user_id)
+    if not user_can_override_sale_seller(corrected_by):
+        raise ValueError("Only Admin or Manager can correct sale seller attribution.")
+    correction_reason = reason.strip()
+    if not correction_reason:
+        raise ValueError("Seller correction reason is required.")
+    new_seller = require_sales_credit_user(db.get(User, new_sold_by_user_id))
+    old_seller_id = sale.sold_by_user_id or sale.seller_id
+    old_seller_name = sale.sold_by.name if sale.sold_by else (sale.seller.name if sale.seller else "Unknown")
+
+    sale.sold_by_user_id = new_seller.id
+    sale.seller_id = new_seller.id
+    sale.seller_override_reason = correction_reason
+    sale.seller_overridden_by_user_id = corrected_by.id
+    sale.seller_overridden_at = utc_now()
+    for payment in sale.payments:
+        payment.seller_id = new_seller.id
+    log_audit_event(
+        db,
+        event_type="sale.seller_corrected",
+        entity_type="sale",
+        entity_id=sale.id,
+        description=(
+            f"Sale seller corrected for sale {sale.id}: "
+            f"{old_seller_id}/{old_seller_name} -> {new_seller.id}/{new_seller.name}; "
+            f"corrected by {corrected_by.id}/{corrected_by.name}; reason: {correction_reason}."
+        ),
     )
     db.commit()
     db.refresh(sale)
@@ -512,9 +615,11 @@ def build_daily_closing_snapshot(db: Session, business_date: date) -> dict:
     refund_vat = Decimal("0")
 
     for sale in sales:
-        seller_bucket = seller_totals[sale.seller_id]
-        seller_bucket["seller_id"] = sale.seller_id
-        seller_bucket["seller_name"] = sale.seller.name if sale.seller else f"User {sale.seller_id}"
+        sale_seller_id = sale.sold_by_user_id or sale.seller_id
+        sale_seller = sale.sold_by or sale.seller
+        seller_bucket = seller_totals[sale_seller_id]
+        seller_bucket["seller_id"] = sale_seller_id
+        seller_bucket["seller_name"] = sale_seller.name if sale_seller else f"User {sale_seller_id}"
         seller_bucket["gross_sales"] += parse_decimal(sale.total)
         seller_bucket["discounts"] += parse_decimal(sale.discount_total)
         seller_bucket["transaction_count"] += 1
@@ -724,7 +829,12 @@ def seller_report(db: Session, *, seller_id: int, start_date: date, end_date: da
     end_at = datetime.combine(end_date, time.min, tzinfo=UTC)
     sales = (
         db.query(Sale)
-        .filter(Sale.seller_id == seller_id)
+        .filter(
+            or_(
+                Sale.sold_by_user_id == seller_id,
+                and_(Sale.sold_by_user_id.is_(None), Sale.seller_id == seller_id),
+            )
+        )
         .filter(Sale.sold_at >= start_at)
         .filter(Sale.sold_at < end_at)
         .all()

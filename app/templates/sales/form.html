@@ -2,16 +2,36 @@
 {% block content %}
 <h1>{{ t.new_sale }}</h1>
 <form method="post" action="/sales" class="card p-3">
+    <div class="alert alert-info">
+        <div><strong>{{ t.operator }}:</strong> {{ current_operator_label }}</div>
+        <div><strong>{{ t.selected_seller }}:</strong> <span id="selected_seller_label">{{ shifts[0].seller.name if shifts else "-" }}</span></div>
+    </div>
     <div class="mb-3">
         <label class="form-label" for="shift_id">{{ t.open_shift }}</label>
         <select class="form-select" id="shift_id" name="shift_id" required>
             {% for shift in shifts %}
-            <option value="{{ shift.id }}" data-seller-id="{{ shift.seller_id }}">{{ shift.seller.name }} · {{ shift.cash_register.name }} · {{ shift.business_date }}</option>
+            <option value="{{ shift.id }}" data-seller-id="{{ shift.seller_id }}" data-seller-name="{{ shift.seller.name }}">{{ shift.seller.name }} / {{ shift.cash_register.name }} / {{ shift.business_date }}</option>
             {% endfor %}
         </select>
         {% if not shifts %}<div class="form-text">{{ t.open_shift_required_for_refund }}</div>{% endif %}
     </div>
+    {% if seller_selection_mode == "selectable_active_seller" %}
+    <div class="mb-3">
+        <label class="form-label" for="seller_id">{{ t.selected_seller }}</label>
+        <select class="form-select" id="seller_id" name="seller_id" required>
+            {% for seller in active_sellers %}
+            <option value="{{ seller.id }}" {% if shifts and seller.id == shifts[0].seller_id %}selected{% endif %}>{{ seller.name }}{% if seller.role %} / {{ seller.role.name }}{% endif %}</option>
+            {% endfor %}
+        </select>
+        <div class="form-text">{{ t.seller_credit_help }}</div>
+    </div>
+    {% else %}
     <input type="hidden" id="seller_id" name="seller_id" value="{{ shifts[0].seller_id if shifts else '' }}">
+    <div class="mb-3">
+        <label class="form-label">{{ t.selected_seller }}</label>
+        <div class="form-control-plaintext">{{ shifts[0].seller.name if shifts else "-" }}</div>
+    </div>
+    {% endif %}
     <div class="mb-3">
         <label class="form-label" for="work_order_id">{{ t.work_orders }}</label>
         <select class="form-select" id="work_order_id" name="work_order_id">
@@ -52,7 +72,18 @@
 </form>
 <script>
 document.getElementById("shift_id")?.addEventListener("change", function () {
-    document.getElementById("seller_id").value = this.selectedOptions[0]?.dataset.sellerId || "";
+    const selected = this.selectedOptions[0];
+    const sellerInput = document.getElementById("seller_id");
+    const label = document.getElementById("selected_seller_label");
+    if (label) label.textContent = selected?.dataset.sellerName || "-";
+    if (sellerInput && sellerInput.tagName !== "SELECT") {
+        sellerInput.value = selected?.dataset.sellerId || "";
+    }
+});
+document.getElementById("seller_id")?.addEventListener("change", function () {
+    if (this.tagName !== "SELECT") return;
+    const label = document.getElementById("selected_seller_label");
+    if (label) label.textContent = this.selectedOptions[0]?.textContent || "-";
 });
 document.getElementById("product_id")?.addEventListener("change", function () {
     const selected = this.selectedOptions[0];

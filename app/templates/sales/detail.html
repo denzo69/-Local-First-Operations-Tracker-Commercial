@@ -1,24 +1,29 @@
 {% extends "base.html" %}
 {% block content %}
+{% set credited_seller = sale.sold_by if sale.sold_by else sale.seller %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
         <h1>{{ t.sales }} #{{ sale.id }}</h1>
         <p class="text-muted">
-            {{ t.original_seller }}: {{ sale.seller.name }} -
+            {{ t.sold_by }}: {{ credited_seller.name if credited_seller else "-" }} -
+            {{ t.operator }}: {{ sale.created_by.name if sale.created_by else "-" }} -
             {{ t.shifts }} #{{ sale.shift_id }} -
             {{ t.business_date }} {{ sale.shift.business_date if sale.shift else "-" }}
         </p>
     </div>
-    <a class="btn btn-outline-secondary" href="/sales">{{ t.back }}</a>
+    <div class="d-flex gap-2">
+        <a class="btn btn-outline-secondary" href="/sales/{{ sale.id }}/receipt">{{ t.sale_receipt }}</a>
+        <a class="btn btn-outline-secondary" href="/sales">{{ t.back }}</a>
+    </div>
 </div>
 <div class="row g-3 mb-3">
-    <div class="col-md-3"><div class="card p-3"><div class="text-muted">Subtotal</div><strong>{{ sale.subtotal }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.subtotal }}</div><strong>{{ sale.subtotal }}</strong></div></div>
     <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.vat }}</div><strong>{{ sale.vat_total }}</strong></div></div>
-    <div class="col-md-3"><div class="card p-3"><div class="text-muted">Discount</div><strong>{{ sale.discount_total }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.discount }}</div><strong>{{ sale.discount_total }}</strong></div></div>
     <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.total }}</div><strong>{{ sale.total }}</strong></div></div>
 </div>
 {% if sale.work_order %}
-<p>Work Order: <a href="/work-orders/{{ sale.work_order.id }}">{{ sale.work_order.title }}</a></p>
+<p>{{ t.work_order }}: <a href="/work-orders/{{ sale.work_order.id }}">{{ sale.work_order.title }}</a></p>
 {% endif %}
 <div class="card mb-3">
     <div class="table-responsive responsive-card-table">
@@ -87,5 +92,26 @@
     </select>
     <input class="form-control mb-2" name="reason" placeholder="{{ t.reopen_reason }}" {% if not open_shifts %}disabled{% endif %}>
     <button class="btn btn-outline-danger" type="submit" {% if not open_shifts %}disabled{% endif %}>{{ t.refund }}</button>
+</form>
+<form class="card p-3 mt-3" method="post" action="/sales/{{ sale.id }}/seller">
+    <h2 class="h5">{{ t.seller_correction }}</h2>
+    <p class="text-muted">{{ t.seller_correction_help }}</p>
+    <label class="form-label" for="sold_by_user_id">{{ t.sold_by }}</label>
+    <select class="form-select mb-2" id="sold_by_user_id" name="sold_by_user_id" required>
+        {% for seller in active_sellers %}
+        <option value="{{ seller.id }}" {% if credited_seller and seller.id == credited_seller.id %}selected{% endif %}>{{ seller.name }}{% if seller.role %} / {{ seller.role.name }}{% endif %}</option>
+        {% endfor %}
+    </select>
+    {% if not is_authenticated %}
+    <label class="form-label" for="corrected_by_user_id">{{ t.corrected_by }}</label>
+    <select class="form-select mb-2" id="corrected_by_user_id" name="corrected_by_user_id" required>
+        {% for user in correction_users %}
+        <option value="{{ user.id }}">{{ user.name }}{% if user.role %} / {{ user.role.name }}{% endif %}</option>
+        {% endfor %}
+    </select>
+    {% endif %}
+    <label class="form-label" for="reason">{{ t.seller_correction_reason }}</label>
+    <input class="form-control mb-2" id="reason" name="reason" required>
+    <button class="btn btn-outline-primary" type="submit">{{ t.correct_seller }}</button>
 </form>
 {% endblock %}

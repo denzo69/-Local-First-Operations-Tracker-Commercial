@@ -47,6 +47,32 @@ def ensure_sqlite_schema_compatibility(engine: Engine) -> list[str]:
             "INTEGER",
         )
         _add_column_if_missing(connection, "users", "password_hash", "VARCHAR(255)")
+        _add_column_if_missing(connection, "sales", "sold_by_user_id", "INTEGER")
+        _add_column_if_missing(connection, "sales", "created_by_user_id", "INTEGER")
+        _add_column_if_missing(connection, "sales", "cash_register_id", "INTEGER")
+        _add_column_if_missing(connection, "sales", "created_at", "DATETIME")
+        _add_column_if_missing(connection, "sales", "seller_override_reason", "TEXT")
+        _add_column_if_missing(connection, "sales", "seller_overridden_by_user_id", "INTEGER")
+        _add_column_if_missing(connection, "sales", "seller_overridden_at", "DATETIME")
+        connection.execute(text("UPDATE sales SET sold_by_user_id = seller_id WHERE sold_by_user_id IS NULL"))
+        connection.execute(text("UPDATE sales SET created_by_user_id = seller_id WHERE created_by_user_id IS NULL"))
+        connection.execute(
+            text(
+                """
+                UPDATE sales
+                SET cash_register_id = (
+                    SELECT shifts.cash_register_id
+                    FROM shifts
+                    WHERE shifts.id = sales.shift_id
+                )
+                WHERE cash_register_id IS NULL
+                """
+            )
+        )
+        connection.execute(text("UPDATE sales SET created_at = sold_at WHERE created_at IS NULL"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_sales_sold_by_user_id ON sales (sold_by_user_id)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_sales_created_by_user_id ON sales (created_by_user_id)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_sales_cash_register_id ON sales (cash_register_id)"))
         diagnostics.extend(
             _create_partial_unique_index_if_safe(
                 connection,

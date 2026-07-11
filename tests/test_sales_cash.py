@@ -20,6 +20,7 @@ from app.models import (
     Product,
     Refund,
     Role,
+    Sale,
     SaleLine,
     User,
 )
@@ -29,6 +30,7 @@ from app.services.sales_service import (
     build_daily_closing_snapshot,
     assert_business_date_open,
     close_shift,
+    correct_sale_seller,
     create_daily_closing,
     create_sale_with_payment,
     ensure_default_roles,
@@ -305,6 +307,213 @@ def test_seller_report_daily_weekly_monthly_source_metrics():
         assert report["discounts"] == Decimal("5.00")
         assert report["refunds"] == Decimal("4.00")
         assert report["payment_totals"]["mobile"] == Decimal("35.00")
+
+
+def test_shared_register_sale_credits_selected_seller_and_tracks_operator():
+    with SessionLocal() as db:
+        operator = create_user(db, "Shared Operator", "manager")
+        shift_owner = create_user(db, "Shared Shift Owner")
+        selected_seller = create_user(db, "Selected Seller")
+        register = create_register(db, "Shared Register")
+        shift = open_shift(
+            db,
+            seller_id=shift_owner.id,
+            cash_register_id=register.id,
+            business_date=date.today(),
+            starting_cash="0",
+        )
+
+        sale = create_sale_with_payment(
+            db,
+            seller_id=selected_seller.id,
+            shift_id=shift.id,
+            payment_method="card",
+            description="Shared counter sale",
+            quantity="1",
+            unit_price="42",
+            vat_percent="24",
+            created_by_user_id=operator.id,
+            seller_selection_mode="selectable_active_seller",
+        )
+
+        assert sale.seller_id == selected_seller.id
+        assert sale.sold_by_user_id == selected_seller.id
+        assert sale.created_by_user_id == operator.id
+        assert sale.cash_register_id == register.id
+        assert sale.payments[0].seller_id == selected_seller.id
+
+        selected_report = seller_report(
+            db,
+            seller_id=selected_seller.id,
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=1),
+        )
+        owner_report = seller_report(
+            db,
+            seller_id=shift_owner.id,
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=1),
+        )
+        assert selected_report["gross_sales"] == Decimal("42.00")
+        assert owner_report["gross_sales"] == Decimal("0.00")
+
+
+def test_sale_seller_validation_and_legacy_report_fallback():
+    with SessionLocal() as db:
+        seller = create_user(db, "Fallback Seller")
+        inactive = create_user(db, "Inactive Credit Seller")
+        inactive.is_active = False
+        register = create_register(db, "Fallback Register")
+        shift = open_shift(
+            db,
+            seller_id=seller.id,
+            cash_register_id=register.id,
+            business_date=date.today(),
+            starting_cash="0",
+        )
+
+        with pytest.raises(ValueError, match="Active user"):
+            create_sale_with_payment(
+                db,
+                seller_id=inactive.id,
+                shift_id=shift.id,
+                payment_method="cash",
+                description="Invalid credit",
+                quantity="1",
+                unit_price="1",
+                vat_percent="24",
+                seller_selection_mode="selectable_active_seller",
+            )
+
+        legacy_sale = Sale(
+            seller_id=seller.id,
+            shift_id=shift.id,
+            cash_register_id=register.id,
+            payment_method="cash",
+            subtotal=Decimal("8.06"),
+            vat_total=Decimal("1.94"),
+            total=Decimal("10.00"),
+            sold_at=datetime.combine(date.today(), time.min, tzinfo=UTC),
+        )
+        db.add(legacy_sale)
+        db.commit()
+
+        report = seller_report(
+            db,
+            seller_id=seller.id,
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=1),
+        )
+        assert report["gross_sales"] == Decimal("10.00")
+
+
+def test_manager_can_correct_sale_seller_with_audit_reason():
+    with SessionLocal() as db:
+        manager = create_user(db, "Correction Manager", "manager")
+        readonly = create_user(db, "Correction Readonly", "read_only")
+        original_seller = create_user(db, "Correction Original")
+        new_seller = create_user(db, "Correction New")
+        register = create_register(db, "Correction Register")
+        shift = open_shift(
+            db,
+            seller_id=original_seller.id,
+            cash_register_id=register.id,
+            business_date=date.today(),
+            starting_cash="0",
+        )
+        sale = create_sale_with_payment(
+            db,
+            seller_id=original_seller.id,
+            shift_id=shift.id,
+            payment_method="card",
+            description="Correction sale",
+            quantity="1",
+            unit_price="20",
+            vat_percent="24",
+        )
+
+        with pytest.raises(ValueError, match="Only Admin or Manager"):
+            correct_sale_seller(
+                db,
+                sale_id=sale.id,
+                new_sold_by_user_id=new_seller.id,
+                corrected_by_user_id=readonly.id,
+                reason="Wrong seller",
+            )
+        with pytest.raises(ValueError, match="reason"):
+            correct_sale_seller(
+                db,
+                sale_id=sale.id,
+                new_sold_by_user_id=new_seller.id,
+                corrected_by_user_id=manager.id,
+                reason="",
+            )
+
+        corrected = correct_sale_seller(
+            db,
+            sale_id=sale.id,
+            new_sold_by_user_id=new_seller.id,
+            corrected_by_user_id=manager.id,
+            reason="Selected wrong seller at shared register",
+        )
+
+        assert corrected.sold_by_user_id == new_seller.id
+        assert corrected.seller_id == new_seller.id
+        assert corrected.seller_overridden_by_user_id == manager.id
+        assert corrected.seller_override_reason == "Selected wrong seller at shared register"
+        assert corrected.payments[0].seller_id == new_seller.id
+        audit = (
+            db.query(AuditLog)
+            .filter(AuditLog.event_type == "sale.seller_corrected", AuditLog.entity_id == sale.id)
+            .one()
+        )
+        assert str(original_seller.id) in audit.description
+        assert original_seller.name in audit.description
+        assert str(new_seller.id) in audit.description
+        assert new_seller.name in audit.description
+
+
+def test_daily_closing_uses_selected_sale_seller_and_receipt_displays_it():
+    with SessionLocal() as db:
+        admin = create_user(db, "Attribution Admin", "admin")
+        operator = create_user(db, "Attribution Operator", "manager")
+        shift_owner = create_user(db, "Attribution Shift Owner")
+        selected_seller = create_user(db, "Attribution Selected Seller")
+        register = create_register(db, "Attribution Register")
+        shift = open_shift(
+            db,
+            seller_id=shift_owner.id,
+            cash_register_id=register.id,
+            business_date=date.today(),
+            starting_cash="0",
+        )
+        sale = create_sale_with_payment(
+            db,
+            seller_id=selected_seller.id,
+            shift_id=shift.id,
+            payment_method="cash",
+            description="Receipt sale",
+            quantity="1",
+            unit_price="30",
+            vat_percent="24",
+            created_by_user_id=operator.id,
+            seller_selection_mode="selectable_active_seller",
+        )
+        sale_id = sale.id
+        close_shift(db, shift_id=shift.id, counted_cash="30")
+        closing = create_daily_closing(db, business_date=date.today(), created_by_user_id=admin.id)
+        snapshot = json.loads(
+            db.query(DailyClosingSnapshot)
+            .filter(DailyClosingSnapshot.daily_closing_id == closing.id)
+            .one()
+            .snapshot_json
+        )
+        assert snapshot["seller_totals"][0]["seller_id"] == selected_seller.id
+        assert snapshot["seller_totals"][0]["seller_name"] == selected_seller.name
+
+    response = client.get(f"/sales/{sale_id}/receipt")
+    assert response.status_code == 200
+    assert "Attribution Selected Seller" in response.text
 
 
 def test_new_sales_shift_closing_and_report_routes_load():

@@ -46,6 +46,7 @@ The app is not intended to be exposed directly to the public internet.
 - Local login with signed session cookie, first-admin setup, password hashes, and operational roles for Admin, Manager, Seller, and Read only
 - Cash registers and seller shifts with starting cash, cash movements, closing count, expected cash, and over/short calculation
 - Sales, payments, and refunds stored separately from Work Orders
+- Shared-register seller attribution: the sale operator can be separate from the seller credited on the receipt and seller reports
 - Daily closing with immutable versioned snapshots, closed-day write lock, VAT/payment/seller summaries, and authorized reopen flow
 - Read-only browsing for historical daily closing snapshot versions
 - Seller reports for daily, weekly, and monthly sales metrics
@@ -77,6 +78,8 @@ The app is not intended to be exposed directly to the public internet.
 ## Sales, Shifts, Refunds, And Daily Closing
 
 Work Orders, Sales, Payments, and Refunds are separate business objects. A Sale may link to a Work Order, but a Work Order is not treated as the payment record.
+
+Sales store both the operator who created the record and the seller credited for the sale. This supports shared cash-register workflows where one workstation account can record a sale for another active seller. Corrections after finalization require an Admin or Manager and an audit reason. Existing legacy sales continue to fall back to the original seller field for reporting.
 
 Daily closing rules:
 
