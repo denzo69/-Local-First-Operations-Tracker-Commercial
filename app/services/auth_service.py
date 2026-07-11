@@ -30,14 +30,15 @@ ADMIN_PATH_PREFIXES = (
 
 def hash_password(password: str) -> str:
     salt = secrets.token_bytes(16)
+    iterations = get_settings().password_iterations
     digest = hashlib.pbkdf2_hmac(
         "sha256",
         password.encode("utf-8"),
         salt,
-        PASSWORD_ITERATIONS,
+        iterations,
     )
     return (
-        f"pbkdf2_sha256${PASSWORD_ITERATIONS}$"
+        f"pbkdf2_sha256${iterations}$"
         f"{base64.b64encode(salt).decode()}$"
         f"{base64.b64encode(digest).decode()}"
     )
