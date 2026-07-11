@@ -116,6 +116,30 @@ def test_mobile_navigation_markup_is_present():
     assert 'aria-label="Mobile navigation"' in response.text
 
 
+def test_administration_tables_have_responsive_markup():
+    with SessionLocal() as db:
+        ensure_default_roles(db)
+        role = db.query(Role).filter(Role.code == "seller").one()
+        db.add(User(name="Responsive User", role=role, is_active=True))
+        db.add(CashRegister(name="Responsive Register", is_active=True))
+        db.commit()
+
+    with TestClient(app) as client:
+        responses = [
+            client.get("/users"),
+            client.get("/cash-registers"),
+            client.get("/settings/statuses"),
+        ]
+        closings_response = client.get("/daily-closings")
+
+    for response in responses:
+        assert response.status_code == 200
+        assert "responsive-card-table" in response.text
+        assert "data-label=" in response.text
+    assert closings_response.status_code == 200
+    assert "responsive-card-table" in closings_response.text
+
+
 def test_static_stylesheets_are_served():
     with TestClient(app) as client:
         bootstrap = client.get("/static/vendor/bootstrap/bootstrap.min.css")

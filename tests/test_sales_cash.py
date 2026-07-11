@@ -328,8 +328,13 @@ def test_new_sales_shift_closing_and_report_routes_load():
 
     assert client.get("/users").status_code == 200
     assert client.get("/cash-registers").status_code == 200
-    assert client.get("/shifts").status_code == 200
-    assert client.get(f"/shifts/{shift_id}").status_code == 200
+    shifts_response = client.get("/shifts")
+    shift_detail_response = client.get(f"/shifts/{shift_id}")
+    assert shifts_response.status_code == 200
+    assert shift_detail_response.status_code == 200
+    assert "responsive-card-table" in shifts_response.text
+    assert "data-label=" in shifts_response.text
+    assert "responsive-card-table" in shift_detail_response.text
     assert client.get("/sales/new").status_code == 200
 
     response = client.post(
@@ -351,8 +356,13 @@ def test_new_sales_shift_closing_and_report_routes_load():
     with SessionLocal() as db:
         close_shift(db, shift_id=shift_id, counted_cash="0")
 
-    assert client.get("/sales").status_code == 200
-    assert client.get("/daily-closings").status_code == 200
+    sales_response = client.get("/sales")
+    closings_response = client.get("/daily-closings")
+    assert sales_response.status_code == 200
+    assert "responsive-card-table" in sales_response.text
+    assert "data-label=" in sales_response.text
+    assert closings_response.status_code == 200
+    assert "responsive-card-table" in closings_response.text
     response = client.post(
         "/daily-closings",
         data={"business_date": date.today().isoformat(), "created_by_user_id": admin_id},

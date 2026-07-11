@@ -8,17 +8,17 @@
     <a class="btn btn-primary" href="/users/new">New user</a>
 </div>
 <div class="card">
-    <div class="table-responsive">
+    <div class="table-responsive responsive-card-table">
         <table class="table mb-0">
             <thead><tr><th>Name</th><th>Login</th><th>Role</th><th>Status</th><th></th></tr></thead>
             <tbody>
             {% for user in users %}
             <tr>
-                <td>{{ user.name }}</td>
-                <td>{{ user.login_name or "-" }}</td>
-                <td>{{ user.role.name if user.role else "-" }}</td>
-                <td>{{ "Active" if user.is_active else "Inactive" }}</td>
-                <td class="text-end"><a href="/users/{{ user.id }}/edit">Edit</a></td>
+                <td data-label="Name">{{ user.name }}</td>
+                <td data-label="Login">{{ user.login_name or "-" }}</td>
+                <td data-label="Role">{{ user.role.name if user.role else "-" }}</td>
+                <td data-label="Status">{{ "Active" if user.is_active else "Inactive" }}</td>
+                <td data-label="Action" class="text-end"><a href="/users/{{ user.id }}/edit">Edit</a></td>
             </tr>
             {% else %}
             <tr><td colspan="5" class="text-muted">No users yet.</td></tr>

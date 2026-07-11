@@ -40,12 +40,17 @@
 {% endif %}
 <h2 class="h5 mt-4">{{ t.sales }}</h2>
 <div class="card">
-    <div class="table-responsive">
+    <div class="table-responsive responsive-card-table">
         <table class="table mb-0">
             <thead><tr><th>{{ t.time }}</th><th>{{ t.payment }}</th><th>{{ t.total }}</th><th></th></tr></thead>
             <tbody>
             {% for sale in shift.sales %}
-            <tr><td>{{ sale.sold_at }}</td><td>{{ sale.payment_method }}</td><td>{{ sale.total }}</td><td class="text-end"><a href="/sales/{{ sale.id }}">{{ t.view }}</a></td></tr>
+            <tr>
+                <td data-label="{{ t.time }}">{{ sale.sold_at }}</td>
+                <td data-label="{{ t.payment }}">{{ sale.payment_method }}</td>
+                <td data-label="{{ t.total }}">{{ sale.total }}</td>
+                <td data-label="{{ t.view }}" class="text-end"><a href="/sales/{{ sale.id }}">{{ t.view }}</a></td>
+            </tr>
             {% else %}
             <tr><td colspan="4" class="text-muted">{{ t.no_sales_on_shift }}</td></tr>
             {% endfor %}

@@ -33,7 +33,7 @@
     </div>
 </form>
 <div class="card">
-    <div class="table-responsive">
+    <div class="table-responsive responsive-card-table">
         <table class="table mb-0">
             <thead>
             <tr>
@@ -54,18 +54,18 @@
             <tbody>
             {% for closing in closings %}
             <tr>
-                <td>{{ closing.business_date }}</td>
-                <td>{{ closing.status }}</td>
-                <td>{{ closing.current_version }}</td>
-                <td>{{ closing.total_sales }}</td>
-                <td>{{ closing.total_refunds }}</td>
-                <td>{{ closing.total_sales - closing.total_refunds }}</td>
-                <td>{{ closing.expected_cash }}</td>
-                <td>{{ closing.counted_cash }}</td>
-                <td>{{ closing.cash_over_short }}</td>
-                <td>{{ closing.created_by.name if closing.created_by else "-" }}</td>
-                <td>{{ closing.closed_at }}</td>
-                <td class="text-end"><a href="/daily-closings/{{ closing.id }}">{{ t.view }}</a></td>
+                <td data-label="{{ t.business_date }}">{{ closing.business_date }}</td>
+                <td data-label="{{ t.status }}">{{ closing.status }}</td>
+                <td data-label="{{ t.version }}">{{ closing.current_version }}</td>
+                <td data-label="{{ t.gross_sales }}">{{ closing.total_sales }}</td>
+                <td data-label="{{ t.refunds }}">{{ closing.total_refunds }}</td>
+                <td data-label="{{ t.net_sales }}">{{ closing.total_sales - closing.total_refunds }}</td>
+                <td data-label="{{ t.expected_cash }}">{{ closing.expected_cash }}</td>
+                <td data-label="{{ t.counted_cash }}">{{ closing.counted_cash }}</td>
+                <td data-label="{{ t.cash_over_short }}">{{ closing.cash_over_short }}</td>
+                <td data-label="{{ t.closed_by }}">{{ closing.created_by.name if closing.created_by else "-" }}</td>
+                <td data-label="{{ t.closed_at }}">{{ closing.closed_at }}</td>
+                <td data-label="{{ t.view }}" class="text-end"><a href="/daily-closings/{{ closing.id }}">{{ t.view }}</a></td>
             </tr>
             {% else %}
             <tr><td colspan="12" class="text-muted">No daily closings yet.</td></tr>

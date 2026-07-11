@@ -8,16 +8,16 @@
     <a class="btn btn-primary" href="/cash-registers/new">New register</a>
 </div>
 <div class="card">
-    <div class="table-responsive">
+    <div class="table-responsive responsive-card-table">
         <table class="table mb-0">
             <thead><tr><th>Name</th><th>Location</th><th>Status</th><th></th></tr></thead>
             <tbody>
             {% for register in registers %}
             <tr>
-                <td>{{ register.name }}</td>
-                <td>{{ register.location or "-" }}</td>
-                <td>{{ "Active" if register.is_active else "Inactive" }}</td>
-                <td class="text-end"><a href="/cash-registers/{{ register.id }}/edit">Edit</a></td>
+                <td data-label="Name">{{ register.name }}</td>
+                <td data-label="Location">{{ register.location or "-" }}</td>
+                <td data-label="Status">{{ "Active" if register.is_active else "Inactive" }}</td>
+                <td data-label="Action" class="text-end"><a href="/cash-registers/{{ register.id }}/edit">Edit</a></td>
             </tr>
             {% else %}
             <tr><td colspan="4" class="text-muted">No cash registers yet.</td></tr>
