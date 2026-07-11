@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import get_db
 from app.models import User
+from app.services.audit_service import log_audit_event
 from app.services.sales_service import ensure_default_roles
 from app.template_context import templates
 
@@ -63,6 +64,14 @@ def create_user(
         is_active=is_active == "on",
     )
     db.add(user)
+    db.flush()
+    log_audit_event(
+        db,
+        event_type="user.created",
+        entity_type="user",
+        entity_id=user.id,
+        description=f"User created: {user.name}.",
+    )
     db.commit()
     return RedirectResponse(url="/users", status_code=303)
 

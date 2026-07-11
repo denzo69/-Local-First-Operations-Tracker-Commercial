@@ -6,18 +6,33 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.models import DailyClosing, User
-from app.services.sales_service import build_daily_closing_snapshot, create_daily_closing, reopen_daily_closing
+from app.models import DailyClosing, Role, Shift, User
+from app.services.sales_service import create_daily_closing, get_latest_daily_closing_snapshot, reopen_daily_closing
 from app.template_context import templates
 
 router = APIRouter(prefix="/daily-closings", tags=["daily-closings"])
 settings = get_settings()
 
 
+def closing_manager_query(db: Session):
+    return (
+        db.query(User)
+        .join(Role)
+        .filter(User.is_active.is_(True), Role.code.in_(["admin", "manager"]))
+        .order_by(User.name.asc())
+    )
+
+
 @router.get("", response_class=HTMLResponse)
 def list_daily_closings(request: Request, db: Session = Depends(get_db)):
     closings = db.query(DailyClosing).order_by(DailyClosing.business_date.desc()).all()
-    users = db.query(User).filter(User.is_active.is_(True)).order_by(User.name.asc()).all()
+    users = closing_manager_query(db).all()
+    open_shifts = (
+        db.query(Shift)
+        .filter(Shift.status == "open")
+        .order_by(Shift.business_date.asc(), Shift.id.asc())
+        .all()
+    )
     return templates.TemplateResponse(
         "daily_closings/list.html",
         {
@@ -27,6 +42,7 @@ def list_daily_closings(request: Request, db: Session = Depends(get_db)):
             "closings": closings,
             "users": users,
             "today": date.today(),
+            "open_shifts": open_shifts,
         },
     )
 
@@ -53,8 +69,11 @@ def daily_closing_detail(closing_id: int, request: Request, db: Session = Depend
     closing = db.get(DailyClosing, closing_id)
     if closing is None:
         raise HTTPException(status_code=404, detail="Daily closing not found")
-    snapshot = build_daily_closing_snapshot(db, closing.business_date)
-    users = db.query(User).filter(User.is_active.is_(True)).order_by(User.name.asc()).all()
+    try:
+        snapshot_row, snapshot = get_latest_daily_closing_snapshot(db, closing)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    users = closing_manager_query(db).all()
     return templates.TemplateResponse(
         "daily_closings/detail.html",
         {
@@ -62,6 +81,7 @@ def daily_closing_detail(closing_id: int, request: Request, db: Session = Depend
             "app_name": settings.app_name,
             "active_page": "daily_closings",
             "closing": closing,
+            "snapshot_row": snapshot_row,
             "snapshot": snapshot,
             "users": users,
         },
@@ -72,10 +92,11 @@ def daily_closing_detail(closing_id: int, request: Request, db: Session = Depend
 def reopen_closing(
     closing_id: int,
     user_id: int = Form(...),
+    reason: str = Form(...),
     db: Session = Depends(get_db),
 ):
     try:
-        reopen_daily_closing(db, closing_id=closing_id, user_id=user_id)
+        reopen_daily_closing(db, closing_id=closing_id, user_id=user_id, reason=reason)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return RedirectResponse(url=f"/daily-closings/{closing_id}", status_code=303)

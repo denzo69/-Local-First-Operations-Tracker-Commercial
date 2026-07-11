@@ -1,46 +1,56 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Daily closing {{ closing.business_date }}</h1>
-<p class="text-muted">Status: {{ closing.status }} · Created by {{ closing.created_by.name if closing.created_by else "-" }} · {{ closing.closed_at }}</p>
+<h1>{{ t.daily_closing }} {{ closing.business_date }}</h1>
+<p class="text-muted">
+    {{ t.status }}: {{ closing.status }} -
+    {{ t.version }} {{ snapshot_row.version }} -
+    {{ t.closed_by }} {{ snapshot.closed_by_name or (closing.created_by.name if closing.created_by else "-") }} -
+    {{ closing.closed_at }}
+</p>
 <div class="row g-3 mb-3">
-    <div class="col-md-3"><div class="card p-3"><div class="text-muted">Sales</div><strong>{{ closing.total_sales }}</strong></div></div>
-    <div class="col-md-3"><div class="card p-3"><div class="text-muted">Refunds</div><strong>{{ closing.total_refunds }}</strong></div></div>
-    <div class="col-md-3"><div class="card p-3"><div class="text-muted">Discounts</div><strong>{{ closing.total_discounts }}</strong></div></div>
-    <div class="col-md-3"><div class="card p-3"><div class="text-muted">Over/short</div><strong>{{ closing.cash_over_short }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.gross_sales }}</div><strong>{{ snapshot.gross_sales }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.refunds }}</div><strong>{{ snapshot.total_refunds }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.net_sales }}</div><strong>{{ snapshot.net_sales }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.cash_over_short }}</div><strong>{{ snapshot.cash_over_short }}</strong></div></div>
 </div>
 <div class="row g-3">
     <div class="col-md-4">
         <div class="card p-3">
-            <h2 class="h5">By payment method</h2>
-            {% for method, total in snapshot.payment_totals.items() %}
-            <div>{{ method }}: {{ total }}</div>
+            <h2 class="h5">{{ t.payment_method }}</h2>
+            {% for item in snapshot.payment_totals %}
+            <div>{{ item.payment_method }}: {{ item.gross_received }} / {{ item.refunds }} / {{ item.net }}</div>
             {% else %}<div class="text-muted">No payments.</div>{% endfor %}
         </div>
     </div>
     <div class="col-md-4">
         <div class="card p-3">
-            <h2 class="h5">By VAT rate</h2>
-            {% for rate, totals in snapshot.vat_totals.items() %}
-            <div>{{ rate }}%: {{ totals.gross }} gross, {{ totals.vat }} VAT</div>
+            <h2 class="h5">{{ t.vat }}</h2>
+            {% for item in snapshot.vat_totals %}
+            <div>{{ item.vat_rate }}%: {{ item.gross_sales }} gross, {{ item.refunds }} refunds, {{ item.net_vat }} net VAT</div>
             {% else %}<div class="text-muted">No VAT rows.</div>{% endfor %}
         </div>
     </div>
     <div class="col-md-4">
         <div class="card p-3">
-            <h2 class="h5">By seller</h2>
-            {% for seller, total in snapshot.seller_totals.items() %}
-            <div>{{ seller }}: {{ total }}</div>
+            <h2 class="h5">{{ t.seller_reports }}</h2>
+            {% for item in snapshot.seller_totals %}
+            <div>#{{ item.seller_id }} {{ item.seller_name }}: {{ item.gross_sales }} / {{ item.refunds }} / {{ item.net_sales }}</div>
             {% else %}<div class="text-muted">No seller sales.</div>{% endfor %}
         </div>
     </div>
 </div>
+{% if closing.status == "closed" %}
 <form class="card p-3 mt-3" method="post" action="/daily-closings/{{ closing.id }}/reopen">
-    <h2 class="h5">Reopen</h2>
+    <h2 class="h5">{{ t.reopen }}</h2>
+    <div class="alert alert-warning">Reopening unlocks the business date. Re-closing creates a new snapshot version and preserves this version.</div>
     <select class="form-select mb-2" name="user_id">
         {% for user in users %}
-        <option value="{{ user.id }}">{{ user.name }} · {{ user.role.name if user.role else "-" }}</option>
+        <option value="{{ user.id }}">{{ user.name }} - {{ user.role.name if user.role else "-" }}</option>
         {% endfor %}
     </select>
-    <button class="btn btn-outline-warning" type="submit">Reopen closing</button>
+    <label class="form-label" for="reason">{{ t.reopen_reason }}</label>
+    <input class="form-control mb-2" id="reason" name="reason" required>
+    <button class="btn btn-outline-warning" type="submit">{{ t.reopen }}</button>
 </form>
+{% endif %}
 {% endblock %}

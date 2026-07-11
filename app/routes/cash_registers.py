@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import get_db
 from app.models import CashRegister
+from app.services.audit_service import log_audit_event
 from app.template_context import templates
 
 router = APIRouter(prefix="/cash-registers", tags=["cash-registers"])
@@ -48,12 +49,19 @@ def create_cash_register(
 ):
     if not name.strip():
         raise HTTPException(status_code=400, detail="Cash register name is required")
-    db.add(
-        CashRegister(
-            name=name.strip(),
-            location=location.strip() or None,
-            is_active=is_active == "on",
-        )
+    register = CashRegister(
+        name=name.strip(),
+        location=location.strip() or None,
+        is_active=is_active == "on",
+    )
+    db.add(register)
+    db.flush()
+    log_audit_event(
+        db,
+        event_type="cash_register.created",
+        entity_type="cash_register",
+        entity_id=register.id,
+        description=f"Cash register created: {register.name}.",
     )
     db.commit()
     return RedirectResponse(url="/cash-registers", status_code=303)

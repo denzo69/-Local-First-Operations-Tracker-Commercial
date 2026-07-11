@@ -15,21 +15,47 @@
             <span class="navbar-toggler-icon"></span>
         </button>
         <div class="collapse navbar-collapse" id="mainNav">
-            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+            <ul class="navbar-nav me-auto mb-2 mb-lg-0" data-role-nav="all">
                 <li class="nav-item"><a class="nav-link {% if active_page == 'dashboard' %}active{% endif %}" href="/">{{ t.dashboard }}</a></li>
-                <li class="nav-item"><a class="nav-link {% if active_page == 'customers' %}active{% endif %}" href="/customers">{{ t.customers }}</a></li>
-                <li class="nav-item"><a class="nav-link {% if active_page == 'jobs' %}active{% endif %}" href="/work-orders">{{ t.work_orders }}</a></li>
-                <li class="nav-item"><a class="nav-link {% if active_page == 'products' %}active{% endif %}" href="/products">{{ t.products }}</a></li>
-                <li class="nav-item"><a class="nav-link {% if active_page == 'sales' %}active{% endif %}" href="/sales">Sales</a></li>
-                <li class="nav-item"><a class="nav-link {% if active_page == 'shifts' %}active{% endif %}" href="/shifts">Shifts</a></li>
-                <li class="nav-item"><a class="nav-link {% if active_page == 'daily_closings' %}active{% endif %}" href="/daily-closings">Daily closing</a></li>
-                <li class="nav-item"><a class="nav-link {% if active_page == 'seller_reports' %}active{% endif %}" href="/seller-reports">Seller reports</a></li>
-                <li class="nav-item"><a class="nav-link {% if active_page == 'reports' %}active{% endif %}" href="/reports">{{ t.reports }}</a></li>
-                <li class="nav-item"><a class="nav-link {% if active_page == 'backups' %}active{% endif %}" href="/backups">{{ t.backups }}</a></li>
-                <li class="nav-item"><a class="nav-link {% if active_page == 'audit_log' %}active{% endif %}" href="/audit-log">Audit log</a></li>
-                <li class="nav-item"><a class="nav-link {% if active_page == 'users' %}active{% endif %}" href="/users">Users</a></li>
-                <li class="nav-item"><a class="nav-link {% if active_page == 'cash_registers' %}active{% endif %}" href="/cash-registers">Cash registers</a></li>
-                <li class="nav-item"><a class="nav-link {% if active_page == 'settings' %}active{% endif %}" href="/settings">{{ t.settings }}</a></li>
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle {% if active_page in ['customers', 'jobs'] %}active{% endif %}" href="#" role="button" data-bs-toggle="dropdown">{{ t.operations }}</a>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="/customers">{{ t.customers }}</a></li>
+                        <li><a class="dropdown-item" href="/work-orders">{{ t.work_orders }}</a></li>
+                    </ul>
+                </li>
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle {% if active_page in ['sales', 'shifts', 'daily_closings'] %}active{% endif %}" href="#" role="button" data-bs-toggle="dropdown">{{ t.sales_nav }}</a>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="/sales/new">{{ t.new_sale }}</a></li>
+                        <li><a class="dropdown-item" href="/sales">{{ t.sales }}</a></li>
+                        <li><a class="dropdown-item" href="/shifts">{{ t.shifts }}</a></li>
+                        <li><a class="dropdown-item" href="/daily-closings">{{ t.daily_closing }}</a></li>
+                    </ul>
+                </li>
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle {% if active_page == 'products' %}active{% endif %}" href="#" role="button" data-bs-toggle="dropdown">{{ t.catalog }}</a>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="/products">{{ t.products }}</a></li>
+                    </ul>
+                </li>
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle {% if active_page in ['reports', 'seller_reports'] %}active{% endif %}" href="#" role="button" data-bs-toggle="dropdown">{{ t.reports }}</a>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="/reports">{{ t.reports }}</a></li>
+                        <li><a class="dropdown-item" href="/seller-reports">{{ t.seller_reports }}</a></li>
+                    </ul>
+                </li>
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle {% if active_page in ['users', 'cash_registers', 'audit_log', 'backups', 'settings'] %}active{% endif %}" href="#" role="button" data-bs-toggle="dropdown">{{ t.administration }}</a>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="/users">{{ t.users }}</a></li>
+                        <li><a class="dropdown-item" href="/cash-registers">{{ t.cash_registers }}</a></li>
+                        <li><a class="dropdown-item" href="/audit-log">Audit log</a></li>
+                        <li><a class="dropdown-item" href="/backups">{{ t.backups }}</a></li>
+                        <li><a class="dropdown-item" href="/settings">{{ t.settings }}</a></li>
+                    </ul>
+                </li>
             </ul>
         </div>
     </div>

@@ -21,6 +21,11 @@ The app is not intended to be exposed directly to the public internet.
 - Printable receipt / work order preview with stored print snapshot
 - Settings for company details, VAT default, receipt prefix, and language
 - Finnish and English UI text baseline
+- Seller accounts and operational roles for Admin, Manager, Seller, and Read only
+- Cash registers and seller shifts with starting cash, cash movements, closing count, expected cash, and over/short calculation
+- Sales, payments, and refunds stored separately from Work Orders
+- Daily closing with immutable versioned snapshots, closed-day write lock, VAT/payment/seller summaries, and authorized reopen flow
+- Seller reports for daily, weekly, and monthly sales metrics
 - Sales report totals
 - Audit log
 - SQLite backups using SQLite's backup API
@@ -31,6 +36,8 @@ The app is not intended to be exposed directly to the public internet.
 ## Known Limitations
 
 - No authentication or user permissions yet
+- Seller and admin IDs are still selected from forms. Role checks are business-rule validation only and must not be treated as secure authorization.
+- Daily closing reopen currently depends on selected Admin/Manager IDs until a real current-user/session mechanism exists.
 - No cloud deployment, Docker, PostgreSQL, or object storage
 - No native mobile application
 - No automatic background backup scheduler yet
@@ -38,6 +45,26 @@ The app is not intended to be exposed directly to the public internet.
 - Receipt numbering is local-MVP safe, but not designed for high-concurrency multi-server use
 - Money columns now use SQLAlchemy `Numeric`; existing SQLite columns may still have older storage affinity until a future migration rebuilds the tables
 - Bootstrap is still loaded from CDN in the normal UI; print views use local print CSS
+- Sales UI creates one sale line and one payment today. The data model is prepared for more rows, but split/partial payments and multi-line sale finalization are not yet implemented.
+- Multi-VAT refunds are rejected until line-level refund allocation is implemented.
+
+## Sales, Shifts, Refunds, And Daily Closing
+
+Work Orders, Sales, Payments, and Refunds are separate business objects. A Sale may link to a Work Order, but a Work Order is not treated as the payment record.
+
+Daily closing rules:
+
+- All shifts for the business date must be closed before the day can be closed.
+- Closing creates a stored immutable snapshot with a version number.
+- A closed business date blocks new shifts, sales, refunds, cash movements, and shift closing for that date.
+- Only reopening the Daily Closing unlocks that date.
+- Re-closing after reopen creates a new snapshot version and preserves older snapshot rows.
+- Refunds cannot exceed the original sale total cumulatively.
+- Refund VAT is stored with the refund. Single-VAT sales are supported; multi-VAT refunds require future line allocation.
+
+Security limitation:
+
+- The current MVP has no login session or authenticated current user. Forms that ask for seller/admin users are operational placeholders, not security controls.
 
 ## Technology Stack
 

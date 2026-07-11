@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import get_db
 from app.models import CashRegister, Shift, User
-from app.services.money_service import parse_decimal
 from app.services.sales_service import add_cash_movement, close_shift, open_shift
 from app.template_context import templates
 
@@ -120,7 +119,7 @@ def close_shift_route(
     db: Session = Depends(get_db),
 ):
     try:
-        close_shift(db, shift_id=shift_id, counted_cash=parse_decimal(counted_cash), notes=notes)
+        close_shift(db, shift_id=shift_id, counted_cash=counted_cash, notes=notes)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return RedirectResponse(url=f"/shifts/{shift_id}", status_code=303)
