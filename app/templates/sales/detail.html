@@ -17,13 +17,18 @@
     <div class="col-md-3"><div class="card p-3"><div class="text-muted">Discount</div><strong>{{ sale.discount_total }}</strong></div></div>
     <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.total }}</div><strong>{{ sale.total }}</strong></div></div>
 </div>
+<div class="row g-3 mb-3">
+    <div class="col-md-4"><div class="card p-3"><div class="text-muted">{{ t.cost_of_goods_sold }}</div><strong>{{ sale.cost_of_goods_sold_ex_vat }}</strong></div></div>
+    <div class="col-md-4"><div class="card p-3"><div class="text-muted">{{ t.gross_profit }}</div><strong>{{ sale.gross_profit_ex_vat }}</strong></div></div>
+    <div class="col-md-4"><div class="card p-3"><div class="text-muted">{{ t.gross_margin }}</div><strong>{{ sale.gross_margin_percent or "-" }}</strong></div></div>
+</div>
 {% if sale.work_order %}
 <p>Work Order: <a href="/work-orders/{{ sale.work_order.id }}">{{ sale.work_order.title }}</a></p>
 {% endif %}
 <div class="card mb-3">
     <div class="table-responsive responsive-card-table">
         <table class="table mb-0">
-            <thead><tr><th>{{ t.description }}</th><th>{{ t.quantity }}</th><th>{{ t.unit_price }}</th><th>{{ t.vat }} %</th><th>{{ t.total }}</th></tr></thead>
+            <thead><tr><th>{{ t.description }}</th><th>{{ t.quantity }}</th><th>{{ t.unit_price }}</th><th>{{ t.vat }} %</th><th>{{ t.total }}</th><th>{{ t.cost_of_goods_sold }}</th><th>{{ t.gross_profit }}</th></tr></thead>
             <tbody>
             {% for line in sale.lines %}
             <tr>
@@ -32,6 +37,8 @@
                 <td data-label="{{ t.unit_price }}">{{ line.unit_price }}</td>
                 <td data-label="{{ t.vat }} %">{{ line.vat_percent }}</td>
                 <td data-label="{{ t.total }}">{{ line.line_total }}</td>
+                <td data-label="{{ t.cost_of_goods_sold }}">{{ line.cost_of_goods_sold_ex_vat }}</td>
+                <td data-label="{{ t.gross_profit }}">{{ line.gross_profit_ex_vat }}</td>
             </tr>
             {% endfor %}
             </tbody>

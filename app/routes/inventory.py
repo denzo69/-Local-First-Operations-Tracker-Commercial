@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, time
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -13,6 +13,7 @@ from app.services.inventory_service import (
     cancel_goods_receipt,
     create_default_warehouse,
     create_goods_receipt,
+    inventory_ledger,
     inventory_valuation,
     post_goods_receipt,
     preview_goods_receipt,
@@ -197,6 +198,69 @@ def inventory_valuation_report(request: Request, db: Session = Depends(get_db)):
             "active_page": "inventory_valuation",
             "page_title": "Inventory valuation",
             "valuation": inventory_valuation(db),
+        },
+    )
+
+
+@router.get("/ledger", response_class=HTMLResponse)
+def inventory_ledger_report(
+    request: Request,
+    product_id: int | None = None,
+    warehouse_id: int | None = None,
+    supplier_id: int | None = None,
+    transaction_type: str | None = None,
+    user_id: int | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    db: Session = Depends(get_db),
+):
+    date_from_at = datetime.combine(date_from, time.min) if date_from else None
+    date_to_at = datetime.combine(date_to, time.max) if date_to else None
+    transactions = inventory_ledger(
+        db,
+        product_id=product_id,
+        warehouse_id=warehouse_id,
+        supplier_id=supplier_id,
+        transaction_type=transaction_type or None,
+        user_id=user_id,
+        date_from=date_from_at,
+        date_to=date_to_at,
+    )
+    transaction_types = [
+        "purchase",
+        "sale",
+        "inventory_adjustment",
+        "inventory_count",
+        "warehouse_transfer",
+        "shelf_transfer",
+        "customer_return",
+        "supplier_return",
+        "initial_balance",
+        "production_consumption",
+        "production_output",
+    ]
+    return templates.TemplateResponse(
+        "inventory/ledger.html",
+        {
+            "request": request,
+            "app_name": settings.app_name,
+            "active_page": "inventory_ledger",
+            "page_title": "Inventory ledger",
+            "transactions": transactions,
+            "products": db.query(Product).order_by(Product.name.asc()).all(),
+            "warehouses": db.query(Warehouse).order_by(Warehouse.name.asc()).all(),
+            "suppliers": db.query(Supplier).order_by(Supplier.name.asc()).all(),
+            "users": db.query(User).order_by(User.name.asc()).all(),
+            "transaction_types": transaction_types,
+            "selected": {
+                "product_id": product_id,
+                "warehouse_id": warehouse_id,
+                "supplier_id": supplier_id,
+                "transaction_type": transaction_type or "",
+                "user_id": user_id,
+                "date_from": date_from,
+                "date_to": date_to,
+            },
         },
     )
 

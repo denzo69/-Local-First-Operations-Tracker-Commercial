@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+    <div>
+        <h1 class="h3 mb-1">{{ product.name }}</h1>
+        <p class="text-muted mb-0">{{ product.description or t.products }}</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a class="btn btn-outline-secondary" href="/products/{{ product.id }}/edit">{{ t.edit }}</a>
+        <a class="btn btn-outline-primary" href="/inventory/ledger?product_id={{ product.id }}">{{ t.inventory_ledger }}</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-3"><div class="card p-3 h-100"><div class="text-muted">{{ t.current_quantity }}</div><strong>{{ cost_profile.current_quantity }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3 h-100"><div class="text-muted">{{ t.current_inventory_value }}</div><strong>{{ cost_profile.inventory_value }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3 h-100"><div class="text-muted">{{ t.weighted_average_cost }}</div><strong>{{ cost_profile.weighted_average_cost or "-" }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3 h-100"><div class="text-muted">{{ t.last_purchase_price }}</div><strong>{{ cost_profile.last_purchase_price or "-" }}</strong></div></div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-4"><div class="card p-3 h-100"><div class="text-muted">{{ t.highest_purchase_price }}</div><strong>{{ cost_profile.highest_purchase_price or "-" }}</strong></div></div>
+    <div class="col-md-4"><div class="card p-3 h-100"><div class="text-muted">{{ t.lowest_purchase_price }}</div><strong>{{ cost_profile.lowest_purchase_price or "-" }}</strong></div></div>
+    <div class="col-md-4"><div class="card p-3 h-100"><div class="text-muted">{{ t.last_supplier }}</div><strong>{{ cost_profile.last_supplier.name if cost_profile.last_supplier else "-" }}</strong></div></div>
+</div>
+
+<div class="card shadow-sm border-0 mb-3">
+    <div class="card-header">{{ t.ledger_reconciliation }}</div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-4"><div class="text-muted">{{ t.current_quantity }}</div><strong>{{ cost_profile.ledger_state[0] }}</strong></div>
+            <div class="col-md-4"><div class="text-muted">{{ t.current_inventory_value }}</div><strong>{{ cost_profile.ledger_state[1] }}</strong></div>
+            <div class="col-md-4"><div class="text-muted">{{ t.weighted_average_cost }}</div><strong>{{ cost_profile.ledger_state[2] or "-" }}</strong></div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0">
+    <div class="card-header">{{ t.purchase_history }}</div>
+    <div class="table-responsive responsive-card-table">
+        <table class="table mb-0 align-middle">
+            <thead>
+            <tr>
+                <th>{{ t.date }}</th>
+                <th>{{ t.supplier }}</th>
+                <th>{{ t.purchase_invoice_number }}</th>
+                <th>{{ t.delivery_note_number }}</th>
+                <th>{{ t.quantity }}</th>
+                <th>{{ t.purchase_price_ex_vat }}</th>
+                <th>{{ t.allocated_freight }}</th>
+                <th>{{ t.weighted_average_cost }}</th>
+                <th>{{ t.warehouse }}</th>
+                <th>{{ t.created_by }}</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for transaction in cost_profile.purchase_history %}
+            <tr>
+                <td data-label="{{ t.date }}">{{ transaction.created_at }}</td>
+                <td data-label="{{ t.supplier }}">{{ transaction.supplier.name if transaction.supplier else "-" }}</td>
+                <td data-label="{{ t.purchase_invoice_number }}">{{ transaction.purchase_invoice_number or "-" }}</td>
+                <td data-label="{{ t.delivery_note_number }}">{{ transaction.delivery_note_number or "-" }}</td>
+                <td data-label="{{ t.quantity }}">{{ transaction.quantity_change }}</td>
+                <td data-label="{{ t.purchase_price_ex_vat }}">{{ transaction.unit_cost_ex_vat }}</td>
+                <td data-label="{{ t.allocated_freight }}">{{ transaction.allocated_freight_cost }}</td>
+                <td data-label="{{ t.weighted_average_cost }}">{{ transaction.weighted_average_cost_after or "-" }}</td>
+                <td data-label="{{ t.warehouse }}">{{ transaction.warehouse.code if transaction.warehouse else "-" }}</td>
+                <td data-label="{{ t.created_by }}">{{ transaction.created_by.name if transaction.created_by else "-" }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="10" class="text-muted p-4">{{ t.no_inventory }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

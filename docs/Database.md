@@ -176,18 +176,42 @@ Important accounting rules:
 
 Current limitations:
 
-- User IDs are selected from forms; there is no authenticated current user yet.
-- Role checks remain business-rule validation, not secure identity verification.
+- Authentication exists for local trusted-network use, but some MVP forms still preserve explicit user selectors for operational workflows.
+- Role checks protect routes and business operations, but the app is still not hardened for public internet exposure.
 - Sale documents, payment transaction numbers, refund numbers, shift numbers, and closing numbers are not official stable document numbers yet.
 - Sales UI creates one line and one payment. Future versions should finalize sales from multiple validated lines and separate payment balancing.
 - Multi-VAT refunds are rejected until line-level refund allocation is added.
+
+## Inventory Ledger Tables
+
+The inventory accounting backbone is `inventory_transactions`. It is the source of truth for stock quantity, inventory value, weighted average cost, purchase history, sale cost of goods sold, and audit reconstruction.
+
+Important inventory rules:
+
+- Inventory transactions are immutable. Corrections create new reversal or adjustment transactions.
+- `quantity_change` stores the signed stock effect.
+- `total_inventory_cost` stores the signed ex-VAT inventory value effect.
+- `stock_before`, `stock_after`, `inventory_value_before`, `inventory_value_after`, `weighted_average_cost_before`, and `weighted_average_cost_after` preserve the running balance at the moment of the transaction.
+- Goods receipt posting creates `purchase` transactions and includes allocated freight and other landed costs.
+- Posted goods receipt cancellation creates reversal transactions and never deletes the original purchase history.
+- Stock-product sales create `sale` transactions and store sale-line cost of goods sold and gross profit snapshots.
+- Transfers create balanced transactions so total company inventory value remains unchanged.
+- Negative stock is rejected by default.
+
+Supporting tables:
+
+- `suppliers`
+- `warehouses`
+- `warehouse_locations`
+- `inventory_balances`
+- `goods_receipts`
+- `goods_receipt_lines`
+- `inventory_transactions`
 
 ## Future tables
 
 Later versions may add:
 
-- inventory_items
-- inventory_events
 - attachments
 - custom_fields
 - custom_field_values
@@ -210,10 +234,13 @@ Settings should allow:
 
 ## Inventory value
 
-Inventory value formula:
+Weighted-average inventory value is based on ex-VAT landed cost:
 
 ```text
-stock_balance * purchase_price = inventory_value
+new average cost =
+(old inventory value + new landed receipt value)
+/
+(old quantity + received quantity)
 ```
 
-Inventory events should be added later to avoid losing history when stock changes.
+Freight and other landed costs are allocated to receipt lines before weighted average cost is recalculated. Ledger rows must always make the current stock and current inventory value reconstructable from history.

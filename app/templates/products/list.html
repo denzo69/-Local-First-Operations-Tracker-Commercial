@@ -33,15 +33,18 @@
         {% if products %}
         <div class="list-group list-group-flush">
             {% for product in products %}
-            <a class="list-group-item list-group-item-action py-3" href="/products/{{ product.id }}/edit">
-                <div class="d-flex justify-content-between gap-3">
+            <div class="list-group-item py-3">
+                <div class="d-flex justify-content-between gap-3 align-items-start">
                     <div>
-                        <div class="fw-semibold">{{ product.name }}</div>
+                        <a class="fw-semibold text-decoration-none" href="/products/{{ product.id }}">{{ product.name }}</a>
                         <div class="text-muted small">{{ product.unit }} - VAT {{ product.vat_percent }}%{% if not product.is_active %} - inactive{% endif %}</div>
                     </div>
-                    <div class="fw-semibold">{{ "%.2f"|format(product.unit_price) }}</div>
+                    <div class="text-end">
+                        <div class="fw-semibold">{{ "%.2f"|format(product.unit_price) }}</div>
+                        <a class="btn btn-outline-secondary btn-sm mt-2" href="/products/{{ product.id }}/edit">{{ t.edit }}</a>
+                    </div>
                 </div>
-            </a>
+            </div>
             {% endfor %}
         </div>
         {% else %}

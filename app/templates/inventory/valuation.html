@@ -46,14 +46,14 @@
         <table class="table mb-0">
             <thead><tr><th>{{ t.date }}</th><th>{{ t.product }}</th><th>{{ t.old_average_cost }}</th><th>{{ t.new_average_cost }}</th><th>{{ t.quantity }}</th><th>{{ t.value }}</th></tr></thead>
             <tbody>
-            {% for movement in valuation.recent_cost_changes %}
+            {% for transaction in valuation.recent_cost_changes %}
             <tr>
-                <td data-label="{{ t.date }}">{{ movement.occurred_at }}</td>
-                <td data-label="{{ t.product }}">{{ movement.product.name }}</td>
-                <td data-label="{{ t.old_average_cost }}">{{ movement.old_average_cost_ex_vat }}</td>
-                <td data-label="{{ t.new_average_cost }}">{{ movement.new_average_cost_ex_vat }}</td>
-                <td data-label="{{ t.quantity }}">{{ movement.quantity }}</td>
-                <td data-label="{{ t.value }}">{{ movement.new_inventory_value_ex_vat }}</td>
+                <td data-label="{{ t.date }}">{{ transaction.created_at }}</td>
+                <td data-label="{{ t.product }}">{{ transaction.product.name }}</td>
+                <td data-label="{{ t.old_average_cost }}">{{ transaction.weighted_average_cost_before or "-" }}</td>
+                <td data-label="{{ t.new_average_cost }}">{{ transaction.weighted_average_cost_after or "-" }}</td>
+                <td data-label="{{ t.quantity }}">{{ transaction.quantity_change }}</td>
+                <td data-label="{{ t.value }}">{{ transaction.inventory_value_after }}</td>
             </tr>
             {% else %}
             <tr><td colspan="6" class="text-muted">{{ t.no_cost_changes }}</td></tr>

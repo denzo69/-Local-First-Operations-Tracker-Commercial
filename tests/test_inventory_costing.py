@@ -7,7 +7,7 @@ from alembic.config import Config
 from sqlalchemy import create_engine, inspect, text
 
 from app.database import SessionLocal
-from app.models import AuditLog, Product, Role, Supplier, User, Warehouse, WarehouseLocation
+from app.models import AuditLog, CashRegister, InventoryTransaction, Product, Role, Supplier, User, WarehouseLocation
 from app.services.inventory_service import (
     add_goods_receipt_line,
     allocate_landed_costs,
@@ -15,12 +15,13 @@ from app.services.inventory_service import (
     create_default_warehouse,
     create_goods_receipt,
     inventory_valuation,
+    product_cost_profile,
     issue_stock_for_sale,
     post_goods_receipt,
     preview_goods_receipt,
     transfer_stock,
 )
-from app.services.sales_service import ensure_default_roles
+from app.services.sales_service import create_sale_with_payment, ensure_default_roles, open_shift
 
 
 def create_user(db, name="Inventory Manager", role_code="manager"):
@@ -59,6 +60,14 @@ def create_location(db, code="DEFAULT"):
     db.commit()
     db.refresh(location)
     return location
+
+
+def create_register(db, name="Inventory Register"):
+    register = CashRegister(name=name, is_active=True)
+    db.add(register)
+    db.commit()
+    db.refresh(register)
+    return register
 
 
 def receipt_with_line(
@@ -181,7 +190,7 @@ def test_vat_is_excluded_from_inventory_value_and_draft_has_no_stock_impact():
         assert product.current_inventory_value_ex_vat == Decimal("200.00")
 
 
-def test_posting_creates_movements_balances_audit_and_posted_receipt_is_immutable():
+def test_posting_creates_transactions_balances_audit_and_posted_receipt_is_immutable():
     with SessionLocal() as db:
         user = create_user(db)
         supplier = create_supplier(db)
@@ -192,8 +201,9 @@ def test_posting_creates_movements_balances_audit_and_posted_receipt_is_immutabl
         db.refresh(receipt)
         assert receipt.status == "posted"
         assert receipt.lines[0].landed_unit_cost_ex_vat == Decimal("26.250000")
-        assert len(receipt.movements) == 1
-        assert receipt.movements[0].total_cost_ex_vat == Decimal("105.00")
+        assert len(receipt.transactions) == 1
+        assert receipt.transactions[0].transaction_type == "purchase"
+        assert receipt.transactions[0].total_inventory_cost == Decimal("105.00")
         assert receipt.lines[0].product.inventory_balances[0].inventory_value_ex_vat == Decimal("105.00")
         assert db.query(AuditLog).filter(AuditLog.event_type == "goods_receipt.posted").count() == 1
         with pytest.raises(ValueError, match="cannot be edited"):
@@ -215,9 +225,14 @@ def test_cancellation_creates_reversal_and_restores_weighted_average():
         assert product.current_inventory_quantity == Decimal("0.000")
         assert product.current_inventory_value_ex_vat == Decimal("0.00")
         assert product.current_weighted_average_cost_ex_vat is None
-        reversals = [movement for movement in receipt.movements if movement.movement_type == "reversal"]
+        reversals = [
+            transaction
+            for transaction in receipt.transactions
+            if transaction.reversal_of_transaction_id is not None
+        ]
         assert len(reversals) == 1
-        assert reversals[0].total_cost_ex_vat == Decimal("-33.00")
+        assert reversals[0].transaction_type == "inventory_adjustment"
+        assert reversals[0].total_inventory_cost == Decimal("-33.00")
 
 
 def test_transfer_preserves_total_company_inventory_value_and_sale_issue_uses_cost_snapshot():
@@ -234,9 +249,10 @@ def test_transfer_preserves_total_company_inventory_value_and_sale_issue_uses_co
         after_transfer_value = inventory_valuation(db)["total_inventory_value_ex_vat"]
         assert after_transfer_value == before_value
 
-        movement = issue_stock_for_sale(db, product_id=product.id, warehouse_location_id=target.id, quantity_value="2", sale_id=123, created_by_user_id=user.id)
-        assert movement.unit_cost_ex_vat == Decimal("50.000000")
-        assert movement.total_cost_ex_vat == Decimal("-100.00")
+        transaction = issue_stock_for_sale(db, product_id=product.id, warehouse_location_id=target.id, quantity_value="2", sale_id=123, created_by_user_id=user.id)
+        assert transaction.transaction_type == "sale"
+        assert transaction.unit_cost_ex_vat == Decimal("50.000000")
+        assert transaction.total_inventory_cost == Decimal("-100.00")
         db.refresh(product)
         assert product.current_inventory_quantity == Decimal("8.000")
         assert product.current_inventory_value_ex_vat == Decimal("400.00")
@@ -286,6 +302,7 @@ def test_multi_line_multiple_warehouse_report_reconciles_with_movement_ledger():
         add_goods_receipt_line(db, goods_receipt_id=receipt.id, product_id=product_b.id, destination_location_id=loc_two.id, quantity_value="4", purchase_unit_price_ex_vat="20")
         post_goods_receipt(db, goods_receipt_id=receipt.id, posted_by_user_id=user.id)
         report = inventory_valuation(db)
+        assert report["total_inventory_value_ex_vat"] == report["transaction_ledger_value_ex_vat"]
         assert report["total_inventory_value_ex_vat"] == report["movement_ledger_value_ex_vat"]
         assert report["total_inventory_value_ex_vat"] == Decimal("106.00")
         assert len(report["by_product"]) == 2
@@ -300,12 +317,116 @@ def test_historical_cost_snapshots_do_not_change_when_product_purchase_price_cha
         product = create_product(db, "Test History")
         receipt = receipt_with_line(db, product=product, location=location, user=user, supplier=supplier, qty="2", unit_cost="30")
         post_goods_receipt(db, goods_receipt_id=receipt.id, posted_by_user_id=user.id)
-        movement = receipt.movements[0]
-        assert movement.unit_cost_ex_vat == Decimal("30.000000")
+        transaction = receipt.transactions[0]
+        assert transaction.unit_cost_ex_vat == Decimal("30.000000")
         product.current_purchase_price_ex_vat = Decimal("999.00")
         db.commit()
-        db.refresh(movement)
-        assert movement.unit_cost_ex_vat == Decimal("30.000000")
+        db.refresh(transaction)
+        assert transaction.unit_cost_ex_vat == Decimal("30.000000")
+
+
+def test_inventory_transactions_are_immutable():
+    with SessionLocal() as db:
+        user = create_user(db)
+        supplier = create_supplier(db)
+        location = create_location(db)
+        product = create_product(db, "Test Immutable Ledger")
+        receipt = receipt_with_line(db, product=product, location=location, user=user, supplier=supplier, qty="1", unit_cost="10")
+        post_goods_receipt(db, goods_receipt_id=receipt.id, posted_by_user_id=user.id)
+        transaction = receipt.transactions[0]
+
+        transaction.reference = "edited"
+        with pytest.raises(ValueError, match="Inventory transactions are immutable"):
+            db.commit()
+        db.rollback()
+
+        transaction = db.get(InventoryTransaction, transaction.id)
+        db.delete(transaction)
+        with pytest.raises(ValueError, match="Inventory transactions are immutable"):
+            db.commit()
+        db.rollback()
+
+
+def test_sale_records_cogs_and_historical_profit_snapshot_from_weighted_average():
+    with SessionLocal() as db:
+        manager = create_user(db)
+        seller = create_user(db, "Inventory Sales", "seller")
+        supplier = create_supplier(db)
+        location = create_location(db)
+        register = create_register(db)
+        product = create_product(db, "Test COGS Product", vat=Decimal("0"))
+        first_receipt = receipt_with_line(
+            db,
+            product=product,
+            location=location,
+            user=manager,
+            supplier=supplier,
+            qty="10",
+            unit_cost="50",
+            vat="0",
+        )
+        post_goods_receipt(db, goods_receipt_id=first_receipt.id, posted_by_user_id=manager.id)
+        shift = open_shift(
+            db,
+            seller_id=seller.id,
+            cash_register_id=register.id,
+            business_date=date.today(),
+            starting_cash="0",
+        )
+
+        sale = create_sale_with_payment(
+            db,
+            seller_id=seller.id,
+            shift_id=shift.id,
+            payment_method="card",
+            description="Stock sale",
+            quantity="2",
+            unit_price="100",
+            vat_percent="0",
+            product_id=product.id,
+        )
+        db.refresh(product)
+        assert sale.cost_of_goods_sold_ex_vat == Decimal("100.00")
+        assert sale.gross_profit_ex_vat == Decimal("100.00")
+        assert sale.gross_margin_percent == Decimal("50.000")
+        assert sale.lines[0].cost_of_goods_sold_ex_vat == Decimal("100.00")
+        sale_transactions = [row for row in sale.inventory_transactions if row.transaction_type == "sale"]
+        assert len(sale_transactions) == 1
+        assert sale_transactions[0].unit_cost_ex_vat == Decimal("50.000000")
+        assert sale_transactions[0].total_inventory_cost == Decimal("-100.00")
+
+        later_receipt = receipt_with_line(
+            db,
+            product=product,
+            location=location,
+            user=manager,
+            supplier=supplier,
+            qty="10",
+            unit_cost="200",
+            vat="0",
+        )
+        post_goods_receipt(db, goods_receipt_id=later_receipt.id, posted_by_user_id=manager.id)
+        db.refresh(product)
+        db.refresh(sale)
+        assert product.current_weighted_average_cost_ex_vat != Decimal("50.000000")
+        assert sale.cost_of_goods_sold_ex_vat == Decimal("100.00")
+        assert sale.gross_profit_ex_vat == Decimal("100.00")
+
+
+def test_product_cost_profile_reconstructs_stock_from_ledger():
+    with SessionLocal() as db:
+        user = create_user(db)
+        supplier = create_supplier(db)
+        location = create_location(db)
+        product = create_product(db, "Test Profile")
+        receipt = receipt_with_line(db, product=product, location=location, user=user, supplier=supplier, qty="3", unit_cost="11", freight="3")
+        post_goods_receipt(db, goods_receipt_id=receipt.id, posted_by_user_id=user.id)
+
+        profile = product_cost_profile(db, product.id)
+
+        assert profile["last_supplier"].id == supplier.id
+        assert profile["last_purchase_price"] == Decimal("12.000000")
+        assert profile["ledger_state"] == (Decimal("3.000"), Decimal("36.00"), Decimal("12.000000"))
 
 
 def test_existing_database_migrates_without_guessing_historical_cost(tmp_path):

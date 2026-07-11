@@ -52,7 +52,8 @@ The app is not intended to be exposed directly to the public internet.
 - Sales report totals
 - Goods receipts with freight and additional landed cost allocation
 - Weighted-average inventory cost and ex-VAT inventory valuation
-- Inventory movement ledger, receipt cancellation by reversal, and valuation reports
+- Immutable inventory transaction ledger, receipt cancellation by reversal transaction, and valuation reports
+- Sale-line cost of goods sold and gross profit snapshots based on the weighted average cost at sale time
 - Audit log
 - SQLite backups using SQLite's backup API
 - Backup restore, health status, and retention cleanup
@@ -106,7 +107,7 @@ Security notes:
 
 Inventory valuation is based on ex-VAT cost. VAT is stored and shown, but deductible VAT is not included in inventory value by default.
 
-Goods receipts are created as drafts. Draft receipts do not affect stock, balances, weighted average cost, or valuation. Posting a receipt allocates freight and other landed costs, creates inventory movements, updates location balances, updates product-level totals, and writes audit events in one transaction.
+Goods receipts are created as drafts. Draft receipts do not affect stock, balances, weighted average cost, or valuation. Posting a receipt allocates freight and other landed costs, creates immutable inventory transactions, updates location balance caches, updates product-level cache totals, and writes audit events in one transaction.
 
 Default landed cost allocation is by purchase value:
 
@@ -127,7 +128,9 @@ new receipt value = received quantity * landed unit cost
 new average cost = (old value + new receipt value) / (old quantity + received quantity)
 ```
 
-Inventory value is stored as the actual ex-VAT movement value rounded to 2 decimals. Negative stock is rejected by default because it would make weighted average cost ambiguous. Posted receipts are immutable; cancellation creates reversal movements instead of deleting history.
+The inventory transaction ledger is the accounting source of truth. Current balance caches and product-level cost fields must be reproducible from ledger rows. Inventory value is stored as the actual ex-VAT transaction value rounded to 2 decimals. Negative stock is rejected by default because it would make weighted average cost ambiguous. Posted receipts are immutable; cancellation creates reversal transactions instead of deleting history.
+
+Sales of stock products create a `sale` inventory transaction and store cost of goods sold, gross profit, and gross margin snapshots on the sale line and sale header. These snapshots use the weighted average cost that existed at the moment of sale; later purchases do not rewrite historical profit.
 
 ## Technology Stack
 

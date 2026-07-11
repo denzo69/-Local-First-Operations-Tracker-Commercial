@@ -9,7 +9,7 @@ from app.models import (
     GoodsReceipt,
     GoodsReceiptLine,
     InventoryBalance,
-    InventoryMovement,
+    InventoryTransaction,
     Product,
     Supplier,
     User,
@@ -26,6 +26,7 @@ COST_QUANT = Decimal("0.000001")
 QTY_QUANT = Decimal("0.001")
 ALLOCATION_METHODS = {"by_value", "by_quantity"}
 INVENTORY_MANAGER_ROLES = {"admin", "manager"}
+INVENTORY_OPERATIONAL_ROLES = {"admin", "manager", "seller"}
 
 
 def cost(value: Decimal) -> Decimal:
@@ -65,6 +66,14 @@ def require_inventory_manager(user: User | None) -> User:
         raise ValueError("Active Admin or Manager is required.")
     if not user.role or user.role.code not in INVENTORY_MANAGER_ROLES:
         raise ValueError("Only Admin or Manager can manage inventory costing.")
+    return user
+
+
+def require_inventory_operational_user(user: User | None) -> User:
+    if user is None or not user.is_active:
+        raise ValueError("Active user is required.")
+    if not user.role or user.role.code not in INVENTORY_OPERATIONAL_ROLES:
+        raise ValueError("User role is not allowed to create inventory transactions.")
     return user
 
 
@@ -319,6 +328,92 @@ def _get_or_create_balance(db: Session, *, product_id: int, location_id: int) ->
     return balance
 
 
+def _location(db: Session, location_id: int) -> WarehouseLocation:
+    location = db.get(WarehouseLocation, location_id)
+    if location is None or not location.is_active:
+        raise ValueError("Active warehouse location is required.")
+    return location
+
+
+def _ledger_state_from_transactions(db: Session, product_id: int) -> tuple[Decimal, Decimal, Decimal | None]:
+    transactions = (
+        db.query(InventoryTransaction)
+        .filter(InventoryTransaction.product_id == product_id)
+        .order_by(InventoryTransaction.created_at.asc(), InventoryTransaction.id.asc())
+        .all()
+    )
+    stock = sum((parse_decimal(row.quantity_change) for row in transactions), Decimal("0"))
+    value = sum((parse_decimal(row.total_inventory_cost) for row in transactions), Decimal("0"))
+    avg = cost(value / stock) if stock > 0 else None
+    return quantity(stock), money(value), avg
+
+
+def _create_transaction(
+    db: Session,
+    *,
+    product: Product,
+    location: WarehouseLocation,
+    transaction_type: str,
+    quantity_change: Decimal,
+    unit_cost_ex_vat: Decimal,
+    total_inventory_cost: Decimal,
+    created_by_user_id: int,
+    inventory_value_before: Decimal,
+    inventory_value_after: Decimal,
+    stock_before: Decimal,
+    stock_after: Decimal,
+    weighted_average_cost_before: Decimal | None,
+    weighted_average_cost_after: Decimal | None,
+    allocated_freight_cost: Decimal = Decimal("0.00"),
+    allocated_other_cost: Decimal = Decimal("0.00"),
+    supplier_id: int | None = None,
+    purchase_invoice_number: str | None = None,
+    delivery_note_number: str | None = None,
+    goods_receipt_id: int | None = None,
+    work_order_id: int | None = None,
+    sale_id: int | None = None,
+    adjustment_reason: str | None = None,
+    reference: str | None = None,
+    reversal_of_transaction_id: int | None = None,
+) -> InventoryTransaction:
+    transaction = InventoryTransaction(
+        product_id=product.id,
+        warehouse_id=location.warehouse_id,
+        shelf_location_id=location.id,
+        transaction_type=transaction_type,
+        quantity_change=quantity(quantity_change),
+        unit_cost_ex_vat=cost(unit_cost_ex_vat),
+        allocated_freight_cost=money(allocated_freight_cost),
+        allocated_other_cost=money(allocated_other_cost),
+        total_inventory_cost=money(total_inventory_cost),
+        inventory_value_before=money(inventory_value_before),
+        inventory_value_after=money(inventory_value_after),
+        stock_before=quantity(stock_before),
+        stock_after=quantity(stock_after),
+        weighted_average_cost_before=cost(weighted_average_cost_before) if weighted_average_cost_before is not None else None,
+        weighted_average_cost_after=cost(weighted_average_cost_after) if weighted_average_cost_after is not None else None,
+        supplier_id=supplier_id,
+        purchase_invoice_number=purchase_invoice_number,
+        delivery_note_number=delivery_note_number,
+        goods_receipt_id=goods_receipt_id,
+        work_order_id=work_order_id,
+        sale_id=sale_id,
+        adjustment_reason=adjustment_reason,
+        reference=reference,
+        created_by_user_id=created_by_user_id,
+        reversal_of_transaction_id=reversal_of_transaction_id,
+    )
+    db.add(transaction)
+    return transaction
+
+
+def _sync_product_cache(product: Product, *, stock: Decimal, value: Decimal, average_cost: Decimal | None) -> None:
+    product.current_inventory_quantity = quantity(stock)
+    product.current_inventory_value_ex_vat = money(value)
+    product.current_weighted_average_cost_ex_vat = cost(average_cost) if average_cost is not None else None
+    product.updated_at = utc_now()
+
+
 def post_goods_receipt(db: Session, *, goods_receipt_id: int, posted_by_user_id: int) -> GoodsReceipt:
     user = require_inventory_manager(db.get(User, posted_by_user_id))
     receipt = db.get(GoodsReceipt, goods_receipt_id)
@@ -331,11 +426,8 @@ def post_goods_receipt(db: Session, *, goods_receipt_id: int, posted_by_user_id:
     for item in preview["lines"]:
         line = item["line"]
         product = line.product
-        balance = _get_or_create_balance(
-            db,
-            product_id=line.product_id,
-            location_id=line.destination_location_id,
-        )
+        location = _location(db, line.destination_location_id)
+        balance = _get_or_create_balance(db, product_id=line.product_id, location_id=line.destination_location_id)
         old_product_qty = quantity(parse_decimal(product.current_inventory_quantity or 0))
         old_product_avg = cost(parse_decimal(product.current_weighted_average_cost_ex_vat or 0))
         old_product_value = money(parse_decimal(product.current_inventory_value_ex_vat if product.current_inventory_value_ex_vat is not None else old_product_qty * old_product_avg))
@@ -366,32 +458,33 @@ def post_goods_receipt(db: Session, *, goods_receipt_id: int, posted_by_user_id:
         balance.weighted_average_cost_ex_vat = cost(new_balance_value / new_balance_qty)
         balance.updated_at = utc_now()
 
-        product.current_inventory_quantity = new_product_qty
-        product.current_inventory_value_ex_vat = new_product_value
-        product.current_weighted_average_cost_ex_vat = new_product_avg
+        _sync_product_cache(product, stock=new_product_qty, value=new_product_value, average_cost=new_product_avg)
         product.current_purchase_price_ex_vat = line.purchase_unit_price_ex_vat
         product.current_purchase_price_inc_vat = line.purchase_unit_price_inc_vat
-        product.updated_at = utc_now()
 
-        movement = InventoryMovement(
-            product_id=line.product_id,
-            movement_type="goods_receipt",
-            quantity=received_qty,
-            warehouse_location_id=line.destination_location_id,
-            to_location_id=line.destination_location_id,
+        _create_transaction(
+            db,
+            product=product,
+            location=location,
+            transaction_type="purchase",
+            quantity_change=received_qty,
             unit_cost_ex_vat=item["landed_unit_cost_ex_vat"],
-            total_cost_ex_vat=landed_line_total,
+            allocated_freight_cost=item["allocated_freight_ex_vat"],
+            allocated_other_cost=item["allocated_other_costs_ex_vat"],
+            total_inventory_cost=landed_line_total,
+            inventory_value_before=old_product_value,
+            inventory_value_after=new_product_value,
+            stock_before=old_product_qty,
+            stock_after=new_product_qty,
+            weighted_average_cost_before=old_product_avg,
+            weighted_average_cost_after=new_product_avg,
+            supplier_id=receipt.supplier_id,
+            purchase_invoice_number=receipt.invoice_number,
+            delivery_note_number=receipt.delivery_number,
             goods_receipt_id=receipt.id,
             reference=receipt.delivery_number,
             created_by_user_id=user.id,
-            old_average_cost_ex_vat=old_product_avg,
-            new_average_cost_ex_vat=new_product_avg,
-            old_quantity=old_product_qty,
-            new_quantity=new_product_qty,
-            old_inventory_value_ex_vat=old_product_value,
-            new_inventory_value_ex_vat=new_product_value,
         )
-        db.add(movement)
 
     receipt.status = "posted"
     receipt.posted_at = utc_now()
@@ -420,23 +513,20 @@ def cancel_goods_receipt(db: Session, *, goods_receipt_id: int, user_id: int, re
     cancellation_reason = reason.strip()
     if not cancellation_reason:
         raise ValueError("Cancellation reason is required.")
-    original_movements = [
-        movement
-        for movement in receipt.movements
-        if movement.movement_type == "goods_receipt" and movement.reversal_of_movement_id is None
+    original_transactions = [
+        transaction
+        for transaction in receipt.transactions
+        if transaction.transaction_type == "purchase" and transaction.reversal_of_transaction_id is None
     ]
-    for movement in original_movements:
-        product = movement.product
-        balance = _get_or_create_balance(
-            db,
-            product_id=movement.product_id,
-            location_id=movement.to_location_id or movement.warehouse_location_id,
-        )
+    for transaction in original_transactions:
+        product = transaction.product
+        location = _location(db, transaction.shelf_location_id)
+        balance = _get_or_create_balance(db, product_id=transaction.product_id, location_id=location.id)
         old_qty = quantity(parse_decimal(product.current_inventory_quantity or 0))
         old_avg = cost(parse_decimal(product.current_weighted_average_cost_ex_vat or 0))
         old_value = money(parse_decimal(product.current_inventory_value_ex_vat or 0))
-        reverse_qty = quantity(parse_decimal(movement.quantity))
-        reverse_value = money(movement.total_cost_ex_vat)
+        reverse_qty = quantity(parse_decimal(transaction.quantity_change))
+        reverse_value = money(transaction.total_inventory_cost)
         if old_qty - reverse_qty < 0:
             raise ValueError("Cannot cancel receipt because it would create negative stock.")
         new_qty = quantity(old_qty - reverse_qty)
@@ -456,31 +546,30 @@ def cancel_goods_receipt(db: Session, *, goods_receipt_id: int, user_id: int, re
             else None
         )
         balance.updated_at = utc_now()
-
-        product.current_inventory_quantity = new_qty
-        product.current_inventory_value_ex_vat = new_value
-        product.current_weighted_average_cost_ex_vat = new_avg
-        product.updated_at = utc_now()
-        reversal = InventoryMovement(
-            product_id=movement.product_id,
-            movement_type="reversal",
-            quantity=quantity(-reverse_qty),
-            warehouse_location_id=movement.warehouse_location_id,
-            from_location_id=movement.to_location_id or movement.warehouse_location_id,
-            unit_cost_ex_vat=movement.unit_cost_ex_vat,
-            total_cost_ex_vat=money(-reverse_value),
+        _sync_product_cache(product, stock=new_qty, value=new_value, average_cost=new_avg)
+        _create_transaction(
+            db,
+            product=product,
+            location=location,
+            transaction_type="inventory_adjustment",
+            quantity_change=quantity(-reverse_qty),
+            unit_cost_ex_vat=transaction.unit_cost_ex_vat,
+            total_inventory_cost=money(-reverse_value),
+            inventory_value_before=old_value,
+            inventory_value_after=new_value,
+            stock_before=old_qty,
+            stock_after=new_qty,
+            weighted_average_cost_before=old_avg,
+            weighted_average_cost_after=new_avg,
+            supplier_id=transaction.supplier_id,
+            purchase_invoice_number=transaction.purchase_invoice_number,
+            delivery_note_number=transaction.delivery_note_number,
             goods_receipt_id=receipt.id,
-            reference=f"Reversal of movement {movement.id}",
+            adjustment_reason=cancellation_reason,
+            reference=f"Reversal of transaction {transaction.id}",
             created_by_user_id=user.id,
-            old_average_cost_ex_vat=old_avg,
-            new_average_cost_ex_vat=new_avg,
-            old_quantity=old_qty,
-            new_quantity=new_qty,
-            old_inventory_value_ex_vat=old_value,
-            new_inventory_value_ex_vat=new_value,
-            reversal_of_movement_id=movement.id,
+            reversal_of_transaction_id=transaction.id,
         )
-        db.add(reversal)
 
     receipt.status = "cancelled"
     receipt.cancelled_at = utc_now()
@@ -505,11 +594,13 @@ def issue_stock_for_sale(
     quantity_value,
     sale_id: int,
     created_by_user_id: int,
-) -> InventoryMovement:
-    user = require_inventory_manager(db.get(User, created_by_user_id))
+    commit: bool = True,
+) -> InventoryTransaction:
+    user = require_inventory_operational_user(db.get(User, created_by_user_id))
     product = db.get(Product, product_id)
     if product is None or not product.is_stock_item:
         raise ValueError("Stock product is required.")
+    location = _location(db, warehouse_location_id)
     balance = _get_or_create_balance(db, product_id=product_id, location_id=warehouse_location_id)
     qty = require_positive_quantity(quantity_value)
     old_qty = quantity(parse_decimal(product.current_inventory_quantity or 0))
@@ -534,39 +625,83 @@ def issue_stock_for_sale(
         if parse_decimal(balance.quantity_on_hand) > 0
         else None
     )
-
-    product.current_inventory_quantity = new_qty
-    product.current_inventory_value_ex_vat = new_value
-    product.current_weighted_average_cost_ex_vat = new_avg
-    movement = InventoryMovement(
-        product_id=product_id,
-        movement_type="sale_issue",
-        quantity=quantity(-qty),
-        warehouse_location_id=warehouse_location_id,
-        from_location_id=warehouse_location_id,
+    _sync_product_cache(product, stock=new_qty, value=new_value, average_cost=new_avg)
+    transaction = _create_transaction(
+        db,
+        product=product,
+        location=location,
+        transaction_type="sale",
+        quantity_change=quantity(-qty),
         unit_cost_ex_vat=old_avg,
-        total_cost_ex_vat=money(-total_cost),
+        total_inventory_cost=money(-total_cost),
+        inventory_value_before=old_value,
+        inventory_value_after=new_value,
+        stock_before=old_qty,
+        stock_after=new_qty,
+        weighted_average_cost_before=old_avg,
+        weighted_average_cost_after=new_avg,
         sale_id=sale_id,
         created_by_user_id=user.id,
-        old_average_cost_ex_vat=old_avg,
-        new_average_cost_ex_vat=new_avg,
-        old_quantity=old_qty,
-        new_quantity=new_qty,
-        old_inventory_value_ex_vat=old_value,
-        new_inventory_value_ex_vat=new_value,
     )
-    db.add(movement)
     db.flush()
     log_audit_event(
         db,
         event_type="inventory.sale_issue",
-        entity_type="inventory_movement",
-        entity_id=movement.id,
+        entity_type="inventory_transaction",
+        entity_id=transaction.id,
         description=f"Sale issue recorded for product {product.name}: {qty} at {old_avg}.",
     )
-    db.commit()
-    db.refresh(movement)
-    return movement
+    if commit:
+        db.commit()
+        db.refresh(transaction)
+    return transaction
+
+
+def issue_stock_for_sale_from_available_locations(
+    db: Session,
+    *,
+    product_id: int,
+    quantity_value,
+    sale_id: int,
+    created_by_user_id: int,
+    commit: bool = True,
+) -> list[InventoryTransaction]:
+    qty_remaining = require_positive_quantity(quantity_value)
+    transactions: list[InventoryTransaction] = []
+    balances = (
+        db.query(InventoryBalance)
+        .filter(InventoryBalance.product_id == product_id, InventoryBalance.quantity_on_hand > 0)
+        .order_by(InventoryBalance.warehouse_location_id.asc())
+        .all()
+    )
+    total_available = quantity(
+        sum((parse_decimal(balance.quantity_on_hand or 0) for balance in balances), Decimal("0"))
+    )
+    if total_available < qty_remaining:
+        raise ValueError("Negative stock is not allowed.")
+    for balance in balances:
+        if qty_remaining <= 0:
+            break
+        issue_qty = min(qty_remaining, quantity(parse_decimal(balance.quantity_on_hand)))
+        transactions.append(
+            issue_stock_for_sale(
+                db,
+                product_id=product_id,
+                warehouse_location_id=balance.warehouse_location_id,
+                quantity_value=issue_qty,
+                sale_id=sale_id,
+                created_by_user_id=created_by_user_id,
+                commit=False,
+            )
+        )
+        qty_remaining = quantity(qty_remaining - issue_qty)
+    if qty_remaining > 0:
+        raise ValueError("Negative stock is not allowed.")
+    if commit:
+        db.commit()
+        for transaction in transactions:
+            db.refresh(transaction)
+    return transactions
 
 
 def transfer_stock(
@@ -577,11 +712,13 @@ def transfer_stock(
     to_location_id: int,
     quantity_value,
     created_by_user_id: int,
-) -> list[InventoryMovement]:
+) -> list[InventoryTransaction]:
     user = require_inventory_manager(db.get(User, created_by_user_id))
     product = db.get(Product, product_id)
     if product is None or not product.is_stock_item:
         raise ValueError("Stock product is required.")
+    source_location = _location(db, from_location_id)
+    target_location = _location(db, to_location_id)
     source = _get_or_create_balance(db, product_id=product_id, location_id=from_location_id)
     target = _get_or_create_balance(db, product_id=product_id, location_id=to_location_id)
     qty = require_positive_quantity(quantity_value)
@@ -590,6 +727,8 @@ def transfer_stock(
     if parse_decimal(source.quantity_on_hand or 0) - qty < 0:
         raise ValueError("Negative stock is not allowed.")
 
+    product_qty = quantity(parse_decimal(product.current_inventory_quantity or 0))
+    product_value = money(parse_decimal(product.current_inventory_value_ex_vat or 0))
     source.quantity_on_hand = quantity(parse_decimal(source.quantity_on_hand) - qty)
     source.quantity_available = quantity(parse_decimal(source.quantity_on_hand) - parse_decimal(source.quantity_reserved or 0))
     source.inventory_value_ex_vat = money(parse_decimal(source.inventory_value_ex_vat or 0) - total_value)
@@ -603,61 +742,130 @@ def transfer_stock(
     target.inventory_value_ex_vat = money(parse_decimal(target.inventory_value_ex_vat or 0) + total_value)
     target.weighted_average_cost_ex_vat = cost(parse_decimal(target.inventory_value_ex_vat) / parse_decimal(target.quantity_on_hand))
 
-    outgoing = InventoryMovement(
-        product_id=product_id,
-        movement_type="transfer",
-        quantity=quantity(-qty),
-        from_location_id=from_location_id,
-        to_location_id=to_location_id,
+    outgoing = _create_transaction(
+        db,
+        product=product,
+        location=source_location,
+        transaction_type="shelf_transfer",
+        quantity_change=quantity(-qty),
         unit_cost_ex_vat=avg,
-        total_cost_ex_vat=money(-total_value),
+        total_inventory_cost=money(-total_value),
+        inventory_value_before=product_value,
+        inventory_value_after=product_value,
+        stock_before=product_qty,
+        stock_after=product_qty,
+        weighted_average_cost_before=avg,
+        weighted_average_cost_after=avg,
+        reference=f"Transfer to {target_location.code}",
         created_by_user_id=user.id,
     )
-    incoming = InventoryMovement(
-        product_id=product_id,
-        movement_type="transfer",
-        quantity=qty,
-        from_location_id=from_location_id,
-        to_location_id=to_location_id,
+    incoming = _create_transaction(
+        db,
+        product=product,
+        location=target_location,
+        transaction_type="shelf_transfer",
+        quantity_change=qty,
         unit_cost_ex_vat=avg,
-        total_cost_ex_vat=total_value,
+        total_inventory_cost=total_value,
+        inventory_value_before=product_value,
+        inventory_value_after=product_value,
+        stock_before=product_qty,
+        stock_after=product_qty,
+        weighted_average_cost_before=avg,
+        weighted_average_cost_after=avg,
+        reference=f"Transfer from {source_location.code}",
         created_by_user_id=user.id,
     )
-    db.add_all([outgoing, incoming])
     db.commit()
     db.refresh(outgoing)
     db.refresh(incoming)
     return [outgoing, incoming]
 
 
+def inventory_ledger(
+    db: Session,
+    *,
+    product_id: int | None = None,
+    warehouse_id: int | None = None,
+    supplier_id: int | None = None,
+    transaction_type: str | None = None,
+    user_id: int | None = None,
+    date_from=None,
+    date_to=None,
+) -> list[InventoryTransaction]:
+    query = db.query(InventoryTransaction)
+    if product_id:
+        query = query.filter(InventoryTransaction.product_id == product_id)
+    if warehouse_id:
+        query = query.filter(InventoryTransaction.warehouse_id == warehouse_id)
+    if supplier_id:
+        query = query.filter(InventoryTransaction.supplier_id == supplier_id)
+    if transaction_type:
+        query = query.filter(InventoryTransaction.transaction_type == transaction_type)
+    if user_id:
+        query = query.filter(InventoryTransaction.created_by_user_id == user_id)
+    if date_from:
+        query = query.filter(InventoryTransaction.created_at >= date_from)
+    if date_to:
+        query = query.filter(InventoryTransaction.created_at <= date_to)
+    return query.order_by(InventoryTransaction.created_at.asc(), InventoryTransaction.id.asc()).all()
+
+
+def product_cost_profile(db: Session, product_id: int) -> dict:
+    product = db.get(Product, product_id)
+    if product is None:
+        raise ValueError("Product not found.")
+    purchases = (
+        db.query(InventoryTransaction)
+        .filter(InventoryTransaction.product_id == product_id, InventoryTransaction.transaction_type == "purchase")
+        .order_by(InventoryTransaction.created_at.desc(), InventoryTransaction.id.desc())
+        .all()
+    )
+    purchase_costs = [parse_decimal(row.unit_cost_ex_vat) for row in purchases]
+    last_purchase = purchases[0] if purchases else None
+    return {
+        "product": product,
+        "current_quantity": product.current_inventory_quantity or Decimal("0"),
+        "inventory_value": product.current_inventory_value_ex_vat or Decimal("0"),
+        "weighted_average_cost": product.current_weighted_average_cost_ex_vat,
+        "last_purchase_price": last_purchase.unit_cost_ex_vat if last_purchase else None,
+        "highest_purchase_price": max(purchase_costs) if purchase_costs else None,
+        "lowest_purchase_price": min(purchase_costs) if purchase_costs else None,
+        "last_supplier": last_purchase.supplier if last_purchase else None,
+        "last_purchase_date": last_purchase.created_at if last_purchase else None,
+        "purchase_history": purchases,
+        "ledger_state": _ledger_state_from_transactions(db, product_id),
+    }
+
+
 def inventory_valuation(db: Session) -> dict:
-    balances = db.query(InventoryBalance).all()
     by_product = defaultdict(lambda: {"quantity": Decimal("0"), "value": Decimal("0")})
     by_warehouse = defaultdict(lambda: {"warehouse": None, "value": Decimal("0")})
-    for balance in balances:
-        by_product[balance.product_id]["product"] = balance.product
-        by_product[balance.product_id]["quantity"] += parse_decimal(balance.quantity_on_hand or 0)
-        by_product[balance.product_id]["value"] += parse_decimal(balance.inventory_value_ex_vat or 0)
-        warehouse = balance.warehouse_location.warehouse
-        by_warehouse[warehouse.id]["warehouse"] = warehouse
-        by_warehouse[warehouse.id]["value"] += parse_decimal(balance.inventory_value_ex_vat or 0)
+    transactions = db.query(InventoryTransaction).all()
+    for transaction in transactions:
+        by_product[transaction.product_id]["product"] = transaction.product
+        by_product[transaction.product_id]["quantity"] += parse_decimal(transaction.quantity_change or 0)
+        by_product[transaction.product_id]["value"] += parse_decimal(transaction.total_inventory_cost or 0)
+        if transaction.warehouse_id:
+            by_warehouse[transaction.warehouse_id]["warehouse"] = transaction.warehouse
+            by_warehouse[transaction.warehouse_id]["value"] += parse_decimal(transaction.total_inventory_cost or 0)
     products_without_cost = (
         db.query(Product)
         .filter(Product.is_stock_item.is_(True), Product.current_weighted_average_cost_ex_vat.is_(None))
         .all()
     )
-    movements_total = sum((parse_decimal(movement.total_cost_ex_vat) for movement in db.query(InventoryMovement).all()), Decimal("0"))
-    balances_total = sum((values["value"] for values in by_product.values()), Decimal("0"))
+    transactions_total = sum((parse_decimal(transaction.total_inventory_cost) for transaction in transactions), Decimal("0"))
     return {
-        "total_inventory_value_ex_vat": money(balances_total),
-        "movement_ledger_value_ex_vat": money(movements_total),
+        "total_inventory_value_ex_vat": money(transactions_total),
+        "transaction_ledger_value_ex_vat": money(transactions_total),
+        "movement_ledger_value_ex_vat": money(transactions_total),
         "by_product": list(by_product.values()),
         "by_warehouse": list(by_warehouse.values()),
         "products_without_cost": products_without_cost,
         "recent_cost_changes": (
-            db.query(InventoryMovement)
-            .filter(InventoryMovement.new_average_cost_ex_vat.is_not(None))
-            .order_by(InventoryMovement.occurred_at.desc())
+            db.query(InventoryTransaction)
+            .filter(InventoryTransaction.weighted_average_cost_after.is_not(None))
+            .order_by(InventoryTransaction.created_at.desc(), InventoryTransaction.id.desc())
             .limit(20)
             .all()
         ),

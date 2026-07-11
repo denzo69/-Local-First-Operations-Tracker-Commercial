@@ -42,6 +42,7 @@
             <a class="sidebar-link {% if active_page == 'reports' %}active{% endif %}" href="/reports"><span class="nav-icon" aria-hidden="true">SR</span><span>{{ t.reports }}</span></a>
             <a class="sidebar-link {% if active_page == 'seller_reports' %}active{% endif %}" href="/seller-reports"><span class="nav-icon" aria-hidden="true">SE</span><span>{{ t.seller_reports }}</span></a>
             <a class="sidebar-link {% if active_page == 'inventory_valuation' %}active{% endif %}" href="/inventory/valuation"><span class="nav-icon" aria-hidden="true">IV</span><span>{{ t.inventory_valuation }}</span></a>
+            <a class="sidebar-link {% if active_page == 'inventory_ledger' %}active{% endif %}" href="/inventory/ledger"><span class="nav-icon" aria-hidden="true">IL</span><span>{{ t.inventory_ledger }}</span></a>
         </div>
         <div class="sidebar-group">
             <div class="sidebar-group-label">{{ t.administration }}</div>
@@ -78,6 +79,7 @@
             <a class="sidebar-link" href="/reports">{{ t.reports }}</a>
             <a class="sidebar-link" href="/seller-reports">{{ t.seller_reports }}</a>
             <a class="sidebar-link" href="/inventory/valuation">{{ t.inventory_valuation }}</a>
+            <a class="sidebar-link" href="/inventory/ledger">{{ t.inventory_ledger }}</a>
             <div class="sidebar-group-label">{{ t.administration }}</div>
             <a class="sidebar-link" href="/users">{{ t.users }}</a>
             <a class="sidebar-link" href="/cash-registers">{{ t.cash_registers }}</a>

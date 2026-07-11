@@ -25,6 +25,16 @@ def upgrade() -> None:
     op.add_column("products", sa.Column("current_purchase_price_inc_vat", sa.Numeric(12, 2), nullable=True))
     op.execute("UPDATE products SET current_inventory_quantity = 0 WHERE current_inventory_quantity IS NULL")
     op.execute("UPDATE products SET current_inventory_value_ex_vat = 0 WHERE current_inventory_value_ex_vat IS NULL")
+    op.add_column("sales", sa.Column("cost_of_goods_sold_ex_vat", sa.Numeric(12, 2), nullable=True))
+    op.add_column("sales", sa.Column("gross_profit_ex_vat", sa.Numeric(12, 2), nullable=True))
+    op.add_column("sales", sa.Column("gross_margin_percent", sa.Numeric(7, 3), nullable=True))
+    op.add_column("sale_lines", sa.Column("cost_of_goods_sold_ex_vat", sa.Numeric(12, 2), nullable=True))
+    op.add_column("sale_lines", sa.Column("gross_profit_ex_vat", sa.Numeric(12, 2), nullable=True))
+    op.add_column("sale_lines", sa.Column("gross_margin_percent", sa.Numeric(7, 3), nullable=True))
+    op.execute("UPDATE sales SET cost_of_goods_sold_ex_vat = 0 WHERE cost_of_goods_sold_ex_vat IS NULL")
+    op.execute("UPDATE sales SET gross_profit_ex_vat = 0 WHERE gross_profit_ex_vat IS NULL")
+    op.execute("UPDATE sale_lines SET cost_of_goods_sold_ex_vat = 0 WHERE cost_of_goods_sold_ex_vat IS NULL")
+    op.execute("UPDATE sale_lines SET gross_profit_ex_vat = 0 WHERE gross_profit_ex_vat IS NULL")
 
     op.create_table(
         "suppliers",
@@ -135,40 +145,55 @@ def upgrade() -> None:
     op.create_index("ix_goods_receipt_lines_id", "goods_receipt_lines", ["id"])
 
     op.create_table(
-        "inventory_movements",
+        "inventory_transactions",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("product_id", sa.Integer(), sa.ForeignKey("products.id"), nullable=False),
-        sa.Column("movement_type", sa.String(50), nullable=False),
-        sa.Column("quantity", sa.Numeric(18, 3), nullable=False),
-        sa.Column("warehouse_location_id", sa.Integer(), sa.ForeignKey("warehouse_locations.id"), nullable=True),
-        sa.Column("from_location_id", sa.Integer(), sa.ForeignKey("warehouse_locations.id"), nullable=True),
-        sa.Column("to_location_id", sa.Integer(), sa.ForeignKey("warehouse_locations.id"), nullable=True),
+        sa.Column("warehouse_id", sa.Integer(), sa.ForeignKey("warehouses.id"), nullable=False),
+        sa.Column("shelf_location_id", sa.Integer(), sa.ForeignKey("warehouse_locations.id"), nullable=True),
+        sa.Column("transaction_type", sa.String(50), nullable=False),
+        sa.Column("quantity_change", sa.Numeric(18, 3), nullable=False),
         sa.Column("unit_cost_ex_vat", sa.Numeric(18, 6), nullable=False),
-        sa.Column("total_cost_ex_vat", sa.Numeric(18, 2), nullable=False),
+        sa.Column("allocated_freight_cost", sa.Numeric(12, 2), nullable=True),
+        sa.Column("allocated_other_cost", sa.Numeric(12, 2), nullable=True),
+        sa.Column("total_inventory_cost", sa.Numeric(18, 2), nullable=False),
+        sa.Column("inventory_value_before", sa.Numeric(18, 2), nullable=False),
+        sa.Column("inventory_value_after", sa.Numeric(18, 2), nullable=False),
+        sa.Column("stock_before", sa.Numeric(18, 3), nullable=False),
+        sa.Column("stock_after", sa.Numeric(18, 3), nullable=False),
+        sa.Column("weighted_average_cost_before", sa.Numeric(18, 6), nullable=True),
+        sa.Column("weighted_average_cost_after", sa.Numeric(18, 6), nullable=True),
+        sa.Column("supplier_id", sa.Integer(), sa.ForeignKey("suppliers.id"), nullable=True),
+        sa.Column("purchase_invoice_number", sa.String(100), nullable=True),
+        sa.Column("delivery_note_number", sa.String(100), nullable=True),
         sa.Column("goods_receipt_id", sa.Integer(), sa.ForeignKey("goods_receipts.id"), nullable=True),
+        sa.Column("work_order_id", sa.Integer(), sa.ForeignKey("jobs.id"), nullable=True),
         sa.Column("sale_id", sa.Integer(), sa.ForeignKey("sales.id"), nullable=True),
+        sa.Column("adjustment_reason", sa.Text(), nullable=True),
         sa.Column("reference", sa.String(255), nullable=True),
-        sa.Column("occurred_at", sa.DateTime(), nullable=True),
-        sa.Column("created_at", sa.DateTime(), nullable=True),
         sa.Column("created_by_user_id", sa.Integer(), sa.ForeignKey("users.id"), nullable=False),
-        sa.Column("old_average_cost_ex_vat", sa.Numeric(18, 6), nullable=True),
-        sa.Column("new_average_cost_ex_vat", sa.Numeric(18, 6), nullable=True),
-        sa.Column("old_quantity", sa.Numeric(18, 3), nullable=True),
-        sa.Column("new_quantity", sa.Numeric(18, 3), nullable=True),
-        sa.Column("old_inventory_value_ex_vat", sa.Numeric(18, 2), nullable=True),
-        sa.Column("new_inventory_value_ex_vat", sa.Numeric(18, 2), nullable=True),
-        sa.Column("reversal_of_movement_id", sa.Integer(), sa.ForeignKey("inventory_movements.id"), nullable=True),
+        sa.Column("created_at", sa.DateTime(), nullable=True),
+        sa.Column("reversal_of_transaction_id", sa.Integer(), sa.ForeignKey("inventory_transactions.id"), nullable=True),
     )
-    op.create_index("ix_inventory_movements_id", "inventory_movements", ["id"])
-    op.create_index("ix_inventory_movements_movement_type", "inventory_movements", ["movement_type"])
-    op.create_index("ix_inventory_movements_occurred_at", "inventory_movements", ["occurred_at"])
+    op.create_index("ix_inventory_transactions_id", "inventory_transactions", ["id"])
+    op.create_index("ix_inventory_transactions_warehouse_id", "inventory_transactions", ["warehouse_id"])
+    op.create_index("ix_inventory_transactions_shelf_location_id", "inventory_transactions", ["shelf_location_id"])
+    op.create_index("ix_inventory_transactions_transaction_type", "inventory_transactions", ["transaction_type"])
+    op.create_index("ix_inventory_transactions_supplier_id", "inventory_transactions", ["supplier_id"])
+    op.create_index("ix_inventory_transactions_purchase_invoice_number", "inventory_transactions", ["purchase_invoice_number"])
+    op.create_index("ix_inventory_transactions_delivery_note_number", "inventory_transactions", ["delivery_note_number"])
+    op.create_index("ix_inventory_transactions_created_at", "inventory_transactions", ["created_at"])
 
 
 def downgrade() -> None:
-    op.drop_index("ix_inventory_movements_occurred_at", table_name="inventory_movements")
-    op.drop_index("ix_inventory_movements_movement_type", table_name="inventory_movements")
-    op.drop_index("ix_inventory_movements_id", table_name="inventory_movements")
-    op.drop_table("inventory_movements")
+    op.drop_index("ix_inventory_transactions_created_at", table_name="inventory_transactions")
+    op.drop_index("ix_inventory_transactions_delivery_note_number", table_name="inventory_transactions")
+    op.drop_index("ix_inventory_transactions_purchase_invoice_number", table_name="inventory_transactions")
+    op.drop_index("ix_inventory_transactions_supplier_id", table_name="inventory_transactions")
+    op.drop_index("ix_inventory_transactions_transaction_type", table_name="inventory_transactions")
+    op.drop_index("ix_inventory_transactions_shelf_location_id", table_name="inventory_transactions")
+    op.drop_index("ix_inventory_transactions_warehouse_id", table_name="inventory_transactions")
+    op.drop_index("ix_inventory_transactions_id", table_name="inventory_transactions")
+    op.drop_table("inventory_transactions")
     op.drop_index("ix_goods_receipt_lines_id", table_name="goods_receipt_lines")
     op.drop_table("goods_receipt_lines")
     op.drop_index("ix_goods_receipts_status", table_name="goods_receipts")
@@ -189,6 +214,12 @@ def downgrade() -> None:
     op.drop_index("ix_suppliers_name", table_name="suppliers")
     op.drop_index("ix_suppliers_id", table_name="suppliers")
     op.drop_table("suppliers")
+    op.drop_column("sale_lines", "gross_margin_percent")
+    op.drop_column("sale_lines", "gross_profit_ex_vat")
+    op.drop_column("sale_lines", "cost_of_goods_sold_ex_vat")
+    op.drop_column("sales", "gross_margin_percent")
+    op.drop_column("sales", "gross_profit_ex_vat")
+    op.drop_column("sales", "cost_of_goods_sold_ex_vat")
     op.drop_column("products", "current_purchase_price_inc_vat")
     op.drop_column("products", "current_purchase_price_ex_vat")
     op.drop_column("products", "current_inventory_value_ex_vat")
