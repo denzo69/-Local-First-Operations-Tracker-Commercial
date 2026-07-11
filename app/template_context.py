@@ -15,11 +15,18 @@ def inject_global_template_context(request: Request) -> dict:
     try:
         app_settings = get_app_settings(db)
         language = app_settings.get("language", "en")
+        current_user = getattr(request.state, "current_user", None)
         return {
             "language": language,
             "t": get_translations(language),
             "current_date": date.today(),
-            "current_operator_label": get_translations(language)["operator_placeholder"],
+            "current_user": current_user,
+            "is_authenticated": current_user is not None,
+            "current_operator_label": (
+                current_user.name
+                if current_user is not None
+                else get_translations(language)["operator_placeholder"]
+            ),
             "open_shift_count": db.query(Shift).filter(Shift.status == "open").count(),
             "status_label": lambda status_name: translate_status(status_name, language),
         }

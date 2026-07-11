@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="auth-card panel">
+    <div>
+        <p class="eyebrow">{{ t.secure_access }}</p>
+        <h2>{{ t.login }}</h2>
+        <p class="text-muted">{{ t.login_help }}</p>
+    </div>
+
+    {% if not auth_configured %}
+    <div class="alert alert-warning">
+        {{ t.auth_not_configured }}
+    </div>
+    <a class="btn btn-primary" href="/setup">{{ t.create_first_admin }}</a>
+    {% else %}
+    {% if error_key %}
+    <div class="alert alert-danger">{{ t[error_key] }}</div>
+    {% endif %}
+    <form method="post" action="/login" class="stacked-form">
+        <input type="hidden" name="next_url" value="{{ next_url }}">
+        <div>
+            <label class="form-label" for="login_name">{{ t.login_name }}</label>
+            <input class="form-control" id="login_name" name="login_name" autocomplete="username" required autofocus>
+        </div>
+        <div>
+            <label class="form-label" for="password">{{ t.password }}</label>
+            <input class="form-control" id="password" name="password" type="password" autocomplete="current-password" required>
+        </div>
+        <button class="btn btn-primary" type="submit">{{ t.login }}</button>
+    </form>
+    {% endif %}
+</section>
+{% endblock %}

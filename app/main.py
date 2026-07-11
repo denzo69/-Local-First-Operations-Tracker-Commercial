@@ -8,12 +8,14 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.auth_middleware import authentication_middleware
 from app.config import get_settings
 from app.database import get_db, init_db
 from app.error_handlers import register_error_handlers
 from app.models import AuditLog, DailyClosing, Job, Refund, Sale, Shift
 from app.routes import (
     audit_log,
+    auth,
     backups,
     cash_registers,
     customers,
@@ -47,6 +49,8 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 register_error_handlers(app)
+app.middleware("http")(authentication_middleware)
+app.include_router(auth.router)
 app.include_router(backups.router)
 app.include_router(customers.router)
 app.include_router(work_orders.router)

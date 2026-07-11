@@ -27,7 +27,7 @@ The app is not intended to be exposed directly to the public internet.
 - Printable receipt / work order preview with stored print snapshot
 - Settings for company details, VAT default, receipt prefix, and language
 - Finnish and English UI text baseline
-- Seller accounts and operational roles for Admin, Manager, Seller, and Read only
+- Local login with signed session cookie, first-admin setup, password hashes, and operational roles for Admin, Manager, Seller, and Read only
 - Cash registers and seller shifts with starting cash, cash movements, closing count, expected cash, and over/short calculation
 - Sales, payments, and refunds stored separately from Work Orders
 - Daily closing with immutable versioned snapshots, closed-day write lock, VAT/payment/seller summaries, and authorized reopen flow
@@ -44,9 +44,8 @@ The app is not intended to be exposed directly to the public internet.
 
 ## Known Limitations
 
-- No authentication or user permissions yet
-- Seller and admin IDs are still selected from forms. Role checks are business-rule validation only and must not be treated as secure authorization.
-- Daily closing reopen currently depends on selected Admin/Manager IDs until a real current-user/session mechanism exists.
+- Authentication is local-session based and intended for a trusted company network; it is not hardened for public internet exposure
+- Some operational forms still preserve seller/admin selectors for MVP workflows. Route-level session checks now protect access, but deeper current-user ownership enforcement is still a future hardening step.
 - No cloud deployment, Docker, PostgreSQL, or object storage
 - No native mobile application
 - No automatic background backup scheduler yet
@@ -74,9 +73,13 @@ Daily closing rules:
 - Refund VAT is stored with the refund. Single-VAT sales are supported; multi-VAT refunds require future line allocation.
 - Snapshot version history is available from the Daily Closing detail page.
 
-Security limitation:
+Security notes:
 
-- The current MVP has no login session or authenticated current user. Forms that ask for seller/admin users are operational placeholders, not security controls.
+- Create the first admin at `/setup`, then use `/login`.
+- Passwords are stored as PBKDF2-SHA256 hashes.
+- Signed HTTP-only session cookies are used for local browser sessions.
+- Admin and Manager roles can access administration routes. Read only users cannot perform write requests.
+- The app is still not intended to be exposed directly to the public internet.
 
 ## Technology Stack
 
@@ -108,6 +111,12 @@ Open:
 
 ```text
 http://127.0.0.1:8000
+```
+
+Create the first admin account:
+
+```text
+http://127.0.0.1:8000/setup
 ```
 
 Health check:

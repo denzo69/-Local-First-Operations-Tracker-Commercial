@@ -384,6 +384,17 @@ button:focus-visible,
     gap: .75rem;
 }
 
+.auth-card {
+    display: grid;
+    gap: 1rem;
+    max-width: 520px;
+}
+
+.stacked-form {
+    display: grid;
+    gap: 1rem;
+}
+
 @media (min-width: 992px) {
     .app-shell {
         margin-left: var(--sidebar-width);
