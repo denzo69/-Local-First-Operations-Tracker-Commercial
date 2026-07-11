@@ -9,19 +9,20 @@
     <a class="btn btn-primary" href="/customers/new">+ New customer</a>
 </div>
 
-<form class="mb-3" method="get" action="/customers">
+<form class="mb-3" method="get" action="/customers" data-live-filter-form data-live-filter-target="#customerList">
     <div class="input-group">
-        <input class="form-control" name="q" value="{{ q }}" placeholder="Search customers, phone, email, company">
-        <button class="btn btn-outline-secondary" type="submit">Search</button>
+        <input class="form-control" name="q" value="{{ q }}" placeholder="Search customers, phone, email, company" data-live-filter-input>
+        <button class="btn btn-outline-secondary" type="submit">{{ t.search }}</button>
     </div>
+    <div class="form-text" data-live-filter-count></div>
 </form>
 
 <div class="card shadow-sm border-0">
     <div class="card-body p-0">
         {% if customers %}
-        <div class="list-group list-group-flush">
+        <div class="list-group list-group-flush searchable-list" id="customerList">
             {% for customer in customers %}
-            <a class="list-group-item list-group-item-action py-3" href="/customers/{{ customer.id }}">
+            <a class="list-group-item list-group-item-action py-3 searchable-item" href="/customers/{{ customer.id }}" data-search-text="{{ customer.name }} {{ customer.company_name or '' }} {{ customer.phone or '' }} {{ customer.email or '' }} {{ customer.business_id or '' }}">
                 <div class="d-flex justify-content-between gap-3">
                     <div>
                         <div class="fw-semibold">{{ customer.name }}</div>
@@ -33,6 +34,7 @@
                 </div>
             </a>
             {% endfor %}
+            <div class="p-4 text-muted d-none" data-live-filter-empty>{{ t.no_results }}</div>
         </div>
         {% else %}
         <div class="p-4 text-muted">No customers yet.</div>

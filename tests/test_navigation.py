@@ -136,6 +136,8 @@ def test_static_scripts_are_served():
     assert bootstrap.status_code == 200
     assert "Offcanvas" in bootstrap.text
     assert app_js.status_code == 200
+    assert "data-live-filter-form" in app_js.text
+    assert "data-search-text" in app_js.text
 
 
 def test_dashboard_shows_created_job():
