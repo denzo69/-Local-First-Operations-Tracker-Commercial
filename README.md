@@ -8,6 +8,22 @@ This project demonstrates a pragmatic FastAPI business application built around 
 
 The goal is not to imitate a SaaS landing page. The app focuses on operational correctness, auditability, local-first use, and maintainable server-rendered workflows that can run on a company-owned computer and be accessed from nearby devices.
 
+## UI Preview
+
+The current dashboard is designed as an operations view rather than a marketing page. It shows daily work order pressure, shift status, daily closing state, recent activity, and upcoming work in one browser screen.
+
+More UI screenshots are available in [`docs/UI/Screenshots.md`](docs/UI/Screenshots.md).
+
+### Browser Dashboard
+
+![Browser dashboard](docs/UI/screenshots/dashboard-desktop.png)
+
+### Mobile Dashboard
+
+The mobile layout uses the same server-rendered UI with a single-column dashboard suitable for phone use over LAN or Tailscale.
+
+![Mobile dashboard](docs/UI/screenshots/dashboard-mobile.png)
+
 ## Current MVP Status
 
 This repository contains an early but usable FastAPI MVP. It is intended to run on one company-owned Windows computer and serve other computers, tablets, and phones through a browser on the local network or through Tailscale.
