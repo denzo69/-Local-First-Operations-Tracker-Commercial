@@ -1,12 +1,14 @@
 # Local-First Operations Tracker
 
-A configurable local-first work order and operations tracker for small businesses.
+A lightweight local-first ERP and CRM workspace for small businesses, sole traders, and small teams.
+
+It brings customer management, work orders, products, sales, cash handling, daily closing, reporting, audit history, and backups into one practical browser-based application that can run on company-owned hardware.
 
 ## Portfolio Summary
 
-This project demonstrates a pragmatic FastAPI business application built around real small-business workflows: work orders, customer history, product pricing, receipts, seller shifts, sales, refunds, cash handling, daily closing, immutable financial snapshots, backups, and bilingual Finnish/English UI support.
+This project demonstrates a pragmatic FastAPI business application built around real small-business workflows: CRM, work orders, customer history, product pricing, receipts, seller shifts, sales, refunds, cash handling, daily closing, immutable financial snapshots, backups, and bilingual Finnish/English UI support.
 
-The goal is not to imitate a SaaS landing page. The app focuses on operational correctness, auditability, local-first use, and maintainable server-rendered workflows that can run on a company-owned computer and be accessed from nearby devices.
+The goal is not to imitate a heavyweight enterprise suite or a polished SaaS landing page. The app focuses on understandable workflows, operational correctness, auditability, local-first use, and maintainable server-rendered screens that can run on a company-owned computer and be accessed from nearby devices.
 
 ## UI Preview
 
