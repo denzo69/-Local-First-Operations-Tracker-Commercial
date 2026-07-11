@@ -81,6 +81,21 @@ def test_customers_can_be_searched():
     assert "Test Customer" in response.text
 
 
+def test_customer_list_has_live_filter_markup():
+    with TestClient(app) as client:
+        client.post(
+            "/customers",
+            data={"name": "Test Customer", "phone": "040 123 4567"},
+            follow_redirects=False,
+        )
+        response = client.get("/customers")
+
+    assert response.status_code == 200
+    assert "data-live-filter-form" in response.text
+    assert "data-live-filter-input" in response.text
+    assert "data-search-text" in response.text
+
+
 def test_customer_with_job_history_cannot_be_deleted():
     with TestClient(app) as client:
         customer_response = client.post(

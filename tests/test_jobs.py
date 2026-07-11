@@ -230,6 +230,21 @@ def test_jobs_can_be_searched():
     assert "Test job searchable" in response.text
 
 
+def test_job_list_has_live_filter_markup():
+    with TestClient(app) as client:
+        client.post(
+            "/jobs",
+            data={"title": "Test job live filter"},
+            follow_redirects=False,
+        )
+        response = client.get("/jobs?view=all")
+
+    assert response.status_code == 200
+    assert "data-live-filter-form" in response.text
+    assert "data-live-filter-input" in response.text
+    assert "data-search-text" in response.text
+
+
 def test_jobs_can_be_searched_by_receipt_number():
     with TestClient(app) as client:
         customer_response = client.post(

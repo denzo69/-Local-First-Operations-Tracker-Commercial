@@ -368,6 +368,18 @@ button:focus-visible,
     font-size: .8rem;
 }
 
+.searchable-list .list-group-item {
+    transition: background-color .12s ease, border-color .12s ease;
+}
+
+.searchable-item .text-muted {
+    overflow-wrap: anywhere;
+}
+
+.form-text[data-live-filter-count] {
+    min-height: 1.25rem;
+}
+
 .error-page {
     display: grid;
     gap: 1.25rem;
@@ -432,6 +444,11 @@ button:focus-visible,
 
     .app-main {
         padding: 1rem;
+    }
+
+    .searchable-item .d-flex {
+        align-items: flex-start;
+        flex-direction: column;
     }
 }
 
