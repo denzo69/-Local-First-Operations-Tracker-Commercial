@@ -22,6 +22,7 @@ def test_alembic_upgrade_head_creates_current_schema(tmp_path):
     assert "daily_closing_snapshots" in tables
     user_columns = {column["name"] for column in inspector.get_columns("users")}
     assert "password_hash" in user_columns
+    assert "can_receive_sales_credit" in user_columns
     sale_columns = {column["name"] for column in inspector.get_columns("sales")}
     assert {
         "sold_by_user_id",
@@ -32,10 +33,30 @@ def test_alembic_upgrade_head_creates_current_schema(tmp_path):
         "seller_overridden_by_user_id",
         "seller_overridden_at",
     }.issubset(sale_columns)
+    payment_columns = {column["name"] for column in inspector.get_columns("payments")}
+    assert "received_by_user_id" in payment_columns
+
+    sale_foreign_keys = {
+        (fk["constrained_columns"][0], fk["referred_table"], fk["referred_columns"][0])
+        for fk in inspector.get_foreign_keys("sales")
+        if fk["constrained_columns"]
+    }
+    assert ("sold_by_user_id", "users", "id") in sale_foreign_keys
+    assert ("created_by_user_id", "users", "id") in sale_foreign_keys
+    assert ("seller_overridden_by_user_id", "users", "id") in sale_foreign_keys
+    assert ("cash_register_id", "cash_registers", "id") in sale_foreign_keys
+    payment_foreign_keys = {
+        (fk["constrained_columns"][0], fk["referred_table"], fk["referred_columns"][0])
+        for fk in inspector.get_foreign_keys("payments")
+        if fk["constrained_columns"]
+    }
+    assert ("received_by_user_id", "users", "id") in payment_foreign_keys
 
     shift_indexes = {index["name"] for index in inspector.get_indexes("shifts")}
     assert "ux_open_shift_seller" in shift_indexes
     assert "ux_open_shift_register" in shift_indexes
+    payment_indexes = {index["name"] for index in inspector.get_indexes("payments")}
+    assert "ix_payments_received_by_user_id" in payment_indexes
 
     with engine.connect() as connection:
         version = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()

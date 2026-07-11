@@ -93,6 +93,7 @@
     <input class="form-control mb-2" name="reason" placeholder="{{ t.reopen_reason }}" {% if not open_shifts %}disabled{% endif %}>
     <button class="btn btn-outline-danger" type="submit" {% if not open_shifts %}disabled{% endif %}>{{ t.refund }}</button>
 </form>
+{% if can_correct_seller %}
 <form class="card p-3 mt-3" method="post" action="/sales/{{ sale.id }}/seller">
     <h2 class="h5">{{ t.seller_correction }}</h2>
     <p class="text-muted">{{ t.seller_correction_help }}</p>
@@ -102,16 +103,9 @@
         <option value="{{ seller.id }}" {% if credited_seller and seller.id == credited_seller.id %}selected{% endif %}>{{ seller.name }}{% if seller.role %} / {{ seller.role.name }}{% endif %}</option>
         {% endfor %}
     </select>
-    {% if not is_authenticated %}
-    <label class="form-label" for="corrected_by_user_id">{{ t.corrected_by }}</label>
-    <select class="form-select mb-2" id="corrected_by_user_id" name="corrected_by_user_id" required>
-        {% for user in correction_users %}
-        <option value="{{ user.id }}">{{ user.name }}{% if user.role %} / {{ user.role.name }}{% endif %}</option>
-        {% endfor %}
-    </select>
-    {% endif %}
     <label class="form-label" for="reason">{{ t.seller_correction_reason }}</label>
     <input class="form-control mb-2" id="reason" name="reason" required>
     <button class="btn btn-outline-primary" type="submit">{{ t.correct_seller }}</button>
 </form>
+{% endif %}
 {% endblock %}

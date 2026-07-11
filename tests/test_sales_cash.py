@@ -22,6 +22,7 @@ from app.models import (
     Role,
     Sale,
     SaleLine,
+    Setting,
     User,
 )
 from app.services.sales_service import (
@@ -43,10 +44,18 @@ from app.services.migration_service import ensure_sqlite_schema_compatibility
 client = TestClient(app)
 
 
-def create_user(db, name="Seller One", role_code="seller"):
+def create_user(db, name="Seller One", role_code="seller", can_receive_sales_credit=None):
     ensure_default_roles(db)
     role = db.query(Role).filter(Role.code == role_code).one()
-    user = User(name=name, login_name=name.lower().replace(" ", "."), role=role, is_active=True)
+    if can_receive_sales_credit is None:
+        can_receive_sales_credit = role_code == "seller"
+    user = User(
+        name=name,
+        login_name=name.lower().replace(" ", "."),
+        role=role,
+        is_active=True,
+        can_receive_sales_credit=can_receive_sales_credit,
+    )
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -341,6 +350,7 @@ def test_shared_register_sale_credits_selected_seller_and_tracks_operator():
         assert sale.created_by_user_id == operator.id
         assert sale.cash_register_id == register.id
         assert sale.payments[0].seller_id == selected_seller.id
+        assert sale.payments[0].received_by_user_id == operator.id
 
         selected_report = seller_report(
             db,
@@ -379,6 +389,20 @@ def test_sale_seller_validation_and_legacy_report_fallback():
                 shift_id=shift.id,
                 payment_method="cash",
                 description="Invalid credit",
+                quantity="1",
+                unit_price="1",
+                vat_percent="24",
+                seller_selection_mode="selectable_active_seller",
+            )
+
+        ineligible_manager = create_user(db, "Ineligible Manager Credit", "manager")
+        with pytest.raises(ValueError, match="not eligible"):
+            create_sale_with_payment(
+                db,
+                seller_id=ineligible_manager.id,
+                shift_id=shift.id,
+                payment_method="cash",
+                description="Ineligible credit",
                 quantity="1",
                 unit_price="1",
                 vat_percent="24",
@@ -461,7 +485,8 @@ def test_manager_can_correct_sale_seller_with_audit_reason():
         assert corrected.seller_id == new_seller.id
         assert corrected.seller_overridden_by_user_id == manager.id
         assert corrected.seller_override_reason == "Selected wrong seller at shared register"
-        assert corrected.payments[0].seller_id == new_seller.id
+        assert corrected.payments[0].seller_id == original_seller.id
+        assert corrected.payments[0].received_by_user_id == original_seller.id
         audit = (
             db.query(AuditLog)
             .filter(AuditLog.event_type == "sale.seller_corrected", AuditLog.entity_id == sale.id)
@@ -471,6 +496,112 @@ def test_manager_can_correct_sale_seller_with_audit_reason():
         assert original_seller.name in audit.description
         assert str(new_seller.id) in audit.description
         assert new_seller.name in audit.description
+
+
+def test_seller_correction_is_blocked_after_daily_closing_until_reopened():
+    with SessionLocal() as db:
+        admin = create_user(db, "Closed Correction Admin", "admin")
+        original_seller = create_user(db, "Closed Correction Original")
+        new_seller = create_user(db, "Closed Correction New")
+        register = create_register(db, "Closed Correction Register")
+        shift = open_shift(
+            db,
+            seller_id=original_seller.id,
+            cash_register_id=register.id,
+            business_date=date.today(),
+            starting_cash="0",
+        )
+        sale = create_sale_with_payment(
+            db,
+            seller_id=original_seller.id,
+            shift_id=shift.id,
+            payment_method="card",
+            description="Closed correction sale",
+            quantity="1",
+            unit_price="20",
+            vat_percent="24",
+        )
+        close_shift(db, shift_id=shift.id, counted_cash="0")
+        closing = create_daily_closing(db, business_date=date.today(), created_by_user_id=admin.id)
+
+        with pytest.raises(ValueError, match="Business date is closed"):
+            correct_sale_seller(
+                db,
+                sale_id=sale.id,
+                new_sold_by_user_id=new_seller.id,
+                corrected_by_user_id=admin.id,
+                reason="Wrong seller",
+            )
+
+        reopen_daily_closing(db, closing_id=closing.id, user_id=admin.id, reason="Seller correction")
+        corrected = correct_sale_seller(
+            db,
+            sale_id=sale.id,
+            new_sold_by_user_id=new_seller.id,
+            corrected_by_user_id=admin.id,
+            reason="Wrong seller",
+        )
+        assert corrected.sold_by_user_id == new_seller.id
+
+
+def test_seller_correction_route_returns_403_without_authorized_current_user():
+    with SessionLocal() as db:
+        original_seller = create_user(db, "Route Correction Original")
+        new_seller = create_user(db, "Route Correction New")
+        register = create_register(db, "Route Correction Register")
+        shift = open_shift(
+            db,
+            seller_id=original_seller.id,
+            cash_register_id=register.id,
+            business_date=date.today(),
+            starting_cash="0",
+        )
+        sale = create_sale_with_payment(
+            db,
+            seller_id=original_seller.id,
+            shift_id=shift.id,
+            payment_method="card",
+            description="Route correction sale",
+            quantity="1",
+            unit_price="20",
+            vat_percent="24",
+        )
+        sale_id = sale.id
+        new_seller_id = new_seller.id
+
+    response = client.post(
+        f"/sales/{sale_id}/seller",
+        data={"sold_by_user_id": new_seller_id, "reason": "Wrong seller"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 403
+
+
+def test_sale_form_lists_only_sales_credit_eligible_users():
+    with SessionLocal() as db:
+        seller = create_user(db, "Eligible Form Seller")
+        eligible_manager = create_user(
+            db,
+            "Eligible Form Manager",
+            "manager",
+            can_receive_sales_credit=True,
+        )
+        ineligible_manager = create_user(db, "Ineligible Form Manager", "manager")
+        register = create_register(db, "Eligibility Form Register")
+        db.add(Setting(key="sale_seller_selection_mode", value="selectable_active_seller"))
+        open_shift(
+            db,
+            seller_id=seller.id,
+            cash_register_id=register.id,
+            business_date=date.today(),
+            starting_cash="0",
+        )
+
+    response = client.get("/sales/new")
+    assert response.status_code == 200
+    assert "Eligible Form Seller" in response.text
+    assert "Eligible Form Manager" in response.text
+    assert "Ineligible Form Manager" not in response.text
 
 
 def test_daily_closing_uses_selected_sale_seller_and_receipt_displays_it():

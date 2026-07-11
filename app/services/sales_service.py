@@ -54,6 +54,10 @@ OPERATIONAL_ROLE_CODES = {"admin", "manager", "seller"}
 CLOSING_MANAGER_ROLE_CODES = {"admin", "manager"}
 
 
+class AuthorizationError(ValueError):
+    pass
+
+
 def format_decimal_key(value) -> str:
     text = format(parse_decimal(value).normalize(), "f")
     return text.rstrip("0").rstrip(".") if "." in text else text
@@ -118,11 +122,20 @@ def require_operational_user(user: User | None) -> User:
 
 
 def require_sales_credit_user(user: User | None) -> User:
-    return require_operational_user(user)
+    user = require_operational_user(user)
+    if not user.can_receive_sales_credit:
+        raise ValueError("User is not eligible to receive sales credit.")
+    return user
 
 
 def user_can_override_sale_seller(user: User | None) -> bool:
     return bool(user and user.is_active and user.role and user.role.code in {"admin", "manager"})
+
+
+def require_sale_seller_override_user(user: User | None) -> User:
+    if not user_can_override_sale_seller(user):
+        raise AuthorizationError("Only Admin or Manager can correct sale seller attribution.")
+    return user
 
 
 def resolve_sale_seller(
@@ -337,6 +350,7 @@ def create_sale_with_payment(
             sale_id=sale.id,
             shift_id=shift_id,
             seller_id=sold_by.id,
+            received_by_user_id=operator.id if operator is not None else sold_by.id,
             payment_method=payment_method,
             amount=line_total,
         )
@@ -369,9 +383,10 @@ def correct_sale_seller(
     sale = db.get(Sale, sale_id)
     if sale is None:
         raise ValueError("Sale not found.")
-    corrected_by = db.get(User, corrected_by_user_id)
-    if not user_can_override_sale_seller(corrected_by):
-        raise ValueError("Only Admin or Manager can correct sale seller attribution.")
+    if sale.shift is None:
+        raise ValueError("Sale has no shift for business date validation.")
+    assert_business_date_open(db, sale.shift.business_date)
+    corrected_by = require_sale_seller_override_user(db.get(User, corrected_by_user_id))
     correction_reason = reason.strip()
     if not correction_reason:
         raise ValueError("Seller correction reason is required.")
@@ -384,8 +399,6 @@ def correct_sale_seller(
     sale.seller_override_reason = correction_reason
     sale.seller_overridden_by_user_id = corrected_by.id
     sale.seller_overridden_at = utc_now()
-    for payment in sale.payments:
-        payment.seller_id = new_seller.id
     log_audit_event(
         db,
         event_type="sale.seller_corrected",

@@ -150,6 +150,7 @@ class User(Base):
     login_name = Column(String(255), nullable=True, unique=True, index=True)
     password_hash = Column(String(255), nullable=True)
     is_active = Column(Boolean, default=True)
+    can_receive_sales_credit = Column(Boolean, default=False)
     role_id = Column(Integer, ForeignKey("roles.id"), nullable=False)
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
@@ -260,6 +261,7 @@ class Payment(Base):
     sale_id = Column(Integer, ForeignKey("sales.id"), nullable=False)
     shift_id = Column(Integer, ForeignKey("shifts.id"), nullable=False)
     seller_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    received_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     payment_method = Column(String(50), nullable=False, index=True)
     amount = Column(Numeric(12, 2), nullable=False)
     paid_at = Column(DateTime, default=utc_now)
@@ -267,7 +269,8 @@ class Payment(Base):
 
     sale = relationship("Sale", back_populates="payments")
     shift = relationship("Shift", back_populates="payments")
-    seller = relationship("User")
+    seller = relationship("User", foreign_keys=[seller_id])
+    received_by = relationship("User", foreign_keys=[received_by_user_id])
 
 
 class Refund(Base):

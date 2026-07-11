@@ -47,6 +47,17 @@ def ensure_sqlite_schema_compatibility(engine: Engine) -> list[str]:
             "INTEGER",
         )
         _add_column_if_missing(connection, "users", "password_hash", "VARCHAR(255)")
+        _add_column_if_missing(connection, "users", "can_receive_sales_credit", "BOOLEAN DEFAULT 0")
+        connection.execute(text("UPDATE users SET can_receive_sales_credit = 0 WHERE can_receive_sales_credit IS NULL"))
+        connection.execute(
+            text(
+                """
+                UPDATE users
+                SET can_receive_sales_credit = 1
+                WHERE role_id IN (SELECT id FROM roles WHERE code = 'seller')
+                """
+            )
+        )
         _add_column_if_missing(connection, "sales", "sold_by_user_id", "INTEGER")
         _add_column_if_missing(connection, "sales", "created_by_user_id", "INTEGER")
         _add_column_if_missing(connection, "sales", "cash_register_id", "INTEGER")
@@ -54,6 +65,7 @@ def ensure_sqlite_schema_compatibility(engine: Engine) -> list[str]:
         _add_column_if_missing(connection, "sales", "seller_override_reason", "TEXT")
         _add_column_if_missing(connection, "sales", "seller_overridden_by_user_id", "INTEGER")
         _add_column_if_missing(connection, "sales", "seller_overridden_at", "DATETIME")
+        _add_column_if_missing(connection, "payments", "received_by_user_id", "INTEGER")
         connection.execute(text("UPDATE sales SET sold_by_user_id = seller_id WHERE sold_by_user_id IS NULL"))
         connection.execute(text("UPDATE sales SET created_by_user_id = seller_id WHERE created_by_user_id IS NULL"))
         connection.execute(
@@ -70,9 +82,24 @@ def ensure_sqlite_schema_compatibility(engine: Engine) -> list[str]:
             )
         )
         connection.execute(text("UPDATE sales SET created_at = sold_at WHERE created_at IS NULL"))
+        connection.execute(
+            text(
+                """
+                UPDATE payments
+                SET received_by_user_id = (
+                    SELECT sales.created_by_user_id
+                    FROM sales
+                    WHERE sales.id = payments.sale_id
+                )
+                WHERE received_by_user_id IS NULL
+                """
+            )
+        )
+        connection.execute(text("UPDATE payments SET received_by_user_id = seller_id WHERE received_by_user_id IS NULL"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_sales_sold_by_user_id ON sales (sold_by_user_id)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_sales_created_by_user_id ON sales (created_by_user_id)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_sales_cash_register_id ON sales (cash_register_id)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_payments_received_by_user_id ON payments (received_by_user_id)"))
         diagnostics.extend(
             _create_partial_unique_index_if_safe(
                 connection,

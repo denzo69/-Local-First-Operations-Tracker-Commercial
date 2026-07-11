@@ -81,6 +81,8 @@ Work Orders, Sales, Payments, and Refunds are separate business objects. A Sale 
 
 Sales store both the operator who created the record and the seller credited for the sale. This supports shared cash-register workflows where one workstation account can record a sale for another active seller. Corrections after finalization require an Admin or Manager and an audit reason. Existing legacy sales continue to fall back to the original seller field for reporting.
 
+Payment identity is tracked separately from sale credit. `Sale.sold_by_user_id` is the seller credited in receipts and seller reports, `Sale.created_by_user_id` is the operator who created the sale, and `Payment.received_by_user_id` is the user who received the payment. Seller correction does not rewrite historical payment receiver data.
+
 Daily closing rules:
 
 - All shifts for the business date must be closed before the day can be closed.

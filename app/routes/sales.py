@@ -7,6 +7,7 @@ from app.database import get_db
 from app.models import Job, Product, Role, Sale, Shift, User
 from app.services.auth_service import request_current_user
 from app.services.sales_service import (
+    AuthorizationError,
     PAYMENT_METHODS,
     add_refund,
     correct_sale_seller,
@@ -41,7 +42,11 @@ def new_sale(request: Request, db: Session = Depends(get_db)):
     active_sellers = (
         db.query(User)
         .join(Role)
-        .filter(User.is_active.is_(True), Role.code.in_(["admin", "manager", "seller"]))
+        .filter(
+            User.is_active.is_(True),
+            User.can_receive_sales_credit.is_(True),
+            Role.code.in_(["admin", "manager", "seller"]),
+        )
         .order_by(User.name.asc())
         .all()
     )
@@ -113,7 +118,11 @@ def sale_detail(sale_id: int, request: Request, db: Session = Depends(get_db)):
     active_sellers = (
         db.query(User)
         .join(Role)
-        .filter(User.is_active.is_(True), Role.code.in_(["admin", "manager", "seller"]))
+        .filter(
+            User.is_active.is_(True),
+            User.can_receive_sales_credit.is_(True),
+            Role.code.in_(["admin", "manager", "seller"]),
+        )
         .order_by(User.name.asc())
         .all()
     )
@@ -136,7 +145,7 @@ def sale_detail(sale_id: int, request: Request, db: Session = Depends(get_db)):
             "remaining_refundable": remaining_refundable_amount(sale),
             "active_sellers": active_sellers,
             "correction_users": correction_users,
-            "can_correct_seller": user_can_override_sale_seller(request_current_user(request)) or not correction_users,
+            "can_correct_seller": user_can_override_sale_seller(request_current_user(request)),
         },
     )
 
@@ -163,21 +172,21 @@ def update_sale_seller(
     request: Request,
     sold_by_user_id: int = Form(...),
     reason: str = Form(...),
-    corrected_by_user_id: int | None = Form(None),
     db: Session = Depends(get_db),
 ):
     current_user = request_current_user(request)
-    correcting_user_id = current_user.id if current_user is not None else corrected_by_user_id
-    if correcting_user_id is None:
-        raise HTTPException(status_code=400, detail="Correcting user is required")
+    if not user_can_override_sale_seller(current_user):
+        raise HTTPException(status_code=403, detail="Only Admin or Manager can correct sale seller attribution.")
     try:
         correct_sale_seller(
             db,
             sale_id=sale_id,
             new_sold_by_user_id=sold_by_user_id,
-            corrected_by_user_id=correcting_user_id,
+            corrected_by_user_id=current_user.id,
             reason=reason,
         )
+    except AuthorizationError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return RedirectResponse(url=f"/sales/{sale_id}", status_code=303)
