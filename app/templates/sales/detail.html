@@ -21,12 +21,18 @@
 <p>Work Order: <a href="/work-orders/{{ sale.work_order.id }}">{{ sale.work_order.title }}</a></p>
 {% endif %}
 <div class="card mb-3">
-    <div class="table-responsive">
+    <div class="table-responsive responsive-card-table">
         <table class="table mb-0">
             <thead><tr><th>{{ t.description }}</th><th>{{ t.quantity }}</th><th>{{ t.unit_price }}</th><th>{{ t.vat }} %</th><th>{{ t.total }}</th></tr></thead>
             <tbody>
             {% for line in sale.lines %}
-            <tr><td>{{ line.description_snapshot }}</td><td>{{ line.quantity }}</td><td>{{ line.unit_price }}</td><td>{{ line.vat_percent }}</td><td>{{ line.line_total }}</td></tr>
+            <tr>
+                <td data-label="{{ t.description }}">{{ line.description_snapshot }}</td>
+                <td data-label="{{ t.quantity }}">{{ line.quantity }}</td>
+                <td data-label="{{ t.unit_price }}">{{ line.unit_price }}</td>
+                <td data-label="{{ t.vat }} %">{{ line.vat_percent }}</td>
+                <td data-label="{{ t.total }}">{{ line.line_total }}</td>
+            </tr>
             {% endfor %}
             </tbody>
         </table>

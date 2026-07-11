@@ -368,6 +368,15 @@ button:focus-visible,
     font-size: .8rem;
 }
 
+.responsive-card-table td,
+.responsive-card-table th {
+    vertical-align: middle;
+}
+
+.responsive-card-table td {
+    overflow-wrap: anywhere;
+}
+
 .searchable-list .list-group-item {
     transition: background-color .12s ease, border-color .12s ease;
 }
@@ -444,6 +453,58 @@ button:focus-visible,
 
     .app-main {
         padding: 1rem;
+    }
+
+    .responsive-card-table.table-responsive {
+        overflow: visible;
+    }
+
+    .responsive-card-table table,
+    .responsive-card-table thead,
+    .responsive-card-table tbody,
+    .responsive-card-table tr,
+    .responsive-card-table td {
+        display: block;
+        width: 100%;
+    }
+
+    .responsive-card-table thead {
+        display: none;
+    }
+
+    .responsive-card-table tr {
+        padding: .85rem 1rem;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .responsive-card-table tr:last-child {
+        border-bottom: 0;
+    }
+
+    .responsive-card-table td {
+        display: grid;
+        grid-template-columns: minmax(8.5rem, 40%) minmax(0, 1fr);
+        gap: .75rem;
+        padding: .35rem 0;
+        border: 0;
+        text-align: left !important;
+    }
+
+    .responsive-card-table td::before {
+        content: attr(data-label);
+        color: var(--muted);
+        font-size: .78rem;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+
+    .responsive-card-table td[colspan] {
+        display: block;
+    }
+
+    .responsive-card-table td[colspan]::before {
+        content: "";
+        display: none;
     }
 
     .searchable-item .d-flex {

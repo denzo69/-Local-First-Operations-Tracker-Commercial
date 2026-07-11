@@ -11,7 +11,7 @@
 
 <div class="card shadow-sm border-0">
     <div class="card-body p-0">
-        <div class="table-responsive">
+        <div class="table-responsive responsive-card-table">
             <table class="table align-middle mb-0">
                 <thead>
                     <tr>
@@ -27,13 +27,13 @@
                 <tbody>
                     {% for status in statuses %}
                     <tr>
-                        <td>{{ status.name }}</td>
-                        <td>{{ status.sort_order }}</td>
-                        <td>{{ "Yes" if status.is_ready_state else "No" }}</td>
-                        <td>{{ "Yes" if status.is_packed_state else "No" }}</td>
-                        <td>{{ "Yes" if status.is_final else "No" }}</td>
-                        <td>{{ "Yes" if status.is_active else "No" }}</td>
-                        <td class="text-end">
+                        <td data-label="Name">{{ status.name }}</td>
+                        <td data-label="Order">{{ status.sort_order }}</td>
+                        <td data-label="Ready">{{ "Yes" if status.is_ready_state else "No" }}</td>
+                        <td data-label="Packed">{{ "Yes" if status.is_packed_state else "No" }}</td>
+                        <td data-label="Final">{{ "Yes" if status.is_final else "No" }}</td>
+                        <td data-label="Active">{{ "Yes" if status.is_active else "No" }}</td>
+                        <td data-label="Action" class="text-end">
                             <a class="btn btn-sm btn-outline-primary" href="/settings/statuses/{{ status.id }}/edit">Edit</a>
                             {% if status.is_active %}
                             <form class="d-inline" method="post" action="/settings/statuses/{{ status.id }}/deactivate">
