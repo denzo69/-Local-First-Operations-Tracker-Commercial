@@ -239,6 +239,7 @@ button:focus-visible,
 .kpi-label {
     color: var(--muted);
     font-weight: 700;
+    overflow-wrap: anywhere;
 }
 
 .kpi-value {
@@ -510,6 +511,31 @@ button:focus-visible,
     .searchable-item .d-flex {
         align-items: flex-start;
         flex-direction: column;
+    }
+}
+
+@media (max-width: 480px) {
+    .app-topbar,
+    .topbar-status,
+    .quick-actions {
+        width: 100%;
+    }
+
+    .topbar-status {
+        align-items: flex-start;
+        gap: .65rem;
+    }
+
+    .quick-actions .btn {
+        flex: 1 1 100%;
+    }
+
+    .kpi-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .kpi-card {
+        min-height: 104px;
     }
 }
 
