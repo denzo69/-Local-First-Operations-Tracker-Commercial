@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="error-page panel">
+    <div>
+        <p class="eyebrow">{{ status_code }}</p>
+        <h2>{{ error_title }}</h2>
+        <p class="text-muted">{{ error_detail }}</p>
+    </div>
+    <div class="action-row">
+        <a class="btn btn-primary" href="/">{{ t.dashboard }}</a>
+        <a class="btn btn-outline-secondary" href="javascript:history.back()">{{ t.back }}</a>
+    </div>
+</section>
+{% endblock %}

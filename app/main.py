@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, time, timedelta
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
@@ -9,7 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db, init_db
-from app.models import Job
+from app.error_handlers import register_error_handlers
+from app.models import AuditLog, DailyClosing, Job, Refund, Sale, Shift
 from app.routes import (
     audit_log,
     backups,
@@ -28,11 +30,12 @@ from app.routes import (
 )
 from app.services.i18n_service import get_translations
 from app.services.maintenance_service import is_maintenance_active
-from app.services.reminder_service import next_business_day
+from app.services.money_service import sum_money
 from app.services.settings_service import get_app_settings
 from app.template_context import templates
 
 settings = get_settings()
+BASE_DIR = Path(__file__).resolve().parent
 
 
 @asynccontextmanager
@@ -42,7 +45,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
+app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+register_error_handlers(app)
 app.include_router(backups.router)
 app.include_router(customers.router)
 app.include_router(work_orders.router)
@@ -79,8 +83,9 @@ def health_check() -> dict[str, str]:
 def dashboard(request: Request, db: Session = Depends(get_db)):
     today = date.today()
     tomorrow = today + timedelta(days=1)
-    next_workday = next_business_day(today)
     t = get_translations(get_app_settings(db).get("language", "en"))
+    today_start = datetime.combine(today, time.min, tzinfo=UTC)
+    tomorrow_start = datetime.combine(tomorrow, time.min, tzinfo=UTC)
     active_job_filter = or_(Job.status_id.is_(None), ~Job.status.has(is_final=True))
 
     overdue_jobs = (
@@ -113,27 +118,8 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         .order_by(Job.created_at.desc())
         .all()
     )
-    next_business_day_jobs = (
-        db.query(Job)
-        .filter(active_job_filter)
-        .filter(Job.requested_pickup_date == next_workday)
-        .filter(
-            or_(
-                Job.status_id.is_(None),
-                ~Job.status.has(is_ready_state=True),
-            )
-        )
-        .filter(
-            or_(
-                Job.status_id.is_(None),
-                ~Job.status.has(is_packed_state=True),
-            )
-        )
-        .order_by(Job.created_at.desc())
-        .all()
-    )
     attention_jobs = list(
-        dict.fromkeys(overdue_jobs + due_today_jobs + next_business_day_jobs + ready_jobs)
+        dict.fromkeys(overdue_jobs + due_today_jobs + ready_jobs)
     )
     upcoming_jobs = (
         db.query(Job)
@@ -141,13 +127,39 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         .filter(
             or_(
                 Job.requested_pickup_date.is_(None),
-                Job.requested_pickup_date > tomorrow,
+                Job.requested_pickup_date >= tomorrow,
             )
         )
         .order_by(Job.requested_pickup_date.asc(), Job.created_at.desc())
         .limit(8)
         .all()
     )
+    todays_sales = (
+        db.query(Sale)
+        .filter(Sale.sold_at >= today_start, Sale.sold_at < tomorrow_start)
+        .order_by(Sale.sold_at.desc())
+        .all()
+    )
+    todays_refunds = (
+        db.query(Refund)
+        .filter(Refund.refunded_at >= today_start, Refund.refunded_at < tomorrow_start)
+        .order_by(Refund.refunded_at.desc())
+        .all()
+    )
+    open_shifts = db.query(Shift).filter(Shift.status == "open").order_by(Shift.opened_at.desc()).all()
+    current_shift = open_shifts[0] if open_shifts else None
+    daily_closing = (
+        db.query(DailyClosing)
+        .filter(DailyClosing.business_date == today)
+        .first()
+    )
+    recent_activity = (
+        db.query(AuditLog)
+        .order_by(AuditLog.created_at.desc())
+        .limit(8)
+        .all()
+    )
+    today_sales_total = sum_money(sale.total for sale in todays_sales)
 
     return templates.TemplateResponse(
         "dashboard.html",
@@ -155,15 +167,29 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
             "request": request,
             "app_name": settings.app_name,
             "active_page": "dashboard",
+            "page_title": t["dashboard"],
+            "quick_action_url": "/work-orders/new",
+            "quick_action_label": t["create_work_order"],
             "today": today,
-            "next_business_day": next_workday,
             "cards": [
-                {"label": t["overdue"], "value": len(overdue_jobs), "tone": "danger"},
-                {"label": t["due_today"], "value": len(due_today_jobs), "tone": "warning"},
-                {"label": t["due_tomorrow"], "value": len(due_tomorrow_jobs), "tone": "info"},
-                {"label": t["ready_for_pickup"], "value": len(ready_jobs), "tone": "success"},
+                {"label": t["overdue"], "value": len(overdue_jobs), "tone": "danger", "icon": "OD", "href": "/work-orders?view=active"},
+                {"label": t["due_today"], "value": len(due_today_jobs), "tone": "warning", "icon": "TD", "href": "/work-orders?view=active"},
+                {"label": t["ready_for_pickup"], "value": len(ready_jobs), "tone": "success", "icon": "RP", "href": "/work-orders?view=ready"},
+                {"label": t["todays_sales"], "value": today_sales_total, "tone": "neutral", "icon": "SA", "href": "/sales"},
+                {"label": t["open_shift_status"], "value": len(open_shifts), "tone": "info", "icon": "SH", "href": "/shifts"},
+                {"label": t["daily_closing_status"], "value": t["closed"] if daily_closing and daily_closing.status == "closed" else t["not_closed"], "tone": "success" if daily_closing and daily_closing.status == "closed" else "warning", "icon": "DC", "href": "/daily-closings"},
             ],
             "attention_jobs": attention_jobs,
+            "overdue_jobs": overdue_jobs,
+            "due_today_jobs": due_today_jobs,
+            "due_tomorrow_jobs": due_tomorrow_jobs,
+            "ready_jobs": ready_jobs,
             "upcoming_jobs": upcoming_jobs,
+            "todays_sales": todays_sales[:5],
+            "todays_refunds": todays_refunds[:5],
+            "open_shifts": open_shifts,
+            "current_shift": current_shift,
+            "daily_closing": daily_closing,
+            "recent_activity": recent_activity,
         },
     )

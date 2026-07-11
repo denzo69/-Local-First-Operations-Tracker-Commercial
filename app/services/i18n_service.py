@@ -1,3 +1,14 @@
+class SafeTranslations(dict):
+    def __missing__(self, key: str) -> str:
+        return key.replace("_", " ").title()
+
+    def get(self, key, default=None):
+        value = super().get(key)
+        if value is None or value == "":
+            return default if default is not None else self.__missing__(str(key))
+        return value
+
+
 TRANSLATIONS = {
     "en": {
         "dashboard": "Dashboard",
@@ -76,6 +87,30 @@ TRANSLATIONS = {
         "payment_methods": "Payment methods",
         "no_payments_in_period": "No payments in this period.",
         "create_seller_before_reports": "Create a seller before running seller reports.",
+        "operator_placeholder": "Operator not authenticated",
+        "open_shift_status": "Open shifts",
+        "language_status": "Language",
+        "todays_sales": "Today's sales",
+        "daily_closing_status": "Daily closing status",
+        "attention_required": "Attention required",
+        "todays_activity": "Today's activity",
+        "current_shift": "Current shift",
+        "quick_actions": "Quick actions",
+        "create_work_order": "Create Work Order",
+        "daily_closing_not_completed": "Daily closing not completed",
+        "closed": "Closed",
+        "not_closed": "Not closed",
+        "ready_not_collected": "Ready, not collected",
+        "recent_sales": "Recent sales",
+        "recent_work_order_changes": "Recent Work Order changes",
+        "recent_refunds": "Recent refunds",
+        "shift_events": "Shift events",
+        "no_activity_today": "No activity today.",
+        "no_current_shift": "No open shift.",
+        "no_attention_required": "No urgent Work Orders today.",
+        "open": "Open",
+        "tomorrow": "Tomorrow",
+        "due": "Due",
         "new_job": "+ New work order",
         "new_customer": "+ New customer",
         "new_product": "+ New product",
@@ -219,6 +254,30 @@ TRANSLATIONS = {
         "payment_methods": "Maksutavat",
         "no_payments_in_period": "Ei maksuja tällä jaksolla.",
         "create_seller_before_reports": "Luo myyjä ennen myyjäraporttien ajamista.",
+        "operator_placeholder": "Käyttäjää ei ole tunnistettu",
+        "open_shift_status": "Avoimet vuorot",
+        "language_status": "Kieli",
+        "todays_sales": "Tämän päivän myynti",
+        "daily_closing_status": "Päiväpäätöksen tila",
+        "attention_required": "Huomiota vaatii",
+        "todays_activity": "Päivän tapahtumat",
+        "current_shift": "Nykyinen vuoro",
+        "quick_actions": "Pikatoiminnot",
+        "create_work_order": "Luo työ",
+        "daily_closing_not_completed": "Päiväpäätöstä ei ole tehty",
+        "closed": "Suljettu",
+        "not_closed": "Ei suljettu",
+        "ready_not_collected": "Valmis, ei noudettu",
+        "recent_sales": "Viimeisimmät myynnit",
+        "recent_work_order_changes": "Viimeisimmät työmuutokset",
+        "recent_refunds": "Viimeisimmät hyvitykset",
+        "shift_events": "Vuorotapahtumat",
+        "no_activity_today": "Ei tapahtumia tänään.",
+        "no_current_shift": "Ei avointa vuoroa.",
+        "no_attention_required": "Ei kiireellisiä töitä tänään.",
+        "open": "Avoin",
+        "tomorrow": "Huomenna",
+        "due": "Eräpäivä",
         "new_job": "+ Uusi työ",
         "new_customer": "+ Uusi asiakas",
         "new_product": "+ Uusi tuote",
@@ -299,7 +358,7 @@ STATUS_KEYS = {
 
 
 def get_translations(language: str) -> dict[str, str]:
-    return TRANSLATIONS.get(language, TRANSLATIONS["en"])
+    return SafeTranslations(TRANSLATIONS.get(language, TRANSLATIONS["en"]))
 
 
 def translate_status(status_name: str | None, language: str) -> str:
