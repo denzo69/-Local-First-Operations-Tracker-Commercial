@@ -3,67 +3,105 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ app_name }}</title>
+    <title>{{ page_title|default(t.dashboard) }} - {{ app_name }}</title>
     <link href="/static/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
     <link href="/static/css/app.css" rel="stylesheet">
 </head>
 <body>
-<nav class="navbar navbar-expand-lg bg-body-tertiary border-bottom">
-    <div class="container-fluid">
-        <a class="navbar-brand fw-semibold" href="/">{{ app_name }}</a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-        <div class="collapse navbar-collapse" id="mainNav">
-            <ul class="navbar-nav me-auto mb-2 mb-lg-0" data-role-nav="all">
-                <li class="nav-item"><a class="nav-link {% if active_page == 'dashboard' %}active{% endif %}" href="/">{{ t.dashboard }}</a></li>
-                <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle {% if active_page in ['customers', 'jobs'] %}active{% endif %}" href="#" role="button" data-bs-toggle="dropdown">{{ t.operations }}</a>
-                    <ul class="dropdown-menu">
-                        <li><a class="dropdown-item" href="/customers">{{ t.customers }}</a></li>
-                        <li><a class="dropdown-item" href="/work-orders">{{ t.work_orders }}</a></li>
-                    </ul>
-                </li>
-                <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle {% if active_page in ['sales', 'shifts', 'daily_closings'] %}active{% endif %}" href="#" role="button" data-bs-toggle="dropdown">{{ t.sales_nav }}</a>
-                    <ul class="dropdown-menu">
-                        <li><a class="dropdown-item" href="/sales/new">{{ t.new_sale }}</a></li>
-                        <li><a class="dropdown-item" href="/sales">{{ t.sales }}</a></li>
-                        <li><a class="dropdown-item" href="/shifts">{{ t.shifts }}</a></li>
-                        <li><a class="dropdown-item" href="/daily-closings">{{ t.daily_closing }}</a></li>
-                    </ul>
-                </li>
-                <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle {% if active_page == 'products' %}active{% endif %}" href="#" role="button" data-bs-toggle="dropdown">{{ t.catalog }}</a>
-                    <ul class="dropdown-menu">
-                        <li><a class="dropdown-item" href="/products">{{ t.products }}</a></li>
-                    </ul>
-                </li>
-                <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle {% if active_page in ['reports', 'seller_reports'] %}active{% endif %}" href="#" role="button" data-bs-toggle="dropdown">{{ t.reports }}</a>
-                    <ul class="dropdown-menu">
-                        <li><a class="dropdown-item" href="/reports">{{ t.reports }}</a></li>
-                        <li><a class="dropdown-item" href="/seller-reports">{{ t.seller_reports }}</a></li>
-                    </ul>
-                </li>
-                <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle {% if active_page in ['users', 'cash_registers', 'audit_log', 'backups', 'settings'] %}active{% endif %}" href="#" role="button" data-bs-toggle="dropdown">{{ t.administration }}</a>
-                    <ul class="dropdown-menu">
-                        <li><a class="dropdown-item" href="/users">{{ t.users }}</a></li>
-                        <li><a class="dropdown-item" href="/cash-registers">{{ t.cash_registers }}</a></li>
-                        <li><a class="dropdown-item" href="/audit-log">{{ t.audit_log }}</a></li>
-                        <li><a class="dropdown-item" href="/backups">{{ t.backups }}</a></li>
-                        <li><a class="dropdown-item" href="/settings">{{ t.settings }}</a></li>
-                    </ul>
-                </li>
-            </ul>
-        </div>
-    </div>
-</nav>
+<a class="visually-hidden-focusable skip-link" href="#mainContent">{{ t.view }} {{ page_title|default(t.dashboard) }}</a>
 
-<main class="container py-4">
-    {% block content %}{% endblock %}
-</main>
+<aside class="app-sidebar d-none d-lg-flex" aria-label="Primary navigation">
+    <div class="sidebar-brand">
+        <a href="/" class="sidebar-brand-link">{{ app_name }}</a>
+        <span class="sidebar-brand-subtitle">Local-first operations</span>
+    </div>
+    <nav class="sidebar-nav" data-role-nav="all">
+        <a class="sidebar-link {% if active_page == 'dashboard' %}active{% endif %}" href="/">
+            <span class="nav-icon" aria-hidden="true">DB</span><span>{{ t.dashboard }}</span>
+        </a>
+        <div class="sidebar-group">
+            <div class="sidebar-group-label">{{ t.operations }}</div>
+            <a class="sidebar-link {% if active_page == 'customers' %}active{% endif %}" href="/customers"><span class="nav-icon" aria-hidden="true">CU</span><span>{{ t.customers }}</span></a>
+            <a class="sidebar-link {% if active_page == 'jobs' %}active{% endif %}" href="/work-orders"><span class="nav-icon" aria-hidden="true">WO</span><span>{{ t.work_orders }}</span></a>
+        </div>
+        <div class="sidebar-group">
+            <div class="sidebar-group-label">{{ t.sales_nav }}</div>
+            <a class="sidebar-link" href="/sales/new"><span class="nav-icon" aria-hidden="true">NS</span><span>{{ t.new_sale }}</span></a>
+            <a class="sidebar-link {% if active_page == 'sales' %}active{% endif %}" href="/sales"><span class="nav-icon" aria-hidden="true">SA</span><span>{{ t.sales }}</span></a>
+            <a class="sidebar-link {% if active_page == 'shifts' %}active{% endif %}" href="/shifts"><span class="nav-icon" aria-hidden="true">SH</span><span>{{ t.shifts }}</span></a>
+            <a class="sidebar-link {% if active_page == 'daily_closings' %}active{% endif %}" href="/daily-closings"><span class="nav-icon" aria-hidden="true">DC</span><span>{{ t.daily_closing }}</span></a>
+        </div>
+        <div class="sidebar-group">
+            <div class="sidebar-group-label">{{ t.catalog }}</div>
+            <a class="sidebar-link {% if active_page == 'products' %}active{% endif %}" href="/products"><span class="nav-icon" aria-hidden="true">PR</span><span>{{ t.products }}</span></a>
+        </div>
+        <div class="sidebar-group">
+            <div class="sidebar-group-label">{{ t.reports }}</div>
+            <a class="sidebar-link {% if active_page == 'reports' %}active{% endif %}" href="/reports"><span class="nav-icon" aria-hidden="true">SR</span><span>{{ t.reports }}</span></a>
+            <a class="sidebar-link {% if active_page == 'seller_reports' %}active{% endif %}" href="/seller-reports"><span class="nav-icon" aria-hidden="true">SE</span><span>{{ t.seller_reports }}</span></a>
+        </div>
+        <div class="sidebar-group">
+            <div class="sidebar-group-label">{{ t.administration }}</div>
+            <a class="sidebar-link {% if active_page == 'users' %}active{% endif %}" href="/users"><span class="nav-icon" aria-hidden="true">US</span><span>{{ t.users }}</span></a>
+            <a class="sidebar-link {% if active_page == 'cash_registers' %}active{% endif %}" href="/cash-registers"><span class="nav-icon" aria-hidden="true">CR</span><span>{{ t.cash_registers }}</span></a>
+            <a class="sidebar-link {% if active_page == 'audit_log' %}active{% endif %}" href="/audit-log"><span class="nav-icon" aria-hidden="true">AL</span><span>{{ t.audit_log }}</span></a>
+            <a class="sidebar-link {% if active_page == 'backups' %}active{% endif %}" href="/backups"><span class="nav-icon" aria-hidden="true">BU</span><span>{{ t.backups }}</span></a>
+            <a class="sidebar-link {% if active_page == 'settings' %}active{% endif %}" href="/settings"><span class="nav-icon" aria-hidden="true">ST</span><span>{{ t.settings }}</span></a>
+        </div>
+    </nav>
+</aside>
+
+<div class="offcanvas offcanvas-start" tabindex="-1" id="mobileNav" aria-labelledby="mobileNavLabel">
+    <div class="offcanvas-header">
+        <h2 class="offcanvas-title h5" id="mobileNavLabel">{{ app_name }}</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="{{ t.back }}"></button>
+    </div>
+    <div class="offcanvas-body">
+        <nav class="sidebar-nav" aria-label="Mobile navigation">
+            <a class="sidebar-link" href="/">{{ t.dashboard }}</a>
+            <div class="sidebar-group-label">{{ t.operations }}</div>
+            <a class="sidebar-link" href="/customers">{{ t.customers }}</a>
+            <a class="sidebar-link" href="/work-orders">{{ t.work_orders }}</a>
+            <div class="sidebar-group-label">{{ t.sales_nav }}</div>
+            <a class="sidebar-link" href="/sales/new">{{ t.new_sale }}</a>
+            <a class="sidebar-link" href="/sales">{{ t.sales }}</a>
+            <a class="sidebar-link" href="/shifts">{{ t.shifts }}</a>
+            <a class="sidebar-link" href="/daily-closings">{{ t.daily_closing }}</a>
+            <div class="sidebar-group-label">{{ t.catalog }}</div>
+            <a class="sidebar-link" href="/products">{{ t.products }}</a>
+            <div class="sidebar-group-label">{{ t.reports }}</div>
+            <a class="sidebar-link" href="/reports">{{ t.reports }}</a>
+            <a class="sidebar-link" href="/seller-reports">{{ t.seller_reports }}</a>
+            <div class="sidebar-group-label">{{ t.administration }}</div>
+            <a class="sidebar-link" href="/users">{{ t.users }}</a>
+            <a class="sidebar-link" href="/cash-registers">{{ t.cash_registers }}</a>
+            <a class="sidebar-link" href="/audit-log">{{ t.audit_log }}</a>
+            <a class="sidebar-link" href="/backups">{{ t.backups }}</a>
+            <a class="sidebar-link" href="/settings">{{ t.settings }}</a>
+        </nav>
+    </div>
+</div>
+
+<div class="app-shell">
+    <header class="app-topbar">
+        <button class="btn btn-outline-secondary d-lg-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#mobileNav" aria-controls="mobileNav" aria-label="Open navigation">
+            <span aria-hidden="true">Menu</span>
+        </button>
+        <div>
+            <h1 class="topbar-title">{{ page_title|default(t.dashboard) }}</h1>
+            <div class="topbar-meta">{{ current_date }} · {{ current_operator_label }}</div>
+        </div>
+        <div class="topbar-status">
+            <span>{{ t.open_shift_status }}: <strong>{{ open_shift_count }}</strong></span>
+            <span>{{ t.language_status }}: <strong>{{ language|upper }}</strong></span>
+            <a class="btn btn-primary btn-sm" href="{{ quick_action_url|default('/work-orders/new') }}">{{ quick_action_label|default(t.create_work_order) }}</a>
+        </div>
+    </header>
+
+    <main id="mainContent" class="app-main">
+        {% block content %}{% endblock %}
+    </main>
+</div>
 
 <script src="/static/vendor/bootstrap/bootstrap.bundle.min.js"></script>
 <script src="/static/js/app.js"></script>

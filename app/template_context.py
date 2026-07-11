@@ -1,7 +1,10 @@
+from datetime import date
+
 from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
 from app.database import get_db
+from app.models import Shift
 from app.services.i18n_service import get_translations, translate_status
 from app.services.settings_service import get_app_settings
 
@@ -14,6 +17,9 @@ def inject_global_template_context(request: Request) -> dict:
         return {
             "language": language,
             "t": get_translations(language),
+            "current_date": date.today(),
+            "current_operator_label": get_translations(language)["operator_placeholder"],
+            "open_shift_count": db.query(Shift).filter(Shift.status == "open").count(),
             "status_label": lambda status_name: translate_status(status_name, language),
         }
     finally:
