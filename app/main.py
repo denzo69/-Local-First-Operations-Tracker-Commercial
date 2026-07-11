@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime, time, timedelta
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
@@ -33,6 +34,7 @@ from app.services.settings_service import get_app_settings
 from app.template_context import templates
 
 settings = get_settings()
+BASE_DIR = Path(__file__).resolve().parent
 
 
 @asynccontextmanager
@@ -42,7 +44,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
+app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 app.include_router(backups.router)
 app.include_router(customers.router)
 app.include_router(work_orders.router)

@@ -109,9 +109,33 @@ def test_mobile_navigation_markup_is_present():
         response = client.get("/")
 
     assert response.status_code == 200
+    assert 'href="http://testserver/static/vendor/bootstrap/bootstrap.min.css"' in response.text
+    assert 'href="http://testserver/static/css/app.css"' in response.text
     assert 'data-bs-toggle="offcanvas"' in response.text
     assert 'id="mobileNav"' in response.text
     assert 'aria-label="Mobile navigation"' in response.text
+
+
+def test_static_stylesheets_are_served():
+    with TestClient(app) as client:
+        bootstrap = client.get("/static/vendor/bootstrap/bootstrap.min.css")
+        app_css = client.get("/static/css/app.css")
+
+    assert bootstrap.status_code == 200
+    assert ".d-none" in bootstrap.text
+    assert app_css.status_code == 200
+    assert ".app-sidebar" in app_css.text
+    assert ".dashboard-hero" in app_css.text
+
+
+def test_static_scripts_are_served():
+    with TestClient(app) as client:
+        bootstrap = client.get("/static/vendor/bootstrap/bootstrap.bundle.min.js")
+        app_js = client.get("/static/js/app.js")
+
+    assert bootstrap.status_code == 200
+    assert "Offcanvas" in bootstrap.text
+    assert app_js.status_code == 200
 
 
 def test_dashboard_shows_created_job():
