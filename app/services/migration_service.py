@@ -2,9 +2,10 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 
-def ensure_sqlite_schema_compatibility(engine: Engine) -> None:
+def ensure_sqlite_schema_compatibility(engine: Engine) -> list[str]:
+    diagnostics: list[str] = []
     if engine.dialect.name != "sqlite":
-        return
+        return diagnostics
 
     with engine.begin() as connection:
         _create_unique_index_if_safe(
@@ -45,18 +46,25 @@ def ensure_sqlite_schema_compatibility(engine: Engine) -> None:
             "created_by_user_id",
             "INTEGER",
         )
-        connection.execute(
-            text(
-                "CREATE UNIQUE INDEX IF NOT EXISTS ux_open_shift_seller "
-                "ON shifts (seller_id) WHERE status = 'open'"
+        diagnostics.extend(
+            _create_partial_unique_index_if_safe(
+                connection,
+                table="shifts",
+                columns=["seller_id"],
+                index_name="ux_open_shift_seller",
+                where_clause="status = 'open'",
             )
         )
-        connection.execute(
-            text(
-                "CREATE UNIQUE INDEX IF NOT EXISTS ux_open_shift_register "
-                "ON shifts (cash_register_id) WHERE status = 'open'"
+        diagnostics.extend(
+            _create_partial_unique_index_if_safe(
+                connection,
+                table="shifts",
+                columns=["cash_register_id"],
+                index_name="ux_open_shift_register",
+                where_clause="status = 'open'",
             )
         )
+    return diagnostics
 
 
 def _create_unique_index_if_safe(connection, *, table: str, column: str, index_name: str) -> None:
@@ -87,3 +95,38 @@ def _add_column_if_missing(connection, table: str, column: str, definition: str)
     }
     if column not in columns:
         connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
+
+
+def _create_partial_unique_index_if_safe(
+    connection,
+    *,
+    table: str,
+    columns: list[str],
+    index_name: str,
+    where_clause: str,
+) -> list[str]:
+    column_list = ", ".join(columns)
+    duplicate = connection.execute(
+        text(
+            f"""
+            SELECT {column_list}, COUNT(*) AS duplicate_count
+            FROM {table}
+            WHERE {where_clause}
+            GROUP BY {column_list}
+            HAVING COUNT(*) > 1
+            LIMIT 1
+            """
+        )
+    ).first()
+    if duplicate is not None:
+        return [
+            f"Skipped {index_name}: duplicate rows exist for {table}({column_list}) where {where_clause}."
+        ]
+
+    connection.execute(
+        text(
+            f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} "
+            f"ON {table} ({column_list}) WHERE {where_clause}"
+        )
+    )
+    return []

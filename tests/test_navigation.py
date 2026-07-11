@@ -28,6 +28,39 @@ def test_main_navigation_targets_load():
             assert response.status_code == 200
 
 
+def test_new_navigation_labels_render_in_finnish_and_english():
+    with TestClient(app) as client:
+        client.post(
+            "/settings",
+            data={
+                "company_name": "Test Company Oy",
+                "default_vat_percent": "24",
+                "receipt_prefix": "TEST-",
+                "language": "fi",
+            },
+            follow_redirects=False,
+        )
+        finnish = client.get("/")
+        client.post(
+            "/settings",
+            data={
+                "company_name": "Test Company Oy",
+                "default_vat_percent": "24",
+                "receipt_prefix": "TEST-",
+                "language": "en",
+            },
+            follow_redirects=False,
+        )
+        english = client.get("/")
+
+    assert "Myynti" in finnish.text
+    assert "Hallinta" in finnish.text
+    assert "Audit-loki" in finnish.text
+    assert "Sales" in english.text
+    assert "Administration" in english.text
+    assert "Audit log" in english.text
+
+
 def test_dashboard_shows_created_job():
     with TestClient(app) as client:
         customer_response = client.post(

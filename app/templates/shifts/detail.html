@@ -2,52 +2,52 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
-        <h1>Shift #{{ shift.id }}</h1>
-        <p class="text-muted">{{ shift.seller.name }} · {{ shift.cash_register.name }} · {{ shift.business_date }}</p>
+        <h1>{{ t.shifts }} #{{ shift.id }}</h1>
+        <p class="text-muted">{{ shift.seller.name }} - {{ shift.cash_register.name }} - {{ shift.business_date }}</p>
     </div>
-    <a class="btn btn-outline-secondary" href="/shifts">Back</a>
+    <a class="btn btn-outline-secondary" href="/shifts">{{ t.back }}</a>
 </div>
 <div class="row g-3 mb-3">
-    <div class="col-md-3"><div class="card p-3"><div class="text-muted">Starting cash</div><strong>{{ shift.starting_cash }}</strong></div></div>
-    <div class="col-md-3"><div class="card p-3"><div class="text-muted">Expected cash</div><strong>{{ expected_cash }}</strong></div></div>
-    <div class="col-md-3"><div class="card p-3"><div class="text-muted">Counted cash</div><strong>{{ shift.counted_closing_cash or "-" }}</strong></div></div>
-    <div class="col-md-3"><div class="card p-3"><div class="text-muted">Over/short</div><strong>{{ shift.cash_over_short or "-" }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.starting_cash }}</div><strong>{{ shift.starting_cash }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.expected_cash }}</div><strong>{{ expected_cash }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.counted_cash }}</div><strong>{{ shift.counted_closing_cash or "-" }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.cash_over_short }}</div><strong>{{ shift.cash_over_short or "-" }}</strong></div></div>
 </div>
 {% if shift.status == "open" %}
 <div class="row g-3">
     <div class="col-md-6">
         <form class="card p-3" method="post" action="/shifts/{{ shift.id }}/cash-movements">
-            <h2 class="h5">Cash movement</h2>
+            <h2 class="h5">{{ t.cash_movement }}</h2>
             <input type="hidden" name="seller_id" value="{{ shift.seller_id }}">
             <select class="form-select mb-2" name="movement_type">
-                <option value="cash_in">Cash in</option>
-                <option value="cash_out">Cash out</option>
+                <option value="cash_in">{{ t.cash_in }}</option>
+                <option value="cash_out">{{ t.cash_out }}</option>
             </select>
-            <input class="form-control mb-2" name="amount" placeholder="Amount" required>
-            <input class="form-control mb-2" name="reason" placeholder="Reason">
-            <button class="btn btn-outline-primary" type="submit">Record movement</button>
+            <input class="form-control mb-2" name="amount" placeholder="{{ t.amount }}" required>
+            <input class="form-control mb-2" name="reason" placeholder="{{ t.reason }}">
+            <button class="btn btn-outline-primary" type="submit">{{ t.record_movement }}</button>
         </form>
     </div>
     <div class="col-md-6">
         <form class="card p-3" method="post" action="/shifts/{{ shift.id }}/close">
-            <h2 class="h5">Close shift</h2>
-            <input class="form-control mb-2" name="counted_cash" placeholder="Counted cash" required>
-            <textarea class="form-control mb-2" name="notes" placeholder="Notes"></textarea>
-            <button class="btn btn-primary" type="submit">Close shift</button>
+            <h2 class="h5">{{ t.close_shift }}</h2>
+            <input class="form-control mb-2" name="counted_cash" placeholder="{{ t.counted_cash }}" required>
+            <textarea class="form-control mb-2" name="notes" placeholder="{{ t.notes }}"></textarea>
+            <button class="btn btn-primary" type="submit">{{ t.close_shift }}</button>
         </form>
     </div>
 </div>
 {% endif %}
-<h2 class="h5 mt-4">Sales</h2>
+<h2 class="h5 mt-4">{{ t.sales }}</h2>
 <div class="card">
     <div class="table-responsive">
         <table class="table mb-0">
-            <thead><tr><th>Time</th><th>Payment</th><th>Total</th><th></th></tr></thead>
+            <thead><tr><th>{{ t.time }}</th><th>{{ t.payment }}</th><th>{{ t.total }}</th><th></th></tr></thead>
             <tbody>
             {% for sale in shift.sales %}
-            <tr><td>{{ sale.sold_at }}</td><td>{{ sale.payment_method }}</td><td>{{ sale.total }}</td><td class="text-end"><a href="/sales/{{ sale.id }}">View</a></td></tr>
+            <tr><td>{{ sale.sold_at }}</td><td>{{ sale.payment_method }}</td><td>{{ sale.total }}</td><td class="text-end"><a href="/sales/{{ sale.id }}">{{ t.view }}</a></td></tr>
             {% else %}
-            <tr><td colspan="4" class="text-muted">No sales on this shift.</td></tr>
+            <tr><td colspan="4" class="text-muted">{{ t.no_sales_on_shift }}</td></tr>
             {% endfor %}
             </tbody>
         </table>

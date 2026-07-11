@@ -95,6 +95,11 @@ def require_payment_method(payment_method: str) -> None:
         raise ValueError("Invalid payment method.")
 
 
+def remaining_refundable_amount(sale: Sale) -> Decimal:
+    existing_refunds = sum_money(refund.amount for refund in sale.refunds)
+    return money(parse_decimal(sale.total) - existing_refunds)
+
+
 def require_operational_user(user: User | None) -> User:
     if user is None:
         raise ValueError("User not found.")
@@ -298,6 +303,7 @@ def add_refund(
     db: Session,
     *,
     sale_id: int,
+    refund_shift_id: int,
     seller_id: int,
     amount,
     payment_method: str,
@@ -306,17 +312,17 @@ def add_refund(
     sale = db.get(Sale, sale_id)
     if sale is None:
         raise ValueError("Sale not found.")
-    shift = sale.shift
-    if shift is None or shift.status != "open":
+    refund_shift = db.get(Shift, refund_shift_id)
+    if refund_shift is None or refund_shift.status != "open":
         raise ValueError("Refund requires an open shift.")
-    assert_business_date_open(db, shift.business_date)
+    assert_business_date_open(db, refund_shift.business_date)
     seller = require_operational_user(db.get(User, seller_id))
-    if sale.seller_id != seller_id:
-        raise ValueError("Refund seller must match sale seller.")
+    if refund_shift.seller_id != seller_id:
+        raise ValueError("Refund seller must match refund shift seller.")
     require_payment_method(payment_method)
     parsed_amount = require_positive_money(amount, "Refund amount")
     existing_refunds = sum_money(refund.amount for refund in sale.refunds)
-    remaining_refundable = money(parse_decimal(sale.total) - existing_refunds)
+    remaining_refundable = remaining_refundable_amount(sale)
     if parsed_amount > remaining_refundable:
         raise ValueError("Refund exceeds remaining refundable sale total.")
 
@@ -335,7 +341,7 @@ def add_refund(
     }
     refund = Refund(
         sale_id=sale.id,
-        shift_id=sale.shift_id,
+        shift_id=refund_shift.id,
         seller_id=seller_id,
         amount=parsed_amount,
         vat_amount=vat_amount,
@@ -357,7 +363,12 @@ def add_refund(
         event_type="sale.refunded",
         entity_type="refund",
         entity_id=refund.id,
-        description=f"Refund recorded for sale {sale.id}: {parsed_amount} by {seller.name}.",
+        description=(
+            f"Refund recorded for sale {sale.id}: original seller "
+            f"{sale.seller_id}/{sale.seller.name if sale.seller else 'Unknown'}, "
+            f"refunding seller {seller.id}/{seller.name}, shift {refund_shift.id}, "
+            f"business date {refund_shift.business_date}, amount {parsed_amount}."
+        ),
     )
     db.commit()
     db.refresh(refund)
@@ -664,6 +675,24 @@ def get_latest_daily_closing_snapshot(db: Session, closing: DailyClosing) -> tup
     return snapshot, parse_daily_closing_snapshot(snapshot)
 
 
+def get_daily_closing_snapshot_by_version(
+    db: Session,
+    closing: DailyClosing,
+    version: int,
+) -> tuple[DailyClosingSnapshot, dict]:
+    snapshot = (
+        db.query(DailyClosingSnapshot)
+        .filter(
+            DailyClosingSnapshot.daily_closing_id == closing.id,
+            DailyClosingSnapshot.version == version,
+        )
+        .first()
+    )
+    if snapshot is None:
+        raise ValueError("Daily closing snapshot version not found.")
+    return snapshot, parse_daily_closing_snapshot(snapshot)
+
+
 def reopen_daily_closing(db: Session, *, closing_id: int, user_id: int, reason: str) -> DailyClosing:
     user = require_closing_manager(db.get(User, user_id))
     closing = db.get(DailyClosing, closing_id)
@@ -712,12 +741,16 @@ def seller_report(db: Session, *, seller_id: int, start_date: date, end_date: da
         for payment in sale.payments:
             payment_totals[payment.payment_method] += parse_decimal(payment.amount)
     total_sales = sum_money(sale.total for sale in sales)
+    total_refunds = sum_money(refund.amount for refund in refunds)
     transaction_count = len(sales)
+    net_sales = money(total_sales - total_refunds)
     return {
+        "gross_sales": total_sales,
         "total_sales": total_sales,
+        "net_sales": net_sales,
         "transaction_count": transaction_count,
         "average_sale": money(total_sales / transaction_count) if transaction_count else Decimal("0.00"),
         "discounts": sum_money(sale.discount_total for sale in sales),
-        "refunds": sum_money(refund.amount for refund in refunds),
+        "refunds": total_refunds,
         "payment_totals": {method: money(total) for method, total in payment_totals.items()},
     }

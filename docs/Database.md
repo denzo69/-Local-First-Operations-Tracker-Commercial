@@ -165,15 +165,19 @@ Important accounting rules:
 - Work Orders, Sales, Payments, and Refunds are separate records.
 - A Sale may reference a Work Order, but payments are stored in `payments`.
 - Refunds are stored in `refunds` and include `vat_breakdown_json`.
+- Refunds reference the original sale through `sale_id`, but `shift_id`, `seller_id`, and `refunded_at` describe the actual refund event.
+- A later refund is attributed to the refund shift business date and refunding seller. It does not move the original sale away from the original sale shift or seller.
 - Daily closing stores immutable rows in `daily_closing_snapshots`.
 - `daily_closings.current_version` points to the latest closing snapshot version.
 - Reopening a Daily Closing must preserve older snapshots and store `reopened_at`, `reopened_by_user_id`, and `reopen_reason`.
 - Closed business dates block financial writes until reopened.
+- Daily closing reports use actual event dates: sales from sale shifts, refunds from refund shifts.
 - SQLite compatibility creates partial unique indexes to prevent more than one open shift per seller and more than one open shift per cash register.
 
 Current limitations:
 
 - User IDs are selected from forms; there is no authenticated current user yet.
+- Role checks remain business-rule validation, not secure identity verification.
 - Sale documents, payment transaction numbers, refund numbers, shift numbers, and closing numbers are not official stable document numbers yet.
 - Sales UI creates one line and one payment. Future versions should finalize sales from multiple validated lines and separate payment balancing.
 - Multi-VAT refunds are rejected until line-level refund allocation is added.

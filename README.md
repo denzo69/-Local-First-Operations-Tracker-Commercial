@@ -25,6 +25,7 @@ The app is not intended to be exposed directly to the public internet.
 - Cash registers and seller shifts with starting cash, cash movements, closing count, expected cash, and over/short calculation
 - Sales, payments, and refunds stored separately from Work Orders
 - Daily closing with immutable versioned snapshots, closed-day write lock, VAT/payment/seller summaries, and authorized reopen flow
+- Read-only browsing for historical daily closing snapshot versions
 - Seller reports for daily, weekly, and monthly sales metrics
 - Sales report totals
 - Audit log
@@ -60,7 +61,10 @@ Daily closing rules:
 - Only reopening the Daily Closing unlocks that date.
 - Re-closing after reopen creates a new snapshot version and preserves older snapshot rows.
 - Refunds cannot exceed the original sale total cumulatively.
+- Refunds are recorded on the current open refund shift and the refunding seller, not on the original sale shift.
+- The original sale remains on its original sale date and seller. Later refunds reduce the refund day and refunding seller totals.
 - Refund VAT is stored with the refund. Single-VAT sales are supported; multi-VAT refunds require future line allocation.
+- Snapshot version history is available from the Daily Closing detail page.
 
 Security limitation:
 

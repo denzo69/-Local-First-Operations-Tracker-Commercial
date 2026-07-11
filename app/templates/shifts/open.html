@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Open shift</h1>
+<h1>{{ t.open_shift }}</h1>
 <form method="post" action="/shifts" class="card p-3">
     <div class="mb-3">
-        <label class="form-label" for="seller_id">Seller</label>
+        <label class="form-label" for="seller_id">{{ t.seller }}</label>
         <select class="form-select" id="seller_id" name="seller_id" required>
             {% for user in users %}
             <option value="{{ user.id }}">{{ user.name }}</option>
@@ -11,7 +11,7 @@
         </select>
     </div>
     <div class="mb-3">
-        <label class="form-label" for="cash_register_id">Cash register</label>
+        <label class="form-label" for="cash_register_id">{{ t.cash_register }}</label>
         <select class="form-select" id="cash_register_id" name="cash_register_id" required>
             {% for register in registers %}
             <option value="{{ register.id }}">{{ register.name }}</option>
@@ -19,17 +19,17 @@
         </select>
     </div>
     <div class="mb-3">
-        <label class="form-label" for="business_date">Business date</label>
+        <label class="form-label" for="business_date">{{ t.business_date }}</label>
         <input class="form-control" id="business_date" type="date" name="business_date" value="{{ today }}" required>
     </div>
     <div class="mb-3">
-        <label class="form-label" for="starting_cash">Starting cash</label>
+        <label class="form-label" for="starting_cash">{{ t.starting_cash }}</label>
         <input class="form-control" id="starting_cash" name="starting_cash" value="0">
     </div>
     <div class="mb-3">
-        <label class="form-label" for="notes">Notes</label>
+        <label class="form-label" for="notes">{{ t.notes }}</label>
         <textarea class="form-control" id="notes" name="notes"></textarea>
     </div>
-    <button class="btn btn-primary" type="submit">Open shift</button>
+    <button class="btn btn-primary" type="submit">{{ t.open_shift }}</button>
 </form>
 {% endblock %}

@@ -6,8 +6,13 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.models import DailyClosing, Role, Shift, User
-from app.services.sales_service import create_daily_closing, get_latest_daily_closing_snapshot, reopen_daily_closing
+from app.models import DailyClosing, DailyClosingSnapshot, Role, Shift, User
+from app.services.sales_service import (
+    create_daily_closing,
+    get_daily_closing_snapshot_by_version,
+    get_latest_daily_closing_snapshot,
+    reopen_daily_closing,
+)
 from app.template_context import templates
 
 router = APIRouter(prefix="/daily-closings", tags=["daily-closings"])
@@ -83,6 +88,47 @@ def daily_closing_detail(closing_id: int, request: Request, db: Session = Depend
             "closing": closing,
             "snapshot_row": snapshot_row,
             "snapshot": snapshot,
+            "snapshots": (
+                db.query(DailyClosingSnapshot)
+                .filter(DailyClosingSnapshot.daily_closing_id == closing.id)
+                .order_by(DailyClosingSnapshot.version.asc())
+                .all()
+            ),
+            "users": users,
+        },
+    )
+
+
+@router.get("/{closing_id}/snapshots/{version}", response_class=HTMLResponse)
+def daily_closing_snapshot_detail(
+    closing_id: int,
+    version: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    closing = db.get(DailyClosing, closing_id)
+    if closing is None:
+        raise HTTPException(status_code=404, detail="Daily closing not found")
+    try:
+        snapshot_row, snapshot = get_daily_closing_snapshot_by_version(db, closing, version)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    users = closing_manager_query(db).all()
+    return templates.TemplateResponse(
+        "daily_closings/detail.html",
+        {
+            "request": request,
+            "app_name": settings.app_name,
+            "active_page": "daily_closings",
+            "closing": closing,
+            "snapshot_row": snapshot_row,
+            "snapshot": snapshot,
+            "snapshots": (
+                db.query(DailyClosingSnapshot)
+                .filter(DailyClosingSnapshot.daily_closing_id == closing.id)
+                .order_by(DailyClosingSnapshot.version.asc())
+                .all()
+            ),
             "users": users,
         },
     )

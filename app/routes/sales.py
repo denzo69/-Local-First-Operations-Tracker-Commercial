@@ -5,7 +5,12 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import get_db
 from app.models import Job, Product, Sale, Shift
-from app.services.sales_service import PAYMENT_METHODS, add_refund, create_sale_with_payment
+from app.services.sales_service import (
+    PAYMENT_METHODS,
+    add_refund,
+    create_sale_with_payment,
+    remaining_refundable_amount,
+)
 from app.template_context import templates
 
 router = APIRouter(prefix="/sales", tags=["sales"])
@@ -87,7 +92,9 @@ def sale_detail(sale_id: int, request: Request, db: Session = Depends(get_db)):
             "app_name": settings.app_name,
             "active_page": "sales",
             "sale": sale,
+            "open_shifts": db.query(Shift).filter(Shift.status == "open").order_by(Shift.opened_at.desc()).all(),
             "payment_methods": PAYMENT_METHODS,
+            "remaining_refundable": remaining_refundable_amount(sale),
         },
     )
 
@@ -95,17 +102,21 @@ def sale_detail(sale_id: int, request: Request, db: Session = Depends(get_db)):
 @router.post("/{sale_id}/refunds")
 def create_refund(
     sale_id: int,
-    seller_id: int = Form(...),
+    refund_shift_id: int = Form(...),
     amount: str = Form(...),
     payment_method: str = Form(...),
     reason: str = Form(""),
     db: Session = Depends(get_db),
 ):
+    refund_shift = db.get(Shift, refund_shift_id)
+    if refund_shift is None:
+        raise HTTPException(status_code=400, detail="Refund shift not found")
     try:
         add_refund(
             db,
             sale_id=sale_id,
-            seller_id=seller_id,
+            refund_shift_id=refund_shift_id,
+            seller_id=refund_shift.seller_id,
             amount=amount,
             payment_method=payment_method,
             reason=reason,
