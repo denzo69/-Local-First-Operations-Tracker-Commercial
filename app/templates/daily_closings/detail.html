@@ -49,6 +49,7 @@
 </div>
 {% if closing.status == "closed" %}
 <form class="card p-3 mt-3" method="post" action="/daily-closings/{{ closing.id }}/reopen">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <h2 class="h5">{{ t.reopen }}</h2>
     <div class="alert alert-warning">{{ t.reopening_unlocks_business_date }} {{ t.reclosing_creates_new_snapshot }}</div>
     <select class="form-select mb-2" name="user_id">

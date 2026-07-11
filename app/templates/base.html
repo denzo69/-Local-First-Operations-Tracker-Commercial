@@ -97,6 +97,7 @@
             {% if is_authenticated %}
             <span>{{ current_user.role.name if current_user.role else "User" }}: <strong>{{ current_user.name }}</strong></span>
             <form method="post" action="/logout" class="m-0">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button class="btn btn-outline-secondary btn-sm" type="submit">{{ t.logout }}</button>
             </form>
             {% else %}

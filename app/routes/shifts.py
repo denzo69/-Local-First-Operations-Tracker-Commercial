@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import get_db
 from app.models import CashRegister, Shift, User
+from app.services.auth_service import request_current_user, user_has_role
 from app.services.sales_service import add_cash_movement, close_shift, open_shift
 from app.template_context import templates
 
@@ -45,6 +46,7 @@ def open_shift_form(request: Request, db: Session = Depends(get_db)):
 
 @router.post("")
 def create_shift(
+    request: Request,
     seller_id: int = Form(...),
     cash_register_id: int = Form(...),
     business_date: str = Form(...),
@@ -52,6 +54,9 @@ def create_shift(
     notes: str = Form(""),
     db: Session = Depends(get_db),
 ):
+    current_user = request_current_user(request)
+    if current_user is not None and not user_has_role(current_user, {"admin", "manager"}):
+        seller_id = current_user.id
     try:
         shift = open_shift(
             db,
@@ -91,17 +96,27 @@ def shift_detail(shift_id: int, request: Request, db: Session = Depends(get_db))
 @router.post("/{shift_id}/cash-movements")
 def create_cash_movement(
     shift_id: int,
-    seller_id: int = Form(...),
+    request: Request,
+    seller_id: int | None = Form(None),
     movement_type: str = Form(...),
     amount: str = Form(...),
     reason: str = Form(""),
     db: Session = Depends(get_db),
 ):
+    shift = db.get(Shift, shift_id)
+    if shift is None:
+        raise HTTPException(status_code=404, detail="Shift not found")
+    current_user = request_current_user(request)
+    effective_seller_id = shift.seller_id if current_user is not None else seller_id
+    if effective_seller_id is None:
+        raise HTTPException(status_code=400, detail="Seller is required")
+    if current_user is not None and current_user.id != shift.seller_id:
+        raise HTTPException(status_code=403, detail="Cash movements must be recorded on the current user's own shift.")
     try:
         add_cash_movement(
             db,
             shift_id=shift_id,
-            seller_id=seller_id,
+            seller_id=effective_seller_id,
             movement_type=movement_type,
             amount=amount,
             reason=reason,

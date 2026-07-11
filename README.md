@@ -62,12 +62,14 @@ The app is not intended to be exposed directly to the public internet.
 
 ## Known Limitations
 
-- Authentication is local-session based and intended for a trusted company network; it is not hardened for public internet exposure
-- Some operational forms still preserve seller/admin selectors for MVP workflows. Route-level session checks now protect access, but deeper current-user ownership enforcement is still a future hardening step.
+- Authentication is local-session based and intended for a trusted company network; it is not hardened for public internet exposure.
+- Non-development startup fails if `SECRET_KEY` is missing or still uses a known development default.
+- State-changing authenticated HTML forms use CSRF tokens backed by signed local cookies.
+- Some operational forms still preserve seller/admin selectors for MVP workflows. Critical financial routes now derive the effective seller or closing user from the active session where authentication is configured, but this is still not a substitute for public-internet-grade authorization.
 - No cloud deployment, PostgreSQL, or object storage
 - No native mobile application
 - Backup scheduler is in-process and intended for the local single-computer deployment model; use an external scheduler for stricter production guarantees
-- Alembic has a baseline migration for new databases, but existing SQLite databases are not migrated automatically on application startup
+- Alembic has a baseline migration for new databases. Docker startup runs `alembic upgrade head`; the Windows app startup still creates missing tables and applies a small compatibility shim, so older unknown schemas should be upgraded deliberately and backed up first.
 - Receipt numbering is local-MVP safe, but not designed for high-concurrency multi-server use
 - Money columns now use SQLAlchemy `Numeric`; existing SQLite columns may still have older storage affinity until a future migration rebuilds the tables
 - Bootstrap CSS and JavaScript are bundled locally under `app/static/vendor/bootstrap`; the app does not require a CDN for the normal UI
@@ -95,7 +97,9 @@ Security notes:
 
 - Create the first admin at `/setup`, then use `/login`.
 - Passwords are stored as PBKDF2-SHA256 hashes.
-- Signed HTTP-only session cookies are used for local browser sessions.
+- Signed HTTP-only session cookies are used for local browser sessions. Cookie `Secure`, `SameSite`, and max age are configurable through environment variables.
+- Authenticated write forms use CSRF tokens. Login/setup remain intentionally simple local setup flows; logout and protected write routes require CSRF once authentication is configured.
+- Repeated failed logins are temporarily throttled and audited without storing passwords in logs.
 - Admin and Manager roles can access administration routes. Read only users cannot perform write requests.
 - The app is still not intended to be exposed directly to the public internet.
 
@@ -148,6 +152,7 @@ http://127.0.0.1:8000/health
 Docker is optional. The compose setup runs the app with SQLite stored in a named volume and backups stored in a separate named volume.
 
 ```powershell
+set SECRET_KEY=replace-with-a-long-random-value
 docker compose up --build
 ```
 
@@ -157,7 +162,7 @@ Then open:
 http://127.0.0.1:8000
 ```
 
-Before real use, change `SECRET_KEY` in `docker-compose.yml` or provide it through your environment. The Docker setup intentionally keeps the current local-first SQLite model; PostgreSQL and object storage are not enabled yet.
+Docker Compose requires `SECRET_KEY` from the environment and refuses to start without it. The Docker setup intentionally keeps the current local-first SQLite model; PostgreSQL and object storage are not enabled yet. The container runs Alembic migrations before starting Uvicorn and includes a `/health` healthcheck.
 
 Run the full test suite:
 
@@ -177,6 +182,11 @@ Optional backup scheduler environment settings:
 BACKUP_SCHEDULER_ENABLED=true
 BACKUP_SCHEDULER_INTERVAL_MINUTES=1440
 BACKUP_RETENTION_COUNT=50
+SESSION_COOKIE_SECURE=false
+SESSION_COOKIE_SAMESITE=lax
+SESSION_MAX_AGE_SECONDS=43200
+LOGIN_THROTTLE_MAX_ATTEMPTS=5
+LOGIN_THROTTLE_WINDOW_SECONDS=300
 ```
 
 ## Local Network And Tailscale Access

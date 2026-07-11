@@ -7,6 +7,7 @@
         <p class="text-muted mb-0">SQLite backups created with the safe backup API.</p>
     </div>
     <form method="post" action="/backups/create">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button class="btn btn-primary" type="submit">Create backup</button>
     </form>
 </div>
@@ -53,6 +54,7 @@
                         <div class="text-muted small">SHA-256 {{ backup.checksum[:16] }}...</div>
                     </div>
                     <form method="post" action="/backups/{{ backup.name }}/restore">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <button class="btn btn-sm btn-outline-danger" type="submit">Restore</button>
                     </form>
                 </div>

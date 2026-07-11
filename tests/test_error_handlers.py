@@ -8,6 +8,7 @@ def test_http_error_uses_branded_html_page():
         response = client.get("/work-orders/999999")
 
     assert response.status_code == 404
+    assert response.headers["x-request-id"]
     assert "error-page" in response.text
     assert "Work order not found" in response.text
     assert 'href="http://testserver/static/css/app.css"' in response.text
@@ -21,13 +22,12 @@ def test_http_error_can_return_json():
         )
 
     assert response.status_code == 404
-    assert response.json() == {
-        "error": {
-            "status_code": 404,
-            "title": "Not Found",
-            "detail": "Work order not found",
-        }
-    }
+    assert response.headers["x-request-id"]
+    payload = response.json()
+    assert payload["error"]["status_code"] == 404
+    assert payload["error"]["title"] == "Not Found"
+    assert payload["error"]["detail"] == "Work order not found"
+    assert payload["error"]["request_id"] == response.headers["x-request-id"]
 
 
 def test_validation_error_can_return_json():
@@ -38,6 +38,7 @@ def test_validation_error_can_return_json():
         )
 
     assert response.status_code == 422
+    assert response.headers["x-request-id"]
     assert response.json()["error"]["status_code"] == 422
     assert response.json()["error"]["title"].startswith("Unprocessable")
     assert response.json()["error"]["detail"] == "Request validation failed."
@@ -54,5 +55,6 @@ def test_unhandled_error_returns_safe_response():
         response = client.get(route_path)
 
     assert response.status_code == 500
+    assert response.headers["x-request-id"]
     assert "Unexpected server error." in response.text
     assert "sensitive internal detail" not in response.text

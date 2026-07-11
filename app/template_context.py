@@ -7,6 +7,7 @@ from fastapi.templating import Jinja2Templates
 from app.database import get_db
 from app.models import Shift
 from app.services.i18n_service import get_translations, translate_status
+from app.services.security_service import get_csrf_token_from_request
 from app.services.settings_service import get_app_settings
 
 
@@ -16,11 +17,13 @@ def inject_global_template_context(request: Request) -> dict:
         app_settings = get_app_settings(db)
         language = app_settings.get("language", "en")
         current_user = getattr(request.state, "current_user", None)
+        csrf_token = get_csrf_token_from_request(request) or ""
         return {
             "language": language,
             "t": get_translations(language),
             "current_date": date.today(),
             "current_user": current_user,
+            "csrf_token": csrf_token,
             "is_authenticated": current_user is not None,
             "current_operator_label": (
                 current_user.name

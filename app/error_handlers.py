@@ -57,19 +57,24 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 
 def _error_response(request: Request, *, status_code: int, detail: str):
+    request_id = getattr(request.state, "request_id", None)
     if _prefers_json(request):
-        return JSONResponse(
+        response = JSONResponse(
             status_code=status_code,
             content={
                 "error": {
                     "status_code": status_code,
                     "title": _status_phrase(status_code),
                     "detail": detail,
+                    "request_id": request_id,
                 }
             },
         )
+        if request_id:
+            response.headers["x-request-id"] = request_id
+        return response
 
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         "error.html",
         {
             "request": request,
@@ -77,9 +82,13 @@ def _error_response(request: Request, *, status_code: int, detail: str):
             "status_code": status_code,
             "error_title": _status_phrase(status_code),
             "error_detail": detail,
+            "request_id": request_id,
         },
         status_code=status_code,
     )
+    if request_id:
+        response.headers["x-request-id"] = request_id
+    return response
 
 
 def _prefers_json(request: Request) -> bool:

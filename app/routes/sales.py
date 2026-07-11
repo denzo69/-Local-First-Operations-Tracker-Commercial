@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import get_db
 from app.models import Job, Product, Sale, Shift
+from app.services.auth_service import request_current_user
 from app.services.sales_service import (
     PAYMENT_METHODS,
     add_refund,
@@ -49,8 +50,9 @@ def new_sale(request: Request, db: Session = Depends(get_db)):
 
 @router.post("")
 def create_sale(
+    request: Request,
     shift_id: int = Form(...),
-    seller_id: int = Form(...),
+    seller_id: int | None = Form(None),
     payment_method: str = Form(...),
     description: str = Form(...),
     quantity: str = Form("1"),
@@ -61,10 +63,17 @@ def create_sale(
     product_id: int | None = Form(None),
     db: Session = Depends(get_db),
 ):
+    shift = db.get(Shift, shift_id)
+    if shift is None:
+        raise HTTPException(status_code=400, detail="Shift not found")
+    current_user = request_current_user(request)
+    effective_seller_id = shift.seller_id if current_user is not None else seller_id
+    if effective_seller_id is None:
+        raise HTTPException(status_code=400, detail="Seller is required")
     try:
         sale = create_sale_with_payment(
             db,
-            seller_id=seller_id,
+            seller_id=effective_seller_id,
             shift_id=shift_id,
             payment_method=payment_method,
             description=description,
@@ -102,6 +111,7 @@ def sale_detail(sale_id: int, request: Request, db: Session = Depends(get_db)):
 @router.post("/{sale_id}/refunds")
 def create_refund(
     sale_id: int,
+    request: Request,
     refund_shift_id: int = Form(...),
     amount: str = Form(...),
     payment_method: str = Form(...),
@@ -111,6 +121,9 @@ def create_refund(
     refund_shift = db.get(Shift, refund_shift_id)
     if refund_shift is None:
         raise HTTPException(status_code=400, detail="Refund shift not found")
+    current_user = request_current_user(request)
+    if current_user is not None and current_user.id != refund_shift.seller_id:
+        raise HTTPException(status_code=403, detail="Refunds must be recorded on the current user's own open shift.")
     try:
         add_refund(
             db,

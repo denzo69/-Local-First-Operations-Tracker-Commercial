@@ -2,6 +2,7 @@
 {% block content %}
 <h1>{{ "Edit cash register" if register else "New cash register" }}</h1>
 <form method="post" action="{{ form_action }}" class="card p-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div class="mb-3">
         <label class="form-label" for="name">Name</label>
         <input class="form-control" id="name" name="name" value="{{ register.name if register else '' }}" required>

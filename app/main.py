@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
+import uuid
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
@@ -9,7 +10,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.auth_middleware import authentication_middleware
-from app.config import get_settings
+from app.config import get_settings, validate_runtime_configuration
 from app.database import get_db, init_db
 from app.error_handlers import register_error_handlers
 from app.models import AuditLog, DailyClosing, Job, Refund, Sale, Shift
@@ -43,6 +44,7 @@ BASE_DIR = Path(__file__).resolve().parent
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    validate_runtime_configuration()
     init_db()
     start_backup_scheduler()
     try:
@@ -70,6 +72,15 @@ app.include_router(daily_closings.router)
 app.include_router(seller_reports.router)
 app.include_router(reports.router)
 app.include_router(settings_routes.router)
+
+
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+    request.state.request_id = request_id
+    response = await call_next(request)
+    response.headers["x-request-id"] = request_id
+    return response
 
 
 @app.middleware("http")

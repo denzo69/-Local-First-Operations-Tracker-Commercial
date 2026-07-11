@@ -24,6 +24,7 @@
                 {% for status in statuses %}
                     {% if not job.status or status.id != job.status.id %}
                     <form method="post" action="{{ route_base }}/{{ job.id }}/status">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <input type="hidden" name="status_id" value="{{ status.id }}">
                         <button class="btn {% if status.is_ready_state %}btn-success{% elif status.is_final %}btn-dark{% else %}btn-outline-primary{% endif %}" type="submit">
                             {{ status_label(status.name) }}
@@ -91,6 +92,7 @@
                         <td class="text-end">{{ "%.2f"|format(item.line_total) }}</td>
                         <td class="text-end">
                             <form method="post" action="{{ route_base }}/{{ job.id }}/items/{{ item.id }}/delete">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                 <button class="btn btn-sm btn-outline-danger" type="submit">{{ t.remove }}</button>
                             </form>
                         </td>
@@ -109,6 +111,7 @@
         {% endif %}
 
         <form class="row g-2" method="post" action="{{ route_base }}/{{ job.id }}/items">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="col-md-4">
                 <label class="form-label" for="product_id">{{ t.product }}</label>
                 <select class="form-select" id="product_id" name="product_id">

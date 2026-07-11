@@ -9,13 +9,19 @@ services:
       PORT: 8000
       DATABASE_URL: sqlite:////app/data/app.sqlite
       BACKUP_DIR: /app/backups
-      SECRET_KEY: change-this-before-use
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY to a unique non-default value before starting Docker}
       BACKUP_SCHEDULER_ENABLED: "true"
       BACKUP_SCHEDULER_INTERVAL_MINUTES: "1440"
       BACKUP_RETENTION_COUNT: "50"
     volumes:
       - ops_data:/app/data
       - ops_backups:/app/backups
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
 
 volumes:

@@ -13,6 +13,15 @@ from app.services.auth_service import (
     ensure_first_admin_role,
     hash_password,
 )
+from app.services.security_service import (
+    clear_failed_logins,
+    clear_session_cookie,
+    issue_csrf_cookie,
+    login_is_throttled,
+    login_throttle_key,
+    record_failed_login,
+    set_session_cookie,
+)
 from app.template_context import templates
 
 router = APIRouter(tags=["auth"])
@@ -20,7 +29,7 @@ router = APIRouter(tags=["auth"])
 
 @router.get("/login", response_class=HTMLResponse)
 def login_form(request: Request, next: str = "/", db: Session = Depends(get_db)):
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         "auth/login.html",
         {
             "request": request,
@@ -30,6 +39,8 @@ def login_form(request: Request, next: str = "/", db: Session = Depends(get_db))
             "error_key": None,
         },
     )
+    issue_csrf_cookie(request, response)
+    return response
 
 
 @router.post("/login")
@@ -40,8 +51,39 @@ def login(
     next_url: str = Form("/"),
     db: Session = Depends(get_db),
 ):
+    throttle_key = login_throttle_key(request, login_name)
+    if login_is_throttled(throttle_key):
+        log_audit_event(
+            db,
+            event_type="auth.login_throttled",
+            entity_type="user",
+            entity_id=0,
+            description="Login temporarily throttled after repeated failed attempts.",
+        )
+        db.commit()
+        return templates.TemplateResponse(
+            "auth/login.html",
+            {
+                "request": request,
+                "page_title": "Login",
+                "next_url": _safe_next(next_url),
+                "auth_configured": auth_is_configured(db),
+                "error_key": "invalid_login",
+            },
+            status_code=429,
+        )
+
     user = authenticate_user(db, login_name, password)
     if user is None:
+        record_failed_login(throttle_key)
+        log_audit_event(
+            db,
+            event_type="auth.login_failed",
+            entity_type="user",
+            entity_id=0,
+            description="Failed login attempt.",
+        )
+        db.commit()
         return templates.TemplateResponse(
             "auth/login.html",
             {
@@ -55,20 +97,17 @@ def login(
         )
 
     response = RedirectResponse(url=_safe_next(next_url), status_code=303)
-    response.set_cookie(
-        COOKIE_NAME,
-        create_session_token(user.id),
-        httponly=True,
-        samesite="lax",
-        max_age=60 * 60 * 12,
-    )
+    clear_failed_logins(throttle_key)
+    set_session_cookie(response, COOKIE_NAME, create_session_token(user.id))
+    issue_csrf_cookie(request, response)
     return response
 
 
 @router.post("/logout")
-def logout():
+def logout(request: Request):
     response = RedirectResponse(url="/login", status_code=303)
-    response.delete_cookie(COOKIE_NAME)
+    clear_session_cookie(response, COOKIE_NAME)
+    issue_csrf_cookie(request, response)
     return response
 
 
@@ -76,7 +115,7 @@ def logout():
 def setup_form(request: Request, db: Session = Depends(get_db)):
     if auth_is_configured(db):
         return RedirectResponse(url="/login", status_code=303)
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         "auth/setup.html",
         {
             "request": request,
@@ -84,6 +123,8 @@ def setup_form(request: Request, db: Session = Depends(get_db)):
             "error_key": None,
         },
     )
+    issue_csrf_cookie(request, response)
+    return response
 
 
 @router.post("/setup")
@@ -129,13 +170,8 @@ def create_first_admin(
     db.commit()
 
     response = RedirectResponse(url="/", status_code=303)
-    response.set_cookie(
-        COOKIE_NAME,
-        create_session_token(user.id),
-        httponly=True,
-        samesite="lax",
-        max_age=60 * 60 * 12,
-    )
+    set_session_cookie(response, COOKIE_NAME, create_session_token(user.id))
+    issue_csrf_cookie(request, response)
     return response
 
 

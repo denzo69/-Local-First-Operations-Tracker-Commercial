@@ -70,6 +70,7 @@
     </div>
 </div>
 <form class="card p-3 mt-3" method="post" action="/sales/{{ sale.id }}/refunds">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <h2 class="h5">{{ t.refund }}</h2>
     <p class="text-muted">{{ t.remaining_refundable }}: {{ remaining_refundable }}</p>
     <label class="form-label" for="refund_shift_id">{{ t.refund_shift }}</label>

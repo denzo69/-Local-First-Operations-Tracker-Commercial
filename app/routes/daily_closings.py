@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import get_db
 from app.models import DailyClosing, DailyClosingSnapshot, Role, Shift, User
+from app.services.auth_service import request_current_user
 from app.services.sales_service import (
     create_daily_closing,
     get_daily_closing_snapshot_by_version,
@@ -54,15 +55,20 @@ def list_daily_closings(request: Request, db: Session = Depends(get_db)):
 
 @router.post("")
 def close_business_day(
+    request: Request,
     business_date: str = Form(...),
-    created_by_user_id: int = Form(...),
+    created_by_user_id: int | None = Form(None),
     db: Session = Depends(get_db),
 ):
+    current_user = request_current_user(request)
+    effective_user_id = current_user.id if current_user is not None else created_by_user_id
+    if effective_user_id is None:
+        raise HTTPException(status_code=400, detail="Closing user is required")
     try:
         closing = create_daily_closing(
             db,
             business_date=date.fromisoformat(business_date),
-            created_by_user_id=created_by_user_id,
+            created_by_user_id=effective_user_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -137,12 +143,17 @@ def daily_closing_snapshot_detail(
 @router.post("/{closing_id}/reopen")
 def reopen_closing(
     closing_id: int,
-    user_id: int = Form(...),
+    request: Request,
+    user_id: int | None = Form(None),
     reason: str = Form(...),
     db: Session = Depends(get_db),
 ):
+    current_user = request_current_user(request)
+    effective_user_id = current_user.id if current_user is not None else user_id
+    if effective_user_id is None:
+        raise HTTPException(status_code=400, detail="Reopen user is required")
     try:
-        reopen_daily_closing(db, closing_id=closing_id, user_id=user_id, reason=reason)
+        reopen_daily_closing(db, closing_id=closing_id, user_id=effective_user_id, reason=reason)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return RedirectResponse(url=f"/daily-closings/{closing_id}", status_code=303)

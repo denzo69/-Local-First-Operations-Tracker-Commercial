@@ -2,6 +2,7 @@
 {% block content %}
 <h1>{{ t.new_sale }}</h1>
 <form method="post" action="/sales" class="card p-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div class="mb-3">
         <label class="form-label" for="shift_id">{{ t.open_shift }}</label>
         <select class="form-select" id="shift_id" name="shift_id" required>

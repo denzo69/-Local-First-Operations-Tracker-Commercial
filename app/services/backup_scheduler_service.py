@@ -108,6 +108,8 @@ def start_backup_scheduler() -> BackupScheduler | None:
     if not settings.backup_scheduler_enabled:
         _scheduler = None
         return None
+    if _scheduler is not None and _scheduler.running:
+        return _scheduler
     _scheduler = BackupScheduler(
         interval_minutes=settings.backup_scheduler_interval_minutes,
         retention_count=settings.backup_retention_count,

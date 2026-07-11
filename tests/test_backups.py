@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from app.database import SessionLocal, engine
 from app.main import app
 from app.models import Customer
+from app.config import get_settings
 from app.services.maintenance_service import maintenance_mode
 from app.services.backup_service import (
     backup_health,
@@ -12,7 +13,13 @@ from app.services.backup_service import (
     restore_backup,
     validate_sqlite_database,
 )
-from app.services.backup_scheduler_service import BackupScheduler, get_backup_scheduler_status
+from app.services import backup_scheduler_service
+from app.services.backup_scheduler_service import (
+    BackupScheduler,
+    get_backup_scheduler_status,
+    start_backup_scheduler,
+    stop_backup_scheduler,
+)
 
 
 def test_backups_page_loads_and_backup_can_be_created():
@@ -81,6 +88,39 @@ def test_backup_scheduler_status_reflects_disabled_test_configuration():
 
     assert status.enabled is False
     assert status.running is False
+
+
+def test_backup_scheduler_start_is_idempotent_and_stops_cleanly(monkeypatch):
+    get_settings.cache_clear()
+    monkeypatch.setenv("BACKUP_SCHEDULER_ENABLED", "true")
+    monkeypatch.setenv("BACKUP_SCHEDULER_INTERVAL_MINUTES", "1440")
+    try:
+        first = start_backup_scheduler()
+        second = start_backup_scheduler()
+        assert first is second
+        assert first is not None
+        assert first.running is True
+    finally:
+        stop_backup_scheduler()
+        monkeypatch.setenv("BACKUP_SCHEDULER_ENABLED", "false")
+        get_settings.cache_clear()
+
+    assert get_backup_scheduler_status().running is False
+
+
+def test_backup_scheduler_failure_is_recorded_without_crashing(monkeypatch):
+    scheduler = BackupScheduler(interval_minutes=1440, retention_count=1)
+
+    def fail_backup(label: str = "scheduled"):
+        raise RuntimeError("temporary backup failure")
+
+    monkeypatch.setattr(backup_scheduler_service, "create_backup", fail_backup)
+
+    result = scheduler.run_once()
+
+    assert result is None
+    assert scheduler.last_error == "temporary backup failure"
+    assert scheduler.next_run_at is not None
 
 
 def test_backup_health_reports_latest_backup():

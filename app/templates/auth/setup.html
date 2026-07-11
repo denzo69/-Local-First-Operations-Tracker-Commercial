@@ -13,6 +13,7 @@
     {% endif %}
 
     <form method="post" action="/setup" class="stacked-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <div>
             <label class="form-label" for="name">Name</label>
             <input class="form-control" id="name" name="name" autocomplete="name" required autofocus>

@@ -11,6 +11,7 @@
 </div>
 
 <form class="card shadow-sm border-0" method="post" action="/settings">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <div class="card-body">
         <div class="row g-3">
             <div class="col-12">

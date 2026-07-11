@@ -75,6 +75,7 @@
 
 {% if not customer_jobs %}
 <form method="post" action="/customers/{{ customer.id }}/delete">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button class="btn btn-outline-danger" type="submit">Delete customer</button>
 </form>
 {% endif %}

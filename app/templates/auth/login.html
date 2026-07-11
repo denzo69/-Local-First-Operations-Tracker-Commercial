@@ -18,6 +18,7 @@
     <div class="alert alert-danger">{{ t[error_key] }}</div>
     {% endif %}
     <form method="post" action="/login" class="stacked-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="next_url" value="{{ next_url }}">
         <div>
             <label class="form-label" for="login_name">{{ t.login_name }}</label>

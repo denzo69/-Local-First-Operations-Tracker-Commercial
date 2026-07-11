@@ -37,6 +37,7 @@
                             <a class="btn btn-sm btn-outline-primary" href="/settings/statuses/{{ status.id }}/edit">Edit</a>
                             {% if status.is_active %}
                             <form class="d-inline" method="post" action="/settings/statuses/{{ status.id }}/deactivate">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                 <button class="btn btn-sm btn-outline-secondary" type="submit">Deactivate</button>
                             </form>
                             {% endif %}

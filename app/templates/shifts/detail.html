@@ -17,6 +17,7 @@
 <div class="row g-3">
     <div class="col-md-6">
         <form class="card p-3" method="post" action="/shifts/{{ shift.id }}/cash-movements">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <h2 class="h5">{{ t.cash_movement }}</h2>
             <input type="hidden" name="seller_id" value="{{ shift.seller_id }}">
             <select class="form-select mb-2" name="movement_type">
@@ -30,6 +31,7 @@
     </div>
     <div class="col-md-6">
         <form class="card p-3" method="post" action="/shifts/{{ shift.id }}/close">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <h2 class="h5">{{ t.close_shift }}</h2>
             <input class="form-control mb-2" name="counted_cash" placeholder="{{ t.counted_cash }}" required>
             <textarea class="form-control mb-2" name="notes" placeholder="{{ t.notes }}"></textarea>

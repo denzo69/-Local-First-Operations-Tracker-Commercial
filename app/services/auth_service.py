@@ -15,7 +15,6 @@ SESSION_MAX_AGE_SECONDS = 60 * 60 * 12
 PASSWORD_ITERATIONS = 260_000
 AUTH_EXEMPT_PATHS = {
     "/login",
-    "/logout",
     "/setup",
     "/health",
 }
@@ -102,7 +101,7 @@ def get_session_user(db: Session, token: str | None) -> User | None:
     if not hmac.compare_digest(_sign(payload), signature):
         return None
     try:
-        if int(issued_at) < int(time.time()) - SESSION_MAX_AGE_SECONDS:
+        if int(issued_at) < int(time.time()) - get_settings().session_max_age_seconds:
             return None
         parsed_user_id = int(user_id)
     except ValueError:
