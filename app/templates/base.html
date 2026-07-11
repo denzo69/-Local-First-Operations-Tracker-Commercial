@@ -20,9 +20,15 @@
                 <li class="nav-item"><a class="nav-link {% if active_page == 'customers' %}active{% endif %}" href="/customers">{{ t.customers }}</a></li>
                 <li class="nav-item"><a class="nav-link {% if active_page == 'jobs' %}active{% endif %}" href="/work-orders">{{ t.work_orders }}</a></li>
                 <li class="nav-item"><a class="nav-link {% if active_page == 'products' %}active{% endif %}" href="/products">{{ t.products }}</a></li>
+                <li class="nav-item"><a class="nav-link {% if active_page == 'sales' %}active{% endif %}" href="/sales">Sales</a></li>
+                <li class="nav-item"><a class="nav-link {% if active_page == 'shifts' %}active{% endif %}" href="/shifts">Shifts</a></li>
+                <li class="nav-item"><a class="nav-link {% if active_page == 'daily_closings' %}active{% endif %}" href="/daily-closings">Daily closing</a></li>
+                <li class="nav-item"><a class="nav-link {% if active_page == 'seller_reports' %}active{% endif %}" href="/seller-reports">Seller reports</a></li>
                 <li class="nav-item"><a class="nav-link {% if active_page == 'reports' %}active{% endif %}" href="/reports">{{ t.reports }}</a></li>
                 <li class="nav-item"><a class="nav-link {% if active_page == 'backups' %}active{% endif %}" href="/backups">{{ t.backups }}</a></li>
                 <li class="nav-item"><a class="nav-link {% if active_page == 'audit_log' %}active{% endif %}" href="/audit-log">Audit log</a></li>
+                <li class="nav-item"><a class="nav-link {% if active_page == 'users' %}active{% endif %}" href="/users">Users</a></li>
+                <li class="nav-item"><a class="nav-link {% if active_page == 'cash_registers' %}active{% endif %}" href="/cash-registers">Cash registers</a></li>
                 <li class="nav-item"><a class="nav-link {% if active_page == 'settings' %}active{% endif %}" href="/settings">{{ t.settings }}</a></li>
             </ul>
         </div>

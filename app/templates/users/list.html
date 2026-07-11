@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1>Users</h1>
+        <p class="text-muted">Seller accounts and operational roles.</p>
+    </div>
+    <a class="btn btn-primary" href="/users/new">New user</a>
+</div>
+<div class="card">
+    <div class="table-responsive">
+        <table class="table mb-0">
+            <thead><tr><th>Name</th><th>Login</th><th>Role</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+            {% for user in users %}
+            <tr>
+                <td>{{ user.name }}</td>
+                <td>{{ user.login_name or "-" }}</td>
+                <td>{{ user.role.name if user.role else "-" }}</td>
+                <td>{{ "Active" if user.is_active else "Inactive" }}</td>
+                <td class="text-end"><a href="/users/{{ user.id }}/edit">Edit</a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="text-muted">No users yet.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

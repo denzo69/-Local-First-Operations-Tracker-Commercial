@@ -1,0 +1,110 @@
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlalchemy.orm import Session
+
+from app.config import get_settings
+from app.database import get_db
+from app.models import User
+from app.services.sales_service import ensure_default_roles
+from app.template_context import templates
+
+router = APIRouter(prefix="/users", tags=["users"])
+settings = get_settings()
+
+
+@router.get("", response_class=HTMLResponse)
+def list_users(request: Request, db: Session = Depends(get_db)):
+    ensure_default_roles(db)
+    users = db.query(User).order_by(User.name.asc()).all()
+    return templates.TemplateResponse(
+        "users/list.html",
+        {
+            "request": request,
+            "app_name": settings.app_name,
+            "active_page": "users",
+            "users": users,
+        },
+    )
+
+
+@router.get("/new", response_class=HTMLResponse)
+def new_user(request: Request, db: Session = Depends(get_db)):
+    roles = ensure_default_roles(db)
+    return templates.TemplateResponse(
+        "users/form.html",
+        {
+            "request": request,
+            "app_name": settings.app_name,
+            "active_page": "users",
+            "roles": roles,
+            "user": None,
+            "form_action": "/users",
+        },
+    )
+
+
+@router.post("")
+def create_user(
+    name: str = Form(...),
+    login_name: str = Form(""),
+    role_id: int = Form(...),
+    is_active: str | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    if not name.strip():
+        raise HTTPException(status_code=400, detail="User name is required")
+    roles = ensure_default_roles(db)
+    if role_id not in {role.id for role in roles}:
+        raise HTTPException(status_code=400, detail="Selected role was not found")
+    user = User(
+        name=name.strip(),
+        login_name=login_name.strip() or None,
+        role_id=role_id,
+        is_active=is_active == "on",
+    )
+    db.add(user)
+    db.commit()
+    return RedirectResponse(url="/users", status_code=303)
+
+
+@router.get("/{user_id}/edit", response_class=HTMLResponse)
+def edit_user(user_id: int, request: Request, db: Session = Depends(get_db)):
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return templates.TemplateResponse(
+        "users/form.html",
+        {
+            "request": request,
+            "app_name": settings.app_name,
+            "active_page": "users",
+            "roles": ensure_default_roles(db),
+            "user": user,
+            "form_action": f"/users/{user.id}",
+        },
+    )
+
+
+@router.post("/{user_id}")
+def update_user(
+    user_id: int,
+    name: str = Form(...),
+    login_name: str = Form(""),
+    role_id: int = Form(...),
+    is_active: str | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not name.strip():
+        raise HTTPException(status_code=400, detail="User name is required")
+    roles = ensure_default_roles(db)
+    if role_id not in {role.id for role in roles}:
+        raise HTTPException(status_code=400, detail="Selected role was not found")
+    user.name = name.strip()
+    user.login_name = login_name.strip() or None
+    user.role_id = role_id
+    user.is_active = is_active == "on"
+    db.commit()
+    return RedirectResponse(url="/users", status_code=303)

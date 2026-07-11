@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>New sale</h1>
+<form method="post" action="/sales" class="card p-3">
+    <div class="mb-3">
+        <label class="form-label" for="shift_id">Open shift</label>
+        <select class="form-select" id="shift_id" name="shift_id" required>
+            {% for shift in shifts %}
+            <option value="{{ shift.id }}" data-seller-id="{{ shift.seller_id }}">{{ shift.seller.name }} · {{ shift.cash_register.name }} · {{ shift.business_date }}</option>
+            {% endfor %}
+        </select>
+        {% if not shifts %}<div class="form-text">Open a shift before recording sales.</div>{% endif %}
+    </div>
+    <input type="hidden" id="seller_id" name="seller_id" value="{{ shifts[0].seller_id if shifts else '' }}">
+    <div class="mb-3">
+        <label class="form-label" for="work_order_id">Work Order</label>
+        <select class="form-select" id="work_order_id" name="work_order_id">
+            <option value="">No Work Order</option>
+            {% for work_order in work_orders %}
+            <option value="{{ work_order.id }}">#{{ work_order.id }} {{ work_order.title }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="product_id">Product</label>
+        <select class="form-select" id="product_id" name="product_id">
+            <option value="">Manual line</option>
+            {% for product in products %}
+            <option value="{{ product.id }}" data-name="{{ product.name }}" data-price="{{ product.unit_price }}" data-vat="{{ product.vat_percent }}">{{ product.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="description">Description</label>
+        <input class="form-control" id="description" name="description" required>
+    </div>
+    <div class="row g-3">
+        <div class="col-md-3"><label class="form-label" for="quantity">Quantity</label><input class="form-control" id="quantity" name="quantity" value="1"></div>
+        <div class="col-md-3"><label class="form-label" for="unit_price">Unit price</label><input class="form-control" id="unit_price" name="unit_price" value="0"></div>
+        <div class="col-md-3"><label class="form-label" for="vat_percent">VAT %</label><input class="form-control" id="vat_percent" name="vat_percent" value="24"></div>
+        <div class="col-md-3"><label class="form-label" for="discount_amount">Discount</label><input class="form-control" id="discount_amount" name="discount_amount" value="0"></div>
+    </div>
+    <div class="mt-3 mb-3">
+        <label class="form-label" for="payment_method">Payment method</label>
+        <select class="form-select" id="payment_method" name="payment_method">
+            {% for code, label in payment_methods.items() %}
+            <option value="{{ code }}">{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <button class="btn btn-primary" type="submit" {% if not shifts %}disabled{% endif %}>Save sale</button>
+</form>
+<script>
+document.getElementById("shift_id")?.addEventListener("change", function () {
+    document.getElementById("seller_id").value = this.selectedOptions[0]?.dataset.sellerId || "";
+});
+document.getElementById("product_id")?.addEventListener("change", function () {
+    const selected = this.selectedOptions[0];
+    if (!selected || !selected.value) return;
+    document.getElementById("description").value = selected.dataset.name || "";
+    document.getElementById("unit_price").value = selected.dataset.price || "0";
+    document.getElementById("vat_percent").value = selected.dataset.vat || "24";
+});
+</script>
+{% endblock %}

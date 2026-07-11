@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Daily closing {{ closing.business_date }}</h1>
+<p class="text-muted">Status: {{ closing.status }} · Created by {{ closing.created_by.name if closing.created_by else "-" }} · {{ closing.closed_at }}</p>
+<div class="row g-3 mb-3">
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">Sales</div><strong>{{ closing.total_sales }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">Refunds</div><strong>{{ closing.total_refunds }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">Discounts</div><strong>{{ closing.total_discounts }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">Over/short</div><strong>{{ closing.cash_over_short }}</strong></div></div>
+</div>
+<div class="row g-3">
+    <div class="col-md-4">
+        <div class="card p-3">
+            <h2 class="h5">By payment method</h2>
+            {% for method, total in snapshot.payment_totals.items() %}
+            <div>{{ method }}: {{ total }}</div>
+            {% else %}<div class="text-muted">No payments.</div>{% endfor %}
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card p-3">
+            <h2 class="h5">By VAT rate</h2>
+            {% for rate, totals in snapshot.vat_totals.items() %}
+            <div>{{ rate }}%: {{ totals.gross }} gross, {{ totals.vat }} VAT</div>
+            {% else %}<div class="text-muted">No VAT rows.</div>{% endfor %}
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card p-3">
+            <h2 class="h5">By seller</h2>
+            {% for seller, total in snapshot.seller_totals.items() %}
+            <div>{{ seller }}: {{ total }}</div>
+            {% else %}<div class="text-muted">No seller sales.</div>{% endfor %}
+        </div>
+    </div>
+</div>
+<form class="card p-3 mt-3" method="post" action="/daily-closings/{{ closing.id }}/reopen">
+    <h2 class="h5">Reopen</h2>
+    <select class="form-select mb-2" name="user_id">
+        {% for user in users %}
+        <option value="{{ user.id }}">{{ user.name }} · {{ user.role.name if user.role else "-" }}</option>
+        {% endfor %}
+    </select>
+    <button class="btn btn-outline-warning" type="submit">Reopen closing</button>
+</form>
+{% endblock %}

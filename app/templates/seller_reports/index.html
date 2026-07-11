@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Seller reports</h1>
+<form method="get" action="/seller-reports" class="card p-3 mb-3">
+    <div class="row g-3 align-items-end">
+        <div class="col-md-5">
+            <label class="form-label" for="seller_id">Seller</label>
+            <select class="form-select" id="seller_id" name="seller_id">
+                {% for user in users %}
+                <option value="{{ user.id }}" {% if user.id == selected_seller_id %}selected{% endif %}>{{ user.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label" for="period">Period</label>
+            <select class="form-select" id="period" name="period">
+                <option value="daily" {% if period == "daily" %}selected{% endif %}>Daily</option>
+                <option value="weekly" {% if period == "weekly" %}selected{% endif %}>Weekly</option>
+                <option value="monthly" {% if period == "monthly" %}selected{% endif %}>Monthly</option>
+            </select>
+        </div>
+        <div class="col-md-3"><button class="btn btn-primary" type="submit">Run report</button></div>
+    </div>
+</form>
+{% if report %}
+<p class="text-muted">{{ start_date }} - {{ end_date }}</p>
+<div class="row g-3 mb-3">
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">Sales</div><strong>{{ report.total_sales }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">Transactions</div><strong>{{ report.transaction_count }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">Average sale</div><strong>{{ report.average_sale }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">Refunds</div><strong>{{ report.refunds }}</strong></div></div>
+</div>
+<div class="card p-3">
+    <h2 class="h5">Payment methods</h2>
+    {% for method, total in report.payment_totals.items() %}
+    <div>{{ method }}: {{ total }}</div>
+    {% else %}
+    <div class="text-muted">No payments in this period.</div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info">Create a seller before running seller reports.</div>
+{% endif %}
+{% endblock %}

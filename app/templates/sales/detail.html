@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1>Sale #{{ sale.id }}</h1>
+        <p class="text-muted">{{ sale.seller.name }} · {{ sale.sold_at }} · {{ sale.payment_method }}</p>
+    </div>
+    <a class="btn btn-outline-secondary" href="/sales">Back</a>
+</div>
+<div class="row g-3 mb-3">
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">Subtotal</div><strong>{{ sale.subtotal }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">VAT</div><strong>{{ sale.vat_total }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">Discount</div><strong>{{ sale.discount_total }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">Total</div><strong>{{ sale.total }}</strong></div></div>
+</div>
+{% if sale.work_order %}
+<p>Linked Work Order: <a href="/work-orders/{{ sale.work_order.id }}">{{ sale.work_order.title }}</a></p>
+{% endif %}
+<div class="card mb-3">
+    <div class="table-responsive">
+        <table class="table mb-0">
+            <thead><tr><th>Description</th><th>Qty</th><th>Unit price</th><th>VAT %</th><th>Total</th></tr></thead>
+            <tbody>
+            {% for line in sale.lines %}
+            <tr><td>{{ line.description_snapshot }}</td><td>{{ line.quantity }}</td><td>{{ line.unit_price }}</td><td>{{ line.vat_percent }}</td><td>{{ line.line_total }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="card p-3">
+            <h2 class="h5">Payments</h2>
+            {% for payment in sale.payments %}
+            <div>{{ payment.payment_method }} · {{ payment.amount }} · {{ payment.paid_at }}</div>
+            {% else %}
+            <div class="text-muted">No payments.</div>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="col-md-6">
+        <form class="card p-3" method="post" action="/sales/{{ sale.id }}/refunds">
+            <h2 class="h5">Refund</h2>
+            <input type="hidden" name="seller_id" value="{{ sale.seller_id }}">
+            <input class="form-control mb-2" name="amount" placeholder="Amount" required>
+            <select class="form-select mb-2" name="payment_method">
+                {% for code, label in payment_methods.items() %}
+                <option value="{{ code }}">{{ label }}</option>
+                {% endfor %}
+            </select>
+            <input class="form-control mb-2" name="reason" placeholder="Reason">
+            <button class="btn btn-outline-danger" type="submit">Record refund</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

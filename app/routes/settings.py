@@ -7,7 +7,13 @@ from app.database import get_db
 from app.models import JobStatus
 from app.routes.jobs import ensure_default_job_statuses
 from app.services.audit_service import log_audit_event
-from app.services.settings_service import DEFAULT_SETTINGS, get_app_settings, set_app_settings
+from app.services.settings_service import (
+    DEFAULT_SETTINGS,
+    SUPPORTED_LANGUAGES,
+    get_app_settings,
+    get_current_language,
+    set_app_settings,
+)
 from app.template_context import templates
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -23,6 +29,7 @@ def edit_settings(request: Request, db: Session = Depends(get_db)):
             "app_name": settings.app_name,
             "active_page": "settings",
             "settings_values": get_app_settings(db),
+            "supported_languages": SUPPORTED_LANGUAGES,
         },
     )
 
@@ -36,11 +43,11 @@ def update_settings(
     company_email: str = Form(""),
     default_vat_percent: str = Form(DEFAULT_SETTINGS["default_vat_percent"]),
     receipt_prefix: str = Form(DEFAULT_SETTINGS["receipt_prefix"]),
-    language: str = Form(DEFAULT_SETTINGS["language"]),
+    language: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
-    if language not in {"en", "fi"}:
-        language = "en"
+    current_language = get_current_language(db)
+    selected_language = language if language in SUPPORTED_LANGUAGES else current_language
 
     set_app_settings(
         db,
@@ -52,7 +59,7 @@ def update_settings(
             "company_email": company_email.strip(),
             "default_vat_percent": default_vat_percent.strip() or "24",
             "receipt_prefix": receipt_prefix.strip(),
-            "language": language,
+            "language": selected_language,
         },
     )
     log_audit_event(

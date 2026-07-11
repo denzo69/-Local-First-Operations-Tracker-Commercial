@@ -1,9 +1,11 @@
 from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
+from app.database import init_db
 from app.main import app
-from app.models import JobStatus
+from app.models import JobStatus, Setting
 from app.routes.jobs import ensure_default_job_statuses
+from app.services.settings_service import get_app_settings
 
 
 def test_settings_can_be_updated():
@@ -28,6 +30,131 @@ def test_settings_can_be_updated():
     assert "Test Company Oy" in page_response.text
     assert "25.5" in page_response.text
     assert "Asetukset" in page_response.text
+
+
+def test_finnish_persists_after_redirect():
+    with TestClient(app) as client:
+        response = client.post(
+            "/settings",
+            data={
+                "company_name": "Test Company Oy",
+                "default_vat_percent": "24",
+                "receipt_prefix": "TEST-",
+                "language": "fi",
+            },
+            follow_redirects=True,
+        )
+
+    assert response.status_code == 200
+    assert "Asetukset" in response.text
+    assert 'option value="fi" selected' in response.text
+
+
+def test_finnish_persists_after_dashboard_navigation():
+    with TestClient(app) as client:
+        client.post(
+            "/settings",
+            data={
+                "company_name": "Test Company Oy",
+                "default_vat_percent": "24",
+                "receipt_prefix": "TEST-",
+                "language": "fi",
+            },
+            follow_redirects=False,
+        )
+        dashboard_response = client.get("/")
+
+    assert dashboard_response.status_code == 200
+    assert "Työpöytä" in dashboard_response.text or "TyÃ¶pÃ¶ytÃ¤" in dashboard_response.text
+
+
+def test_finnish_persists_when_language_field_is_omitted():
+    with TestClient(app) as client:
+        client.post(
+            "/settings",
+            data={
+                "company_name": "Test Company Oy",
+                "default_vat_percent": "24",
+                "receipt_prefix": "TEST-",
+                "language": "fi",
+            },
+            follow_redirects=False,
+        )
+        client.post(
+            "/settings",
+            data={
+                "company_name": "Updated Company Oy",
+                "default_vat_percent": "24",
+                "receipt_prefix": "TEST-",
+            },
+            follow_redirects=False,
+        )
+        settings_response = client.get("/settings")
+
+    assert "Asetukset" in settings_response.text
+    assert 'option value="fi" selected' in settings_response.text
+
+
+def test_invalid_language_does_not_replace_finnish():
+    with TestClient(app) as client:
+        client.post(
+            "/settings",
+            data={
+                "company_name": "Test Company Oy",
+                "default_vat_percent": "24",
+                "receipt_prefix": "TEST-",
+                "language": "fi",
+            },
+            follow_redirects=False,
+        )
+        client.post(
+            "/settings",
+            data={
+                "company_name": "Updated Company Oy",
+                "default_vat_percent": "24",
+                "receipt_prefix": "TEST-",
+                "language": "sv",
+            },
+            follow_redirects=False,
+        )
+        settings_response = client.get("/settings")
+
+    assert "Asetukset" in settings_response.text
+    assert 'option value="fi" selected' in settings_response.text
+
+
+def test_application_restart_simulation_preserves_finnish():
+    with SessionLocal() as db:
+        db.add(Setting(key="language", value="fi"))
+        db.commit()
+
+    init_db()
+
+    with SessionLocal() as db:
+        settings_values = get_app_settings(db)
+
+    assert settings_values["language"] == "fi"
+
+
+def test_new_empty_database_defaults_to_english():
+    with SessionLocal() as db:
+        settings_values = get_app_settings(db)
+
+    assert settings_values["language"] == "en"
+
+
+def test_initialization_never_overwrites_finnish():
+    with SessionLocal() as db:
+        db.add(Setting(key="language", value="fi"))
+        db.commit()
+
+    init_db()
+    init_db()
+
+    with SessionLocal() as db:
+        settings_values = get_app_settings(db)
+
+    assert settings_values["language"] == "fi"
 
 
 def test_product_can_be_created():

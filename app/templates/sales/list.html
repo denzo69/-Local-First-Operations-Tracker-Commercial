@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1>Sales</h1>
+        <p class="text-muted">Sales and payments, optionally linked to Work Orders.</p>
+    </div>
+    <a class="btn btn-primary" href="/sales/new">New sale</a>
+</div>
+<div class="card">
+    <div class="table-responsive">
+        <table class="table mb-0">
+            <thead><tr><th>Time</th><th>Seller</th><th>Work Order</th><th>Payment</th><th>Total</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+            {% for sale in sales %}
+            <tr>
+                <td>{{ sale.sold_at }}</td>
+                <td>{{ sale.seller.name if sale.seller else "-" }}</td>
+                <td>{% if sale.work_order %}<a href="/work-orders/{{ sale.work_order.id }}">{{ sale.work_order.title }}</a>{% else %}-{% endif %}</td>
+                <td>{{ sale.payment_method }}</td>
+                <td>{{ sale.total }}</td>
+                <td>{{ sale.status }}</td>
+                <td class="text-end"><a href="/sales/{{ sale.id }}">View</a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-muted">No sales yet.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -10,7 +10,22 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import get_db, init_db
 from app.models import Job
-from app.routes import audit_log, backups, customers, jobs, products, reports, settings as settings_routes, work_orders
+from app.routes import (
+    audit_log,
+    backups,
+    cash_registers,
+    customers,
+    daily_closings,
+    jobs,
+    products,
+    reports,
+    sales,
+    seller_reports,
+    settings as settings_routes,
+    shifts,
+    users,
+    work_orders,
+)
 from app.services.i18n_service import get_translations
 from app.services.maintenance_service import is_maintenance_active
 from app.services.reminder_service import next_business_day
@@ -34,6 +49,12 @@ app.include_router(work_orders.router)
 app.include_router(jobs.router)
 app.include_router(audit_log.router)
 app.include_router(products.router)
+app.include_router(users.router)
+app.include_router(cash_registers.router)
+app.include_router(shifts.router)
+app.include_router(sales.router)
+app.include_router(daily_closings.router)
+app.include_router(seller_reports.router)
 app.include_router(reports.router)
 app.include_router(settings_routes.router)
 
