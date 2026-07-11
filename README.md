@@ -40,6 +40,7 @@ The app is not intended to be exposed directly to the public internet.
 - Automatic background backup scheduler with configurable interval and retention
 - Alembic baseline migration for the current schema
 - Centralized HTML and JSON error handling
+- Dockerfile and Docker Compose support for the SQLite local-first deployment
 - GitHub Actions pytest workflow for push and pull request checks
 - LAN/Tailscale run script support
 
@@ -47,7 +48,7 @@ The app is not intended to be exposed directly to the public internet.
 
 - Authentication is local-session based and intended for a trusted company network; it is not hardened for public internet exposure
 - Some operational forms still preserve seller/admin selectors for MVP workflows. Route-level session checks now protect access, but deeper current-user ownership enforcement is still a future hardening step.
-- No cloud deployment, Docker, PostgreSQL, or object storage
+- No cloud deployment, PostgreSQL, or object storage
 - No native mobile application
 - Backup scheduler is in-process and intended for the local single-computer deployment model; use an external scheduler for stricter production guarantees
 - Alembic has a baseline migration for new databases, but existing SQLite databases are not migrated automatically on application startup
@@ -125,6 +126,22 @@ Health check:
 ```text
 http://127.0.0.1:8000/health
 ```
+
+## Docker
+
+Docker is optional. The compose setup runs the app with SQLite stored in a named volume and backups stored in a separate named volume.
+
+```powershell
+docker compose up --build
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8000
+```
+
+Before real use, change `SECRET_KEY` in `docker-compose.yml` or provide it through your environment. The Docker setup intentionally keeps the current local-first SQLite model; PostgreSQL and object storage are not enabled yet.
 
 Run the full test suite:
 

@@ -1,0 +1,23 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      APP_ENV: production
+      HOST: 0.0.0.0
+      PORT: 8000
+      DATABASE_URL: sqlite:////app/data/app.sqlite
+      BACKUP_DIR: /app/backups
+      SECRET_KEY: change-this-before-use
+      BACKUP_SCHEDULER_ENABLED: "true"
+      BACKUP_SCHEDULER_INTERVAL_MINUTES: "1440"
+      BACKUP_RETENTION_COUNT: "50"
+    volumes:
+      - ops_data:/app/data
+      - ops_backups:/app/backups
+    restart: unless-stopped
+
+volumes:
+  ops_data:
+  ops_backups:
