@@ -3,6 +3,15 @@ from alembic.config import Config
 from sqlalchemy import create_engine, inspect, text
 
 
+def test_windows_run_scripts_apply_alembic_before_uvicorn():
+    for script_name in ["run.bat", "run-lan.bat"]:
+        script = open(script_name, encoding="utf-8").read().lower()
+        alembic_index = script.index("python -m alembic upgrade head")
+        uvicorn_index = script.index("-m uvicorn")
+
+        assert alembic_index < uvicorn_index
+
+
 def test_alembic_upgrade_head_creates_current_schema(tmp_path):
     db_path = tmp_path / "alembic.sqlite"
     config = Config("alembic.ini")

@@ -3,7 +3,7 @@ from datetime import date, timedelta
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import CashRegister, Job, Role, User
+from app.models import CashRegister, Job, Product, Role, Supplier, User, WarehouseLocation
 from app.services.sales_service import ensure_default_roles, open_shift
 
 
@@ -23,6 +23,11 @@ def test_main_navigation_targets_load():
             "/work-orders",
             "/jobs",
             "/products",
+            "/inventory/goods-receipts",
+            "/inventory/suppliers",
+            "/inventory/warehouses",
+            "/inventory/valuation",
+            "/inventory/ledger",
             "/sales",
             "/shifts",
             "/daily-closings",
@@ -249,3 +254,82 @@ def test_dashboard_current_shift_panel_when_shift_is_open():
     assert response.status_code == 200
     assert "Dashboard Shift Seller" in response.text
     assert "Dashboard Register" in response.text
+
+
+def test_inventory_routes_support_virtual_goods_receipt_workflow():
+    with SessionLocal() as db:
+        ensure_default_roles(db)
+        role = db.query(Role).filter(Role.code == "manager").one()
+        manager = User(name="Route Inventory Manager", login_name="route.manager", role=role, is_active=True)
+        product = Product(
+            name="Route Inventory Product",
+            is_active=True,
+            is_stock_item=True,
+            unit_price="20",
+            vat_percent="24",
+        )
+        db.add_all([manager, product])
+        db.commit()
+        manager_id = manager.id
+        product_id = product.id
+
+    with TestClient(app) as client:
+        assert client.get("/inventory/warehouses").status_code == 200
+        supplier_response = client.post(
+            "/inventory/suppliers",
+            data={"name": "Route Supplier"},
+            follow_redirects=False,
+        )
+        assert supplier_response.status_code == 303
+
+        with SessionLocal() as db:
+            supplier_id = db.query(Supplier).filter(Supplier.name == "Route Supplier").one().id
+            location_id = db.query(WarehouseLocation).filter(WarehouseLocation.code == "DEFAULT").one().id
+
+        receipt_response = client.post(
+            "/inventory/goods-receipts",
+            data={
+                "supplier_id": supplier_id,
+                "receipt_date": date.today().isoformat(),
+                "received_by_user_id": manager_id,
+                "delivery_number": "ROUTE-DN",
+                "invoice_number": "ROUTE-INV",
+                "freight_total_ex_vat": "5",
+                "other_costs_total_ex_vat": "0",
+                "allocation_method": "by_value",
+            },
+            follow_redirects=False,
+        )
+        assert receipt_response.status_code == 303
+        receipt_url = receipt_response.headers["location"]
+        receipt_id = int(receipt_url.rsplit("/", 1)[-1])
+
+        line_response = client.post(
+            f"/inventory/goods-receipts/{receipt_id}/lines",
+            data={
+                "product_id": product_id,
+                "destination_location_id": location_id,
+                "quantity_value": "2",
+                "purchase_unit_price_ex_vat": "10",
+                "vat_rate": "24",
+            },
+            follow_redirects=False,
+        )
+        assert line_response.status_code == 303
+        assert "Route Inventory Product" in client.get(receipt_url).text
+
+        post_response = client.post(
+            f"/inventory/goods-receipts/{receipt_id}/post",
+            data={"posted_by_user_id": manager_id},
+            follow_redirects=False,
+        )
+        assert post_response.status_code == 303
+
+        valuation = client.get("/inventory/valuation")
+        ledger = client.get("/inventory/ledger")
+
+    assert valuation.status_code == 200
+    assert "25.00" in valuation.text
+    assert ledger.status_code == 200
+    assert "Route Inventory Product" in ledger.text
+    assert "purchase" in ledger.text

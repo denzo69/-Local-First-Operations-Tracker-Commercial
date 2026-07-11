@@ -23,6 +23,13 @@ The MVP database should include the following tables:
 - cash_movements
 - daily_closings
 - daily_closing_snapshots
+- suppliers
+- warehouses
+- warehouse_locations
+- inventory_balances
+- goods_receipts
+- goods_receipt_lines
+- inventory_transactions
 
 ## Entity overview
 
@@ -37,6 +44,12 @@ Shift 1---N Sale
 Sale 1---N Payment
 Sale 1---N Refund
 DailyClosing 1---N DailyClosingSnapshot
+Supplier 1---N GoodsReceipt
+Warehouse 1---N WarehouseLocation
+Product 1---N InventoryTransaction
+Product 1---N InventoryBalance
+GoodsReceipt 1---N GoodsReceiptLine
+GoodsReceipt 1---N InventoryTransaction
 ```
 
 ## customers
@@ -96,6 +109,11 @@ Planned fields:
 - unit
 - is_active
 - is_stock_item
+- current_weighted_average_cost_ex_vat
+- current_inventory_quantity
+- current_inventory_value_ex_vat
+- current_purchase_price_ex_vat
+- current_purchase_price_inc_vat
 - created_at
 - updated_at
 
@@ -181,6 +199,17 @@ Current limitations:
 - Sale documents, payment transaction numbers, refund numbers, shift numbers, and closing numbers are not official stable document numbers yet.
 - Sales UI creates one line and one payment. Future versions should finalize sales from multiple validated lines and separate payment balancing.
 - Multi-VAT refunds are rejected until line-level refund allocation is added.
+
+Sales also store cost snapshots for stock-product sales:
+
+- `sales.cost_of_goods_sold_ex_vat`
+- `sales.gross_profit_ex_vat`
+- `sales.gross_margin_percent`
+- `sale_lines.cost_of_goods_sold_ex_vat`
+- `sale_lines.gross_profit_ex_vat`
+- `sale_lines.gross_margin_percent`
+
+These values are snapshots from the weighted-average inventory cost at the time of sale. Later purchases or goods receipt reversals must not rewrite historical sale profitability.
 
 ## Inventory Ledger Tables
 

@@ -251,75 +251,79 @@ def create_sale_with_payment(
             "vat": str(vat_amount),
         }
     }
-    sale = Sale(
-        seller_id=seller_id,
-        shift_id=shift_id,
-        work_order_id=work_order_id,
-        payment_method=payment_method,
-        subtotal=subtotal,
-        vat_total=vat_amount,
-        discount_total=money(parsed_discount),
-        total=line_total,
-        vat_breakdown_json=json.dumps(vat_breakdown, sort_keys=True),
-    )
-    db.add(sale)
-    db.flush()
-    sale_line = SaleLine(
-        sale_id=sale.id,
-        work_order_item_id=work_order_item_id,
-        product_id=product_id,
-        description_snapshot=description_snapshot,
-        quantity=parsed_quantity,
-        unit_price=parsed_unit_price,
-        vat_percent=parsed_vat_percent,
-        discount_amount=money(parsed_discount),
-        line_total=line_total,
-        vat_amount=vat_amount,
-    )
-    db.add(sale_line)
-    if product is not None and product.is_stock_item:
-        from app.services.inventory_service import issue_stock_for_sale_from_available_locations
-
-        inventory_transactions = issue_stock_for_sale_from_available_locations(
-            db,
-            product_id=product.id,
-            quantity_value=parsed_quantity,
-            sale_id=sale.id,
-            created_by_user_id=seller.id,
-            commit=False,
-        )
-        cogs_total = money(
-            sum((-parse_decimal(transaction.total_inventory_cost) for transaction in inventory_transactions), Decimal("0"))
-        )
-        gross_profit = money(subtotal - cogs_total)
-        gross_margin_percent = (
-            (gross_profit / subtotal * Decimal("100")).quantize(Decimal("0.001"))
-            if subtotal > 0
-            else None
-        )
-        sale_line.cost_of_goods_sold_ex_vat = cogs_total
-        sale_line.gross_profit_ex_vat = gross_profit
-        sale_line.gross_margin_percent = gross_margin_percent
-        sale.cost_of_goods_sold_ex_vat = cogs_total
-        sale.gross_profit_ex_vat = gross_profit
-        sale.gross_margin_percent = gross_margin_percent
-    db.add(
-        Payment(
-            sale_id=sale.id,
-            shift_id=shift_id,
+    try:
+        sale = Sale(
             seller_id=seller_id,
+            shift_id=shift_id,
+            work_order_id=work_order_id,
             payment_method=payment_method,
-            amount=line_total,
+            subtotal=subtotal,
+            vat_total=vat_amount,
+            discount_total=money(parsed_discount),
+            total=line_total,
+            vat_breakdown_json=json.dumps(vat_breakdown, sort_keys=True),
         )
-    )
-    log_audit_event(
-        db,
-        event_type="sale.created",
-        entity_type="sale",
-        entity_id=sale.id,
-        description=f"Sale created for {line_total} by {seller.name}.",
-    )
-    db.commit()
+        db.add(sale)
+        db.flush()
+        sale_line = SaleLine(
+            sale_id=sale.id,
+            work_order_item_id=work_order_item_id,
+            product_id=product_id,
+            description_snapshot=description_snapshot,
+            quantity=parsed_quantity,
+            unit_price=parsed_unit_price,
+            vat_percent=parsed_vat_percent,
+            discount_amount=money(parsed_discount),
+            line_total=line_total,
+            vat_amount=vat_amount,
+        )
+        db.add(sale_line)
+        if product is not None and product.is_stock_item:
+            from app.services.inventory_service import issue_stock_for_sale_from_available_locations
+
+            inventory_transactions = issue_stock_for_sale_from_available_locations(
+                db,
+                product_id=product.id,
+                quantity_value=parsed_quantity,
+                sale_id=sale.id,
+                created_by_user_id=seller.id,
+                commit=False,
+            )
+            cogs_total = money(
+                sum((-parse_decimal(transaction.total_inventory_cost) for transaction in inventory_transactions), Decimal("0"))
+            )
+            gross_profit = money(subtotal - cogs_total)
+            gross_margin_percent = (
+                (gross_profit / subtotal * Decimal("100")).quantize(Decimal("0.001"))
+                if subtotal > 0
+                else None
+            )
+            sale_line.cost_of_goods_sold_ex_vat = cogs_total
+            sale_line.gross_profit_ex_vat = gross_profit
+            sale_line.gross_margin_percent = gross_margin_percent
+            sale.cost_of_goods_sold_ex_vat = cogs_total
+            sale.gross_profit_ex_vat = gross_profit
+            sale.gross_margin_percent = gross_margin_percent
+        db.add(
+            Payment(
+                sale_id=sale.id,
+                shift_id=shift_id,
+                seller_id=seller_id,
+                payment_method=payment_method,
+                amount=line_total,
+            )
+        )
+        log_audit_event(
+            db,
+            event_type="sale.created",
+            entity_type="sale",
+            entity_id=sale.id,
+            description=f"Sale created for {line_total} by {seller.name}.",
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     db.refresh(sale)
     return sale
 

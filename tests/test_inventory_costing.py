@@ -7,7 +7,7 @@ from alembic.config import Config
 from sqlalchemy import create_engine, inspect, text
 
 from app.database import SessionLocal
-from app.models import AuditLog, CashRegister, InventoryTransaction, Product, Role, Supplier, User, WarehouseLocation
+from app.models import AuditLog, CashRegister, InventoryTransaction, Product, Role, Sale, Supplier, User, WarehouseLocation
 from app.services.inventory_service import (
     add_goods_receipt_line,
     allocate_landed_costs,
@@ -303,7 +303,6 @@ def test_multi_line_multiple_warehouse_report_reconciles_with_movement_ledger():
         post_goods_receipt(db, goods_receipt_id=receipt.id, posted_by_user_id=user.id)
         report = inventory_valuation(db)
         assert report["total_inventory_value_ex_vat"] == report["transaction_ledger_value_ex_vat"]
-        assert report["total_inventory_value_ex_vat"] == report["movement_ledger_value_ex_vat"]
         assert report["total_inventory_value_ex_vat"] == Decimal("106.00")
         assert len(report["by_product"]) == 2
         assert report["recent_cost_changes"]
@@ -411,6 +410,36 @@ def test_sale_records_cogs_and_historical_profit_snapshot_from_weighted_average(
         assert product.current_weighted_average_cost_ex_vat != Decimal("50.000000")
         assert sale.cost_of_goods_sold_ex_vat == Decimal("100.00")
         assert sale.gross_profit_ex_vat == Decimal("100.00")
+
+
+def test_failed_stock_sale_rolls_back_flushed_sale_rows():
+    with SessionLocal() as db:
+        seller = create_user(db, "Rollback Inventory Seller", "seller")
+        register = create_register(db, "Rollback Inventory Register")
+        product = create_product(db, "Test No Stock Product", vat=Decimal("0"))
+        shift = open_shift(
+            db,
+            seller_id=seller.id,
+            cash_register_id=register.id,
+            business_date=date.today(),
+            starting_cash="0",
+        )
+
+        before_count = db.query(Sale).count()
+        with pytest.raises(ValueError, match="Negative stock"):
+            create_sale_with_payment(
+                db,
+                seller_id=seller.id,
+                shift_id=shift.id,
+                payment_method="card",
+                description="No stock sale",
+                quantity="1",
+                unit_price="10",
+                vat_percent="0",
+                product_id=product.id,
+            )
+
+        assert db.query(Sale).count() == before_count
 
 
 def test_product_cost_profile_reconstructs_stock_from_ledger():

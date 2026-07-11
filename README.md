@@ -71,7 +71,7 @@ The app is not intended to be exposed directly to the public internet.
 - No cloud deployment, PostgreSQL, or object storage
 - No native mobile application
 - Backup scheduler is in-process and intended for the local single-computer deployment model; use an external scheduler for stricter production guarantees
-- Alembic has a baseline migration for new databases, but existing SQLite databases are not migrated automatically on application startup
+- Alembic has a baseline migration for new databases. The Windows run scripts and Docker startup run `alembic upgrade head`; direct `uvicorn app.main:app` startup still requires running Alembic first when schema changes exist.
 - Receipt numbering is local-MVP safe, but not designed for high-concurrency multi-server use
 - Money columns now use SQLAlchemy `Numeric`; existing SQLite columns may still have older storage affinity until a future migration rebuilds the tables
 - Bootstrap CSS and JavaScript are bundled locally under `app/static/vendor/bootstrap`; the app does not require a CDN for the normal UI
@@ -158,6 +158,8 @@ Start the local development server:
 .\run.bat
 ```
 
+The run script installs requirements and applies Alembic migrations before starting Uvicorn.
+
 Open:
 
 ```text
@@ -219,6 +221,8 @@ Use the LAN script when another device should access the app:
 ```powershell
 .\run-lan.bat
 ```
+
+The LAN script also applies Alembic migrations before binding to `0.0.0.0`.
 
 Then open the server computer's LAN or Tailscale address in a browser, for example:
 
