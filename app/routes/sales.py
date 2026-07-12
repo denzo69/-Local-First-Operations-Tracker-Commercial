@@ -2,6 +2,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -10,17 +11,23 @@ from app.models import Job, Product, Sale, Shift, User
 from app.services.auth_service import request_current_user
 from app.services.sales_service import (
     AuthorizationError,
+    INVOICE_ACTIVE_STATUSES,
     PAYMENT_METHODS,
     PaymentInput,
     SaleLineInput,
     add_refund,
+    confirm_invoice_paid,
+    confirm_invoice_unpaid,
     correct_sale_seller,
     create_sale_from_lines,
     create_sale_from_work_order,
     create_sale_with_payment,
+    invoice_follow_up_status,
+    record_invoice_reminder_sent,
     remaining_refundable_amount,
     sale_balance_due,
     sale_paid_amount,
+    transfer_sale_to_invoicing,
     user_can_override_sale_seller,
 )
 from app.template_context import templates
@@ -151,8 +158,14 @@ async def create_quick_sale(request: Request, db: Session = Depends(get_db)):
 def invoice_queue(request: Request, db: Session = Depends(get_db)):
     sales = (
         db.query(Sale)
-        .filter(Sale.settlement_status.in_(["awaiting_invoice", "partially_paid_awaiting_invoice"]))
-        .order_by(Sale.sold_at.desc())
+        .filter(
+            or_(
+                Sale.settlement_status.in_(list(INVOICE_ACTIVE_STATUSES)),
+                Sale.payment_method == "invoice",
+                Sale.external_invoice_number.is_not(None),
+            )
+        )
+        .order_by(Sale.due_date.asc(), Sale.next_follow_up_at.asc(), Sale.sold_at.desc())
         .all()
     )
     return templates.TemplateResponse(
@@ -162,6 +175,7 @@ def invoice_queue(request: Request, db: Session = Depends(get_db)):
             "app_name": settings.app_name,
             "active_page": "sales",
             "sales": sales,
+            "follow_up_status": invoice_follow_up_status,
         },
     )
 
@@ -291,8 +305,111 @@ def sale_detail(sale_id: int, request: Request, db: Session = Depends(get_db)):
             "remaining_refundable": remaining_refundable_amount(sale),
             "paid_amount": sale_paid_amount(sale),
             "balance_due": sale_balance_due(sale),
+            "invoice_follow_up_status": invoice_follow_up_status(sale),
         },
     )
+
+
+@router.post("/{sale_id}/invoice-transfer")
+def transfer_invoice_route(
+    sale_id: int,
+    request: Request,
+    external_invoice_service: str = Form(...),
+    external_invoice_number: str = Form(...),
+    invoice_date: str = Form(...),
+    due_date: str = Form(...),
+    external_invoice_reference: str = Form(""),
+    notes: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    current_user = request_current_user(request)
+    try:
+        transfer_sale_to_invoicing(
+            db,
+            sale_id=sale_id,
+            service_name=external_invoice_service,
+            external_invoice_number=external_invoice_number,
+            invoice_date_value=invoice_date,
+            due_date_value=due_date,
+            external_reference=external_invoice_reference,
+            notes=notes,
+            actor_user_id=current_user.id if current_user else None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(url=f"/sales/{sale_id}", status_code=303)
+
+
+@router.post("/{sale_id}/invoice-paid")
+def invoice_paid_route(
+    sale_id: int,
+    request: Request,
+    payment_date: str = Form(...),
+    received_amount: str = Form(""),
+    notes: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    current_user = request_current_user(request)
+    try:
+        confirm_invoice_paid(
+            db,
+            sale_id=sale_id,
+            payment_date_value=payment_date,
+            received_amount=received_amount or None,
+            notes=notes,
+            actor_user_id=current_user.id if current_user else None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(url=f"/sales/{sale_id}", status_code=303)
+
+
+@router.post("/{sale_id}/invoice-unpaid")
+def invoice_unpaid_route(
+    sale_id: int,
+    request: Request,
+    checked_date: str = Form(""),
+    next_follow_up_date: str = Form(""),
+    notes: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    current_user = request_current_user(request)
+    try:
+        confirm_invoice_unpaid(
+            db,
+            sale_id=sale_id,
+            checked_date_value=checked_date or None,
+            next_follow_up_date_value=next_follow_up_date or None,
+            notes=notes,
+            actor_user_id=current_user.id if current_user else None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(url=f"/sales/{sale_id}", status_code=303)
+
+
+@router.post("/{sale_id}/invoice-reminder")
+def invoice_reminder_route(
+    sale_id: int,
+    request: Request,
+    reminder_date: str = Form(...),
+    next_follow_up_date: str = Form(""),
+    notes: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    current_user = request_current_user(request)
+    try:
+        record_invoice_reminder_sent(
+            db,
+            sale_id=sale_id,
+            reminder_date_value=reminder_date,
+            next_follow_up_date_value=next_follow_up_date or None,
+            notes=notes,
+            actor_user_id=current_user.id if current_user else None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(url=f"/sales/{sale_id}", status_code=303)
 
 
 @router.get("/{sale_id}/receipt", response_class=HTMLResponse)

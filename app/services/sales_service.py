@@ -1,7 +1,7 @@
 import json
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 
 from sqlalchemy.orm import Session
@@ -44,6 +44,26 @@ PAYMENT_METHODS = {
 }
 IMMEDIATE_PAYMENT_METHODS = {"cash", "card", "bank_transfer", "mobile", "other"}
 INVOICE_PAYMENT_METHOD = "invoice"
+INVOICE_FOLLOW_UP_STATUSES = {
+    "awaiting_invoice",
+    "transferred_to_invoicing",
+    "payment_check_due",
+    "unpaid",
+    "reminder_due",
+    "reminder_sent",
+    "paid",
+    "cancelled",
+}
+INVOICE_ACTIVE_STATUSES = {
+    "awaiting_invoice",
+    "partially_paid_awaiting_invoice",
+    "transferred_to_invoicing",
+    "payment_check_due",
+    "unpaid",
+    "reminder_due",
+    "reminder_sent",
+}
+INVOICE_ALERT_STATUSES = {"payment_check_due", "reminder_due"}
 
 VAT_PERCENT_MAX = Decimal("100")
 SNAPSHOT_SCHEMA_VERSION = 1
@@ -132,6 +152,52 @@ def sale_paid_amount(sale: Sale) -> Decimal:
 
 def sale_balance_due(sale: Sale) -> Decimal:
     return money(parse_decimal(sale.total) - sale_paid_amount(sale))
+
+
+def invoice_follow_up_status(sale: Sale, *, as_of: date | None = None) -> str:
+    status = sale.settlement_status or sale.status
+    if status in {"paid", "cancelled", "refunded"}:
+        return status
+    today = as_of or date.today()
+    if sale.next_follow_up_at and sale.next_follow_up_at.date() <= today:
+        return "reminder_due"
+    if sale.due_date and sale.due_date < today and status in {"transferred_to_invoicing", "awaiting_invoice", "partially_paid_awaiting_invoice"}:
+        return "payment_check_due"
+    return status
+
+
+def invoice_follow_up_alerts(db: Session, *, as_of: date | None = None) -> list[dict]:
+    today = as_of or date.today()
+    sales = (
+        db.query(Sale)
+        .filter(Sale.settlement_status.in_(list(INVOICE_ACTIVE_STATUSES)))
+        .order_by(Sale.due_date.asc(), Sale.next_follow_up_at.asc(), Sale.sold_at.desc())
+        .all()
+    )
+    alerts: list[dict] = []
+    for sale in sales:
+        derived_status = invoice_follow_up_status(sale, as_of=today)
+        if derived_status == "payment_check_due":
+            alerts.append(
+                {
+                    "sale": sale,
+                    "status": derived_status,
+                    "label": "Payment status check due",
+                    "message_key": "check_external_payment_status",
+                    "due_date": sale.due_date,
+                }
+            )
+        elif derived_status == "reminder_due":
+            alerts.append(
+                {
+                    "sale": sale,
+                    "status": derived_status,
+                    "label": "Payment reminder due",
+                    "message_key": "send_payment_reminder",
+                    "due_date": sale.next_follow_up_at.date() if sale.next_follow_up_at else None,
+                }
+            )
+    return alerts
 
 
 def settlement_status_for(*, total: Decimal, paid: Decimal, invoice_requested: bool) -> str:
@@ -536,6 +602,183 @@ def create_sale_from_work_order(
         send_to_invoice=send_to_invoice,
         idempotency_key=idempotency_key or f"work-order:{work_order.id}",
     )
+
+
+def _parse_date_value(value: object, field_name: str, *, required: bool = False) -> date | None:
+    if value is None or value == "":
+        if required:
+            raise ValueError(f"{field_name} is required.")
+        return None
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    try:
+        return date.fromisoformat(str(value))
+    except ValueError as exc:
+        raise ValueError(f"{field_name} must be a valid date.") from exc
+
+
+def _date_to_utc_datetime(value: date) -> datetime:
+    return datetime.combine(value, time.min, tzinfo=UTC)
+
+
+def require_invoice_sale(sale: Sale | None) -> Sale:
+    if sale is None:
+        raise ValueError("Sale not found.")
+    if sale.settlement_status in {"paid", "cancelled"}:
+        raise ValueError("Sale is not awaiting invoice follow-up.")
+    if sale.payment_method != INVOICE_PAYMENT_METHOD and sale.settlement_status not in INVOICE_ACTIVE_STATUSES:
+        raise ValueError("Sale is not an invoice handoff sale.")
+    return sale
+
+
+def transfer_sale_to_invoicing(
+    db: Session,
+    *,
+    sale_id: int,
+    service_name: str,
+    external_invoice_number: str,
+    invoice_date_value: object,
+    due_date_value: object,
+    external_reference: str = "",
+    notes: str = "",
+    actor_user_id: int | None = None,
+) -> Sale:
+    sale = require_invoice_sale(db.get(Sale, sale_id))
+    service = service_name.strip()
+    invoice_number = external_invoice_number.strip()
+    if not service:
+        raise ValueError("External invoicing service is required.")
+    if not invoice_number:
+        raise ValueError("External invoice number is required.")
+    invoice_date = _parse_date_value(invoice_date_value, "Invoice date", required=True)
+    due_date = _parse_date_value(due_date_value, "Due date", required=True)
+    if due_date < invoice_date:
+        raise ValueError("Due date cannot be before invoice date.")
+
+    sale.transferred_to_invoicing_at = utc_now()
+    sale.external_invoice_service = service
+    sale.external_invoice_number = invoice_number
+    sale.invoice_date = invoice_date
+    sale.due_date = due_date
+    sale.external_invoice_reference = external_reference.strip() or None
+    sale.invoice_handoff_notes = notes.strip() or None
+    sale.settlement_status = "transferred_to_invoicing"
+    log_audit_event(
+        db,
+        event_type="invoice.transferred",
+        entity_type="sale",
+        entity_id=sale.id,
+        description=f"Sale transferred to external invoicing service {service}; invoice {invoice_number}; actor {actor_user_id}.",
+    )
+    db.commit()
+    db.refresh(sale)
+    return sale
+
+
+def confirm_invoice_paid(
+    db: Session,
+    *,
+    sale_id: int,
+    payment_date_value: object,
+    received_amount: object | None = None,
+    notes: str = "",
+    actor_user_id: int | None = None,
+) -> Sale:
+    sale = require_invoice_sale(db.get(Sale, sale_id))
+    payment_date = _parse_date_value(payment_date_value, "Payment date", required=True)
+    sale.payment_status_checked_at = utc_now()
+    sale.paid_at = _date_to_utc_datetime(payment_date)
+    sale.next_follow_up_at = None
+    sale.settlement_status = "paid"
+    if notes.strip():
+        sale.follow_up_notes = notes.strip()
+    if received_amount not in (None, ""):
+        amount = require_positive_money(received_amount, "Received amount")
+        db.add(
+            Payment(
+                sale_id=sale.id,
+                shift_id=sale.shift_id,
+                seller_id=sale.sold_by_user_id or sale.seller_id,
+                received_by_user_id=actor_user_id,
+                payment_method="bank_transfer",
+                amount=amount,
+                paid_at=_date_to_utc_datetime(payment_date),
+                reference=sale.external_invoice_number,
+            )
+        )
+    log_audit_event(
+        db,
+        event_type="invoice.paid_confirmed",
+        entity_type="sale",
+        entity_id=sale.id,
+        description=f"External invoice payment manually confirmed; actor {actor_user_id}; payment date {payment_date}.",
+    )
+    db.commit()
+    db.refresh(sale)
+    return sale
+
+
+def confirm_invoice_unpaid(
+    db: Session,
+    *,
+    sale_id: int,
+    checked_date_value: object | None = None,
+    next_follow_up_date_value: object | None = None,
+    notes: str = "",
+    actor_user_id: int | None = None,
+) -> Sale:
+    sale = require_invoice_sale(db.get(Sale, sale_id))
+    checked_date = _parse_date_value(checked_date_value, "Checked date") or date.today()
+    next_follow_up_date = _parse_date_value(next_follow_up_date_value, "Next follow-up date") or (checked_date + timedelta(days=7))
+    if next_follow_up_date < checked_date:
+        raise ValueError("Next follow-up date cannot be before checked date.")
+    sale.payment_status_checked_at = _date_to_utc_datetime(checked_date)
+    sale.next_follow_up_at = _date_to_utc_datetime(next_follow_up_date)
+    sale.settlement_status = "unpaid"
+    if notes.strip():
+        sale.follow_up_notes = notes.strip()
+    log_audit_event(
+        db,
+        event_type="invoice.unpaid_confirmed",
+        entity_type="sale",
+        entity_id=sale.id,
+        description=f"External invoice manually confirmed unpaid; actor {actor_user_id}; next follow-up {next_follow_up_date}.",
+    )
+    db.commit()
+    db.refresh(sale)
+    return sale
+
+
+def record_invoice_reminder_sent(
+    db: Session,
+    *,
+    sale_id: int,
+    reminder_date_value: object,
+    next_follow_up_date_value: object | None = None,
+    notes: str = "",
+    actor_user_id: int | None = None,
+) -> Sale:
+    sale = require_invoice_sale(db.get(Sale, sale_id))
+    reminder_date = _parse_date_value(reminder_date_value, "Reminder sent date", required=True)
+    next_follow_up_date = _parse_date_value(next_follow_up_date_value, "Next follow-up date") or (reminder_date + timedelta(days=7))
+    if next_follow_up_date < reminder_date:
+        raise ValueError("Next follow-up date cannot be before reminder date.")
+    sale.last_reminder_sent_at = _date_to_utc_datetime(reminder_date)
+    sale.reminder_count = (sale.reminder_count or 0) + 1
+    sale.next_follow_up_at = _date_to_utc_datetime(next_follow_up_date)
+    sale.settlement_status = "reminder_sent"
+    if notes.strip():
+        sale.follow_up_notes = notes.strip()
+    log_audit_event(
+        db,
+        event_type="invoice.reminder_sent",
+        entity_type="sale",
+        entity_id=sale.id,
+        description=f"External invoice reminder recorded; actor {actor_user_id}; count {sale.reminder_count}; next follow-up {next_follow_up_date}.",
+    )
+    db.commit()
+    db.refresh(sale)
+    return sale
 
 
 def require_closing_manager(user: User | None) -> User:
@@ -959,6 +1202,17 @@ def build_daily_closing_snapshot(db: Session, business_date: date) -> dict:
     partially_paid_invoice_sales = sum_money(
         sale.total for sale in sales if sale.settlement_status == "partially_paid_awaiting_invoice"
     )
+    invoice_status_totals = defaultdict(lambda: {"count": 0, "total": Decimal("0")})
+    for sale in sales:
+        derived_status = invoice_follow_up_status(sale, as_of=business_date)
+        invoice_related = (
+            sale.payment_method == INVOICE_PAYMENT_METHOD
+            or sale.external_invoice_number is not None
+            or sale.settlement_status in INVOICE_ACTIVE_STATUSES
+        )
+        if invoice_related and derived_status in INVOICE_FOLLOW_UP_STATUSES:
+            invoice_status_totals[derived_status]["count"] += 1
+            invoice_status_totals[derived_status]["total"] += parse_decimal(sale.total)
     payment_received_total = sum_money(payment.amount for payment in payments)
 
     return {
@@ -973,6 +1227,14 @@ def build_daily_closing_snapshot(db: Session, business_date: date) -> dict:
         "net_sales": decimal_string(net_sales),
         "awaiting_invoice_sales": decimal_string(awaiting_invoice_sales),
         "partially_paid_invoice_sales": decimal_string(partially_paid_invoice_sales),
+        "invoice_status_totals": [
+            {
+                "status": status,
+                "count": values["count"],
+                "total": decimal_string(values["total"]),
+            }
+            for status, values in sorted(invoice_status_totals.items())
+        ],
         "payment_received_total": decimal_string(payment_received_total),
         "gross_vat": decimal_string(gross_vat),
         "refund_vat": decimal_string(refund_vat),

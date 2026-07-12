@@ -50,7 +50,7 @@ The app is not intended to be exposed directly to the public internet.
 - Sales, payments, and refunds stored separately from Work Orders
 - Unified sales flow for direct POS sales and Work Order billing
 - Work Orders can be converted into Sales and settled by cash, card, split payment, or invoice handoff
-- Invoice queue for sales awaiting external invoicing; this is a handoff workflow, not statutory invoicing
+- Invoice queue for external invoicing handoff, payment-status checks, unpaid follow-up, and reminder tracking; this is not statutory invoicing
 - Daily closing with immutable versioned snapshots, closed-day write lock, VAT/payment/seller summaries, and authorized reopen flow
 - Read-only browsing for historical daily closing snapshot versions
 - Seller reports for daily, weekly, and monthly sales metrics
@@ -81,7 +81,7 @@ The app is not intended to be exposed directly to the public internet.
 - Money columns now use SQLAlchemy `Numeric`; existing SQLite columns may still have older storage affinity until a future migration rebuilds the tables
 - Bootstrap CSS and JavaScript are bundled locally under `app/static/vendor/bootstrap`; the app does not require a CDN for the normal UI
 - Sales now support multiple lines and multiple immediate payments. Full accounting invoicing, payment gateways, fiscal cash register certification, and statutory e-invoicing are not implemented.
-- External invoice/e-invoice integration is not implemented. The invoice queue is only a sales handoff workflow.
+- External invoice/e-invoice integration is not implemented. The invoice queue is only a manual handoff and follow-up workflow.
 - Multi-VAT refunds are rejected until line-level refund allocation is implemented.
 - Refunds do not yet create customer-return stock movements. A financial refund leaves inventory unchanged until a dedicated return workflow is implemented.
 
@@ -97,7 +97,9 @@ Direct POS sales and Work Order billing use the same sales service. The UI has s
 - `/sales/work-orders/{id}` for Work Order review and payment/invoice handoff
 - `/sales/invoice-queue` for Sales awaiting external invoicing
 
-Settlement states include paid, partially paid, awaiting invoice, and partially paid awaiting invoice. Cash, card, bank transfer, mobile, and other immediate payments create `Payment` rows. Sending a Sale to invoicing does not create a fake cash/card payment. Partial and split payments are supported as multiple `Payment` rows, and overpayment is rejected in this MVP.
+Settlement and invoice follow-up states include paid, partially paid, awaiting invoice, transferred to invoicing, payment check due, unpaid, reminder due, reminder sent, and cancelled. Cash, card, bank transfer, mobile, and other immediate payments create `Payment` rows. Sending a Sale to invoicing does not create a fake cash/card payment. Partial and split payments are supported as multiple `Payment` rows, and overpayment is rejected in this MVP.
+
+External invoicing handoff can store the external invoicing service, external invoice number, invoice date, due date, optional external reference or URL, and notes. The app never assumes an external invoice has been paid without explicit user confirmation. If the due date or next follow-up date has passed, the dashboard shows an alert telling the user to check the external invoicing service or send a reminder. Confirming paid, confirming unpaid, and recording a sent reminder are explicit audited actions.
 
 Seller and operator identity remain separate:
 
@@ -119,7 +121,7 @@ Daily closing rules:
 - Refund VAT is stored with the refund. Single-VAT sales are supported; multi-VAT refunds require future line allocation.
 - Snapshot version history is available from the Daily Closing detail page.
 
-Daily closing counts Sales by their shift business date, but payment method totals come from actual `Payment` rows. Awaiting-invoice Sales are visible as sales revenue handoff items and are not counted as cash/card received.
+Daily closing counts Sales by their shift business date, but payment method totals come from actual `Payment` rows. Awaiting-invoice and external-invoice follow-up Sales are visible as sales revenue handoff items and are not counted as cash/card received.
 
 Security notes:
 

@@ -186,8 +186,9 @@ Important accounting rules:
 - A Sale may reference a Work Order, but payments are stored in `payments`.
 - Work Order conversion is idempotent. A Work Order must not create multiple active Sales accidentally.
 - Sales store `source_type`, `settlement_status`, `finalized_at`, and optional `invoice_customer_snapshot_json`.
-- `settlement_status` tracks paid, partially paid, awaiting invoice, and partially paid awaiting invoice states.
-- Invoice handoff creates no fake cash/card payment row. It is not statutory invoicing or accounting export.
+- Invoice handoff fields include `transferred_to_invoicing_at`, `external_invoice_service`, `external_invoice_number`, `invoice_date`, `due_date`, `external_invoice_reference`, `invoice_handoff_notes`, `payment_status_checked_at`, `paid_at`, `next_follow_up_at`, `reminder_count`, `last_reminder_sent_at`, and `follow_up_notes`.
+- `settlement_status` tracks paid, partially paid, awaiting invoice, transferred to invoicing, unpaid, reminder sent, and cancelled states. `payment_check_due` and `reminder_due` are derived from due and follow-up dates for alerts and reports.
+- Invoice handoff creates no fake cash/card payment row. It is not statutory invoicing or accounting export. External payment is marked paid only after explicit manual confirmation.
 - Split and partial payments are represented as multiple `payments` rows for the same Sale.
 - `payments.received_by_user_id` is the operator who received or recorded payment; it is separate from the credited seller.
 - `sales.sold_by_user_id` credits the seller for reports; `sales.created_by_user_id` records the operator.
@@ -206,7 +207,7 @@ Current limitations:
 - Authentication exists for local trusted-network use, but some MVP forms still preserve explicit user selectors for operational workflows.
 - Role checks protect routes and business operations, but the app is still not hardened for public internet exposure.
 - Sale documents, payment transaction numbers, refund numbers, shift numbers, and closing numbers are not official stable document numbers yet.
-- Sales support multiple validated lines and multiple payment rows. Full accounting invoicing, external payment gateways, and statutory e-invoicing are not implemented.
+- Sales support multiple validated lines and multiple payment rows. Full accounting invoicing, automatic external payment status sync, external payment gateways, and statutory e-invoicing are not implemented.
 - Multi-VAT refunds are rejected until line-level refund allocation is added.
 - Financial refunds do not yet create customer-return inventory transactions.
 

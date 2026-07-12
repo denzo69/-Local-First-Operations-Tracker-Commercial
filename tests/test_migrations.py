@@ -54,6 +54,17 @@ def test_alembic_upgrade_head_creates_current_schema(tmp_path):
     assert "settlement_status" in sale_columns
     assert "finalized_at" in sale_columns
     assert "invoice_customer_snapshot_json" in sale_columns
+    assert "transferred_to_invoicing_at" in sale_columns
+    assert "external_invoice_service" in sale_columns
+    assert "external_invoice_number" in sale_columns
+    assert "invoice_date" in sale_columns
+    assert "due_date" in sale_columns
+    assert "payment_status_checked_at" in sale_columns
+    assert "paid_at" in sale_columns
+    assert "next_follow_up_at" in sale_columns
+    assert "reminder_count" in sale_columns
+    assert "last_reminder_sent_at" in sale_columns
+    assert "follow_up_notes" in sale_columns
     payment_columns = {column["name"] for column in inspector.get_columns("payments")}
     assert "received_by_user_id" in payment_columns
     receipt_columns = {column["name"] for column in inspector.get_columns("goods_receipts")}
@@ -87,4 +98,6 @@ def test_alembic_upgrade_head_creates_current_schema(tmp_path):
     sale_indexes = {index["name"] for index in inspector.get_indexes("sales")}
     assert "ix_sales_settlement_status" in sale_indexes
     assert "ux_sales_active_work_order" in sale_indexes
-    assert version == "a4d7b9c2e1f3"
+    assert "ix_sales_due_date" in sale_indexes
+    assert "ix_sales_next_follow_up_at" in sale_indexes
+    assert version == "b5c8d2e4f6a1"

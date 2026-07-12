@@ -35,6 +35,7 @@ from app.services.i18n_service import get_translations
 from app.services.backup_scheduler_service import start_backup_scheduler, stop_backup_scheduler
 from app.services.maintenance_service import is_maintenance_active
 from app.services.money_service import sum_money
+from app.services.sales_service import invoice_follow_up_alerts
 from app.services.settings_service import get_app_settings
 from app.template_context import templates
 
@@ -171,6 +172,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         .all()
     )
     today_sales_total = sum_money(sale.total for sale in todays_sales)
+    invoice_alerts = invoice_follow_up_alerts(db, as_of=today)
 
     return templates.TemplateResponse(
         "dashboard.html",
@@ -202,5 +204,6 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
             "current_shift": current_shift,
             "daily_closing": daily_closing,
             "recent_activity": recent_activity,
+            "invoice_alerts": invoice_alerts,
         },
     )

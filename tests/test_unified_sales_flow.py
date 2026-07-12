@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
@@ -16,11 +16,17 @@ from app.services.inventory_service import (
 from app.services.sales_service import (
     PaymentInput,
     SaleLineInput,
+    confirm_invoice_paid,
+    confirm_invoice_unpaid,
     create_sale_from_lines,
     create_sale_from_work_order,
+    invoice_follow_up_alerts,
+    invoice_follow_up_status,
     open_shift,
+    record_invoice_reminder_sent,
     sale_balance_due,
     sale_paid_amount,
+    transfer_sale_to_invoicing,
 )
 
 
@@ -321,4 +327,187 @@ def test_work_order_invoice_post_route_and_invoice_queue_render():
 
     assert queue.status_code == 200
     assert "Queue Customer" in queue.text
-    assert "awaiting_invoice" in queue.text
+    assert "Awaiting invoice" in queue.text
+
+
+def invoice_sale(db, *, title="Follow-up work") -> Sale:
+    seller = user(db, f"{title} Seller")
+    shift = open_test_shift(db, seller)
+    customer = Customer(name=f"{title} Customer")
+    product = service_product(db, f"{title} Service", "100", "24")
+    job = Job(title=title, customer=customer)
+    db.add(job)
+    db.commit()
+    db.add(
+        JobItem(
+            job_id=job.id,
+            product_id=product.id,
+            description=f"{title} Service",
+            quantity=Decimal("1"),
+            unit_price=Decimal("100"),
+            vat_percent=Decimal("24"),
+            line_total=Decimal("100"),
+        )
+    )
+    db.commit()
+    return create_sale_from_work_order(
+        db,
+        work_order_id=job.id,
+        shift_id=shift.id,
+        seller_id=seller.id,
+        created_by_user_id=seller.id,
+        payments=[],
+        send_to_invoice=True,
+    )
+
+
+def test_invoice_due_date_creates_dashboard_followup_alert():
+    with SessionLocal() as db:
+        sale = invoice_sale(db, title="Overdue invoice")
+        transfer_sale_to_invoicing(
+            db,
+            sale_id=sale.id,
+            service_name="External Books",
+            external_invoice_number="EXT-100",
+            invoice_date_value=date(2026, 7, 1),
+            due_date_value=date(2026, 7, 5),
+            actor_user_id=sale.sold_by_user_id,
+        )
+        alerts = invoice_follow_up_alerts(db, as_of=date(2026, 7, 12))
+
+    assert len(alerts) == 1
+    assert alerts[0]["status"] == "payment_check_due"
+    assert alerts[0]["message_key"] == "check_external_payment_status"
+
+
+def test_invoice_paid_confirmation_clears_followup_alert_and_does_not_create_cash_or_card_payment():
+    with SessionLocal() as db:
+        sale = invoice_sale(db, title="Paid invoice")
+        transfer_sale_to_invoicing(
+            db,
+            sale_id=sale.id,
+            service_name="External Books",
+            external_invoice_number="EXT-PAID",
+            invoice_date_value=date(2026, 7, 1),
+            due_date_value=date(2026, 7, 5),
+            actor_user_id=sale.sold_by_user_id,
+        )
+        confirm_invoice_paid(
+            db,
+            sale_id=sale.id,
+            payment_date_value=date(2026, 7, 10),
+            received_amount="100",
+            notes="Confirmed in external system",
+            actor_user_id=sale.sold_by_user_id,
+        )
+        db.refresh(sale)
+        alerts = invoice_follow_up_alerts(db, as_of=date(2026, 7, 12))
+        payments = db.query(Payment).filter(Payment.sale_id == sale.id).all()
+
+    assert sale.settlement_status == "paid"
+    assert sale.paid_at.date() == date(2026, 7, 10)
+    assert alerts == []
+    assert [payment.payment_method for payment in payments] == ["bank_transfer"]
+
+
+def test_invoice_unpaid_confirmation_schedules_default_seven_day_reminder():
+    with SessionLocal() as db:
+        sale = invoice_sale(db, title="Unpaid invoice")
+        transfer_sale_to_invoicing(
+            db,
+            sale_id=sale.id,
+            service_name="External Books",
+            external_invoice_number="EXT-UNPAID",
+            invoice_date_value=date(2026, 7, 1),
+            due_date_value=date(2026, 7, 5),
+            actor_user_id=sale.sold_by_user_id,
+        )
+        confirm_invoice_unpaid(
+            db,
+            sale_id=sale.id,
+            checked_date_value=date(2026, 7, 12),
+            actor_user_id=sale.sold_by_user_id,
+        )
+        db.refresh(sale)
+
+    assert sale.settlement_status == "unpaid"
+    assert sale.payment_status_checked_at.date() == date(2026, 7, 12)
+    assert sale.next_follow_up_at.date() == date(2026, 7, 19)
+
+
+def test_invoice_reminder_due_and_sent_reschedules_next_check():
+    with SessionLocal() as db:
+        sale = invoice_sale(db, title="Reminder invoice")
+        transfer_sale_to_invoicing(
+            db,
+            sale_id=sale.id,
+            service_name="External Books",
+            external_invoice_number="EXT-REM",
+            invoice_date_value=date(2026, 7, 1),
+            due_date_value=date(2026, 7, 5),
+            actor_user_id=sale.sold_by_user_id,
+        )
+        confirm_invoice_unpaid(
+            db,
+            sale_id=sale.id,
+            checked_date_value=date(2026, 7, 12),
+            next_follow_up_date_value=date(2026, 7, 13),
+            actor_user_id=sale.sold_by_user_id,
+        )
+
+        assert invoice_follow_up_status(sale, as_of=date(2026, 7, 13)) == "reminder_due"
+
+        record_invoice_reminder_sent(
+            db,
+            sale_id=sale.id,
+            reminder_date_value=date(2026, 7, 13),
+            actor_user_id=sale.sold_by_user_id,
+        )
+        db.refresh(sale)
+
+    assert sale.settlement_status == "reminder_sent"
+    assert sale.reminder_count == 1
+    assert sale.last_reminder_sent_at.date() == date(2026, 7, 13)
+    assert sale.next_follow_up_at.date() == date(2026, 7, 20)
+
+
+def test_invoice_followup_routes_render_and_dashboard_alert_disappears_after_payment():
+    today = date.today()
+    with SessionLocal() as db:
+        sale = invoice_sale(db, title="Route followup")
+        sale_id = sale.id
+
+    with TestClient(app) as client:
+        transfer = client.post(
+            f"/sales/{sale_id}/invoice-transfer",
+            data={
+                "external_invoice_service": "External Books",
+                "external_invoice_number": "ROUTE-EXT",
+                "invoice_date": str(today - timedelta(days=10)),
+                "due_date": str(today - timedelta(days=1)),
+                "external_invoice_reference": "https://example.test/invoice/ROUTE-EXT",
+                "notes": "Transferred manually",
+            },
+            follow_redirects=False,
+        )
+        assert transfer.status_code == 303
+        dashboard = client.get("/")
+        assert "Payment check due" in dashboard.text
+
+        unpaid = client.post(
+            f"/sales/{sale_id}/invoice-unpaid",
+            data={"checked_date": str(today), "notes": "Not paid yet"},
+            follow_redirects=False,
+        )
+        assert unpaid.status_code == 303
+
+        paid = client.post(
+            f"/sales/{sale_id}/invoice-paid",
+            data={"payment_date": str(today), "received_amount": "100"},
+            follow_redirects=False,
+        )
+        assert paid.status_code == 303
+        dashboard_after_payment = client.get("/")
+
+    assert "Payment check due" not in dashboard_after_payment.text
+    assert "Reminder due" not in dashboard_after_payment.text
