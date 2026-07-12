@@ -19,4 +19,4 @@ USER appuser
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "python -m alembic upgrade head && exec python -m uvicorn app.main:app --host ${HOST:-0.0.0.0} --port ${PORT:-8000}"]
+CMD ["sh", "-c", "python -m app.migration_bootstrap && exec python -m uvicorn app.main:app --host ${HOST:-0.0.0.0} --port ${PORT:-8000}"]

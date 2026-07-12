@@ -60,7 +60,7 @@ The app is not intended to be exposed directly to the public internet.
 - SQLite backups using SQLite's backup API
 - Backup restore, health status, and retention cleanup
 - Automatic background backup scheduler with configurable interval and retention
-- Alembic baseline migration for the current schema
+- Safe Alembic migration bootstrap for new and legacy unstamped SQLite databases
 - Centralized HTML and JSON error handling
 - Dockerfile and Docker Compose support for the SQLite local-first deployment
 - GitHub Actions pytest workflow for push and pull request checks
@@ -73,7 +73,7 @@ The app is not intended to be exposed directly to the public internet.
 - No cloud deployment, PostgreSQL, or object storage
 - No native mobile application
 - Backup scheduler is in-process and intended for the local single-computer deployment model; use an external scheduler for stricter production guarantees
-- Alembic has a baseline migration for new databases. The Windows run scripts and Docker startup run `alembic upgrade head`; direct `uvicorn app.main:app` startup still requires running Alembic first when schema changes exist.
+- Alembic is the versioned schema source of truth. The Windows run scripts and Docker startup run `python -m app.migration_bootstrap`, which can safely classify legacy unstamped SQLite databases before stamping or upgrading. Direct `uvicorn app.main:app` startup still requires running the migration bootstrap first when schema changes exist.
 - Receipt numbering is local-MVP safe, but not designed for high-concurrency multi-server use
 - Money columns now use SQLAlchemy `Numeric`; existing SQLite columns may still have older storage affinity until a future migration rebuilds the tables
 - Bootstrap CSS and JavaScript are bundled locally under `app/static/vendor/bootstrap`; the app does not require a CDN for the normal UI
@@ -165,7 +165,7 @@ Start the local development server:
 .\run.bat
 ```
 
-The run script installs requirements and applies Alembic migrations before starting Uvicorn.
+The run script installs requirements and applies the safe migration bootstrap before starting Uvicorn.
 
 Open:
 
@@ -207,10 +207,16 @@ Run the full test suite:
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-Create or upgrade a database through Alembic:
+Create or upgrade a database through the safe migration bootstrap:
 
 ```powershell
-.\.venv\Scripts\python.exe -m alembic upgrade head
+.\.venv\Scripts\python.exe -m app.migration_bootstrap
+```
+
+Preview the migration decision without changing the database:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.migration_bootstrap --dry-run
 ```
 
 Optional backup scheduler environment settings:
@@ -229,7 +235,7 @@ Use the LAN script when another device should access the app:
 .\run-lan.bat
 ```
 
-The LAN script also applies Alembic migrations before binding to `0.0.0.0`.
+The LAN script also applies the safe migration bootstrap before binding to `0.0.0.0`.
 
 Then open the server computer's LAN or Tailscale address in a browser, for example:
 
@@ -254,6 +260,16 @@ backups/
 ```
 
 Backups are created with SQLite's backup API, validated with `PRAGMA integrity_check`, and listed in the Backups page. Restore creates a safety backup before replacing the current database.
+
+## Database Migration Safety
+
+Earlier local-first builds could create SQLite tables before Alembic version stamping existed. If such a database has application tables but no `alembic_version` row, a raw `alembic upgrade head` can fail because the baseline migration tries to recreate existing tables.
+
+Use `python -m app.migration_bootstrap` instead. It classifies an unstamped SQLite schema as empty, baseline, auth, inventory, stabilization, or unknown. It stamps only when the schema satisfies the critical tables, columns, indexes, foreign keys, and trigger checks for a known revision. Unknown or partial schemas abort without stamping or upgrading.
+
+Before modifying an existing non-empty SQLite database, the bootstrap creates a migration backup with SQLite's backup API under `backups/migration-backups/` and verifies it with `PRAGMA quick_check`. If backup verification fails, migration stops.
+
+Do not casually run `alembic stamp head`. Stamping head is safe only after the full current schema has been confirmed. For an unknown schema, make a manual backup, inspect the missing or unexpected objects reported by the bootstrap, and repair or migrate deliberately.
 
 ## Print Snapshots
 

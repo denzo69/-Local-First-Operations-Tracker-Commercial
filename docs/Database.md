@@ -31,6 +31,38 @@ The MVP database should include the following tables:
 - goods_receipt_lines
 - inventory_transactions
 
+## Migration bootstrap and legacy SQLite databases
+
+Alembic is the versioned source of truth for schema upgrades. New databases should be created by running:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.migration_bootstrap
+```
+
+Older local-first builds could create tables through application startup before the database had an Alembic stamp. Those databases may contain valid application tables but no `alembic_version` row. Running raw `alembic upgrade head` against that state can fail because the baseline migration tries to recreate tables that already exist.
+
+The migration bootstrap handles that compatibility case deterministically:
+
+- empty database: run normal Alembic upgrade to head
+- unstamped database matching baseline schema: stamp `162323fcac91`, then upgrade to head
+- unstamped database matching auth schema: stamp `3f0d1c9a8b22`, then upgrade to head
+- unstamped database matching inventory schema: stamp `7c2a91f4d8e3`, then upgrade to head
+- unstamped database matching stabilization schema: stamp `9e4c3b2a1f08`
+- already stamped database: run normal Alembic upgrade to head
+- partial, inconsistent, or unknown schema: abort without stamping or upgrading
+
+Classification checks the known critical tables, columns, indexes, foreign keys where practical, and inventory immutability triggers. It does not infer a revision from one table.
+
+Before stamping or upgrading an existing non-empty SQLite database, the bootstrap creates a SQLite-safe backup with the SQLite backup API in `backups/migration-backups/` and verifies it with `PRAGMA quick_check`. If backup verification fails, no stamp or upgrade is attempted.
+
+Use dry-run mode to audit the decision without modifying the database:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.migration_bootstrap --dry-run
+```
+
+Do not use `alembic stamp head` casually. It is only appropriate after the full current schema has been confirmed. If the bootstrap reports an unknown schema, keep the database unchanged, make a separate backup, inspect the reported missing or unexpected objects, and write a deliberate migration or repair plan.
+
 ## Entity overview
 
 ```text
