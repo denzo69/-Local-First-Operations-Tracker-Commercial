@@ -4,17 +4,20 @@
     <div>
         <h1>{{ t.sales }} #{{ sale.id }}</h1>
         <p class="text-muted">
-            {{ t.original_seller }}: {{ sale.seller.name }} -
+            {{ t.original_seller }}: {{ (sale.sold_by or sale.seller).name if (sale.sold_by or sale.seller) else "-" }} -
             {{ t.shifts }} #{{ sale.shift_id }} -
             {{ t.business_date }} {{ sale.shift.business_date if sale.shift else "-" }}
         </p>
+        {% if sale.created_by %}
+        <p class="text-muted mb-0">{{ t.created_by }}: {{ sale.created_by.name }}</p>
+        {% endif %}
     </div>
     <a class="btn btn-outline-secondary" href="/sales">{{ t.back }}</a>
 </div>
 <div class="row g-3 mb-3">
-    <div class="col-md-3"><div class="card p-3"><div class="text-muted">Subtotal</div><strong>{{ sale.subtotal }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.net }}</div><strong>{{ sale.subtotal }}</strong></div></div>
     <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.vat }}</div><strong>{{ sale.vat_total }}</strong></div></div>
-    <div class="col-md-3"><div class="card p-3"><div class="text-muted">Discount</div><strong>{{ sale.discount_total }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.discount }}</div><strong>{{ sale.discount_total }}</strong></div></div>
     <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.total }}</div><strong>{{ sale.total }}</strong></div></div>
 </div>
 <div class="row g-3 mb-3">
@@ -24,6 +27,20 @@
 </div>
 {% if sale.work_order %}
 <p>Work Order: <a href="/work-orders/{{ sale.work_order.id }}">{{ sale.work_order.title }}</a></p>
+{% endif %}
+{% if can_correct_seller %}
+<form class="card p-3 mb-3" method="post" action="/sales/{{ sale.id }}/seller">
+    <h2 class="h5">{{ t.correct_seller }}</h2>
+    <select class="form-select mb-2" name="sold_by_user_id" required>
+        {% for seller in sellers %}
+        {% if seller.can_receive_sales_credit or (seller.role and seller.role.code == "seller") %}
+        <option value="{{ seller.id }}" {% if (sale.sold_by_user_id or sale.seller_id) == seller.id %}selected{% endif %}>{{ seller.name }}</option>
+        {% endif %}
+        {% endfor %}
+    </select>
+    <input class="form-control mb-2" name="reason" placeholder="{{ t.reason }}" required>
+    <button class="btn btn-outline-primary" type="submit">{{ t.save }}</button>
+</form>
 {% endif %}
 <div class="card mb-3">
     <div class="table-responsive responsive-card-table">

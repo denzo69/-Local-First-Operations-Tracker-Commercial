@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1>{{ t.inventory_reconciliation }}</h1>
+        <p class="text-muted">{{ t.inventory_reconciliation_help }}</p>
+    </div>
+    <a class="btn btn-outline-secondary" href="/inventory/ledger">{{ t.inventory_ledger }}</a>
+</div>
+
+{% if report.is_clean %}
+<div class="alert alert-success">{{ t.inventory_reconciliation_clean }}</div>
+{% else %}
+<div class="alert alert-warning">{{ t.inventory_reconciliation_mismatch }}</div>
+{% endif %}
+
+<div class="card mb-3">
+    <div class="card-header">{{ t.products }}</div>
+    <div class="table-responsive responsive-card-table">
+        <table class="table mb-0">
+            <thead><tr><th>{{ t.product }}</th><th>{{ t.current_quantity }}</th><th>{{ t.value }}</th><th>{{ t.weighted_average_cost }}</th></tr></thead>
+            <tbody>
+            {% for item in report.product_mismatches %}
+            <tr>
+                <td data-label="{{ t.product }}">{{ item.product.name }}</td>
+                <td data-label="{{ t.current_quantity }}">{{ item.cached_quantity }} / {{ item.expected_quantity }}</td>
+                <td data-label="{{ t.value }}">{{ item.cached_value }} / {{ item.expected_value }}</td>
+                <td data-label="{{ t.weighted_average_cost }}">{{ item.cached_average or "-" }} / {{ item.expected_average or "-" }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" class="text-muted">{{ t.no_results }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">{{ t.locations }}</div>
+    <div class="table-responsive responsive-card-table">
+        <table class="table mb-0">
+            <thead><tr><th>{{ t.product }}</th><th>{{ t.location }}</th><th>{{ t.current_quantity }}</th><th>{{ t.value }}</th></tr></thead>
+            <tbody>
+            {% for item in report.location_mismatches %}
+            <tr>
+                <td data-label="{{ t.product }}">{{ item.product.name }}</td>
+                <td data-label="{{ t.location }}">{{ item.location_id }}</td>
+                <td data-label="{{ t.current_quantity }}">{{ item.cached_quantity }} / {{ item.expected_quantity }}</td>
+                <td data-label="{{ t.value }}">{{ item.cached_value }} / {{ item.expected_value }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" class="text-muted">{{ t.no_results }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% if not report.is_clean %}
+<form class="card p-3" method="post" action="/inventory/reconciliation/repair">
+    <h2 class="h5">{{ t.repair_from_ledger }}</h2>
+    <label class="form-label" for="user_id">{{ t.created_by }}</label>
+    <select class="form-select mb-2" id="user_id" name="user_id">
+        {% for user in users %}<option value="{{ user.id }}">{{ user.name }}</option>{% endfor %}
+    </select>
+    <label class="form-label" for="reason">{{ t.reason }}</label>
+    <input class="form-control mb-2" id="reason" name="reason" required>
+    <button class="btn btn-warning" type="submit">{{ t.repair_from_ledger }}</button>
+</form>
+{% endif %}
+{% endblock %}

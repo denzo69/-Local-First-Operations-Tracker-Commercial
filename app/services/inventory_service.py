@@ -27,6 +27,9 @@ QTY_QUANT = Decimal("0.001")
 ALLOCATION_METHODS = {"by_value", "by_quantity"}
 INVENTORY_MANAGER_ROLES = {"admin", "manager"}
 INVENTORY_OPERATIONAL_ROLES = {"admin", "manager", "seller"}
+QTY_TOLERANCE = Decimal("0.001")
+MONEY_TOLERANCE = Decimal("0.01")
+COST_TOLERANCE = Decimal("0.000001")
 
 
 def cost(value: Decimal) -> Decimal:
@@ -52,6 +55,17 @@ def require_non_negative_money(value, field_name: str) -> Decimal:
     if parsed < 0:
         raise ValueError(f"{field_name} cannot be negative.")
     return parsed
+
+
+def require_vat_rate(value, field_name: str = "VAT rate") -> Decimal:
+    parsed = parse_finite_decimal(value, field_name, "0")
+    if parsed < 0 or parsed > 100:
+        raise ValueError(f"{field_name} must be between 0 and 100.")
+    return parsed
+
+
+def vat_amount_from_ex_vat(ex_vat: Decimal, vat_rate: Decimal) -> Decimal:
+    return money(ex_vat * vat_rate / Decimal("100"))
 
 
 def require_positive_quantity(value, field_name: str = "Quantity") -> Decimal:
@@ -110,7 +124,9 @@ def create_goods_receipt(
     delivery_number: str = "",
     invoice_number: str = "",
     freight_total_ex_vat="0",
+    freight_vat_rate="0",
     other_costs_total_ex_vat="0",
+    other_costs_vat_rate="0",
     allocation_method: str = "by_value",
     notes: str = "",
 ) -> GoodsReceipt:
@@ -120,13 +136,25 @@ def create_goods_receipt(
         raise ValueError("Active supplier is required.")
     if allocation_method not in ALLOCATION_METHODS:
         raise ValueError("Invalid landed cost allocation method.")
+    freight_ex = require_non_negative_money(freight_total_ex_vat, "Freight total ex VAT")
+    freight_vat = require_vat_rate(freight_vat_rate, "Freight VAT rate")
+    freight_vat_amount = vat_amount_from_ex_vat(freight_ex, freight_vat)
+    other_ex = require_non_negative_money(other_costs_total_ex_vat, "Other costs total ex VAT")
+    other_vat = require_vat_rate(other_costs_vat_rate, "Other costs VAT rate")
+    other_vat_amount = vat_amount_from_ex_vat(other_ex, other_vat)
     receipt = GoodsReceipt(
         supplier_id=supplier_id,
         receipt_date=receipt_date,
         delivery_number=delivery_number.strip() or None,
         invoice_number=invoice_number.strip() or None,
-        freight_total_ex_vat=require_non_negative_money(freight_total_ex_vat, "Freight total ex VAT"),
-        other_costs_total_ex_vat=require_non_negative_money(other_costs_total_ex_vat, "Other costs total ex VAT"),
+        freight_total_ex_vat=freight_ex,
+        freight_vat_rate=freight_vat,
+        freight_vat_amount=freight_vat_amount,
+        freight_total_inc_vat=money(freight_ex + freight_vat_amount),
+        other_costs_total_ex_vat=other_ex,
+        other_costs_vat_rate=other_vat,
+        other_costs_vat_amount=other_vat_amount,
+        other_costs_total_inc_vat=money(other_ex + other_vat_amount),
         allocation_method=allocation_method,
         received_by_user_id=creator.id,
         notes=notes.strip() or None,
@@ -234,35 +262,60 @@ def allocate_landed_costs(lines: list[GoodsReceiptLine], freight: Decimal, other
 
 
 def preview_goods_receipt(db: Session, receipt: GoodsReceipt) -> dict:
-    lines = list(receipt.lines)
+    lines = sorted(receipt.lines, key=lambda row: row.id or 0)
     freight = require_non_negative_money(receipt.freight_total_ex_vat, "Freight total ex VAT")
     other = require_non_negative_money(receipt.other_costs_total_ex_vat, "Other costs total ex VAT")
     allocations = allocate_landed_costs(lines, freight, other, receipt.allocation_method or "by_value")
 
     line_previews = []
     purchase_total = Decimal("0")
-    vat_total = Decimal("0")
+    product_vat_total = Decimal("0")
     landed_total = Decimal("0")
-    projected_by_product: dict[int, tuple[Decimal, Decimal, Decimal]] = {}
+    projected_by_product: dict[int, dict[str, Decimal | None]] = {}
+    running_by_product: dict[int, dict[str, Decimal | None]] = {}
     for line in lines:
+        if line.product_id not in running_by_product:
+            old_qty = quantity(parse_decimal(line.product.current_inventory_quantity or 0))
+            old_avg = cost(parse_decimal(line.product.current_weighted_average_cost_ex_vat or 0))
+            old_value = money(
+                parse_decimal(
+                    line.product.current_inventory_value_ex_vat
+                    if line.product.current_inventory_value_ex_vat is not None
+                    else old_qty * old_avg
+                )
+            )
+            if old_qty < 0:
+                raise ValueError("Negative stock must be corrected before posting receipts.")
+            running_by_product[line.product_id] = {
+                "quantity": old_qty,
+                "value": old_value,
+                "average": old_avg if old_qty > 0 else None,
+            }
+
+        product_state = running_by_product[line.product_id]
         qty = parse_decimal(line.quantity)
         line_purchase = money(qty * parse_decimal(line.purchase_unit_price_ex_vat))
         allocated_freight = allocations[line.id]["freight"]
         allocated_other = allocations[line.id]["other"]
         landed_line_total = money(line_purchase + allocated_freight + allocated_other)
         landed_unit = cost(landed_line_total / qty)
-        old_qty = parse_decimal(line.product.current_inventory_quantity or 0)
-        old_avg = parse_decimal(line.product.current_weighted_average_cost_ex_vat or 0)
-        old_value = money(parse_decimal(line.product.current_inventory_value_ex_vat if line.product.current_inventory_value_ex_vat is not None else old_qty * old_avg))
-        if old_qty < 0:
-            raise ValueError("Negative stock must be corrected before posting receipts.")
+        old_qty = quantity(parse_decimal(product_state["quantity"] or 0))
+        old_avg = cost(parse_decimal(product_state["average"] or 0))
+        old_value = money(parse_decimal(product_state["value"] or 0))
         new_qty = quantity(old_qty + qty)
         new_value = money(old_value + landed_line_total)
         new_avg = cost(new_value / new_qty)
-        projected_by_product[line.product_id] = (new_qty, new_value, new_avg)
+        product_state["quantity"] = new_qty
+        product_state["value"] = new_value
+        product_state["average"] = new_avg
+        projected_by_product[line.product_id] = {
+            "quantity": new_qty,
+            "value": new_value,
+            "average": new_avg,
+        }
         vat_amount = money(line_purchase * parse_decimal(line.vat_rate) / Decimal("100"))
         purchase_total += line_purchase
-        vat_total += vat_amount
+        product_vat_total += vat_amount
         landed_total += landed_line_total
         line_previews.append(
             {
@@ -291,13 +344,25 @@ def preview_goods_receipt(db: Session, receipt: GoodsReceipt) -> dict:
             }
         )
 
+    freight_vat_rate = require_vat_rate(receipt.freight_vat_rate or 0, "Freight VAT rate")
+    freight_vat_amount = vat_amount_from_ex_vat(freight, freight_vat_rate)
+    other_vat_rate = require_vat_rate(receipt.other_costs_vat_rate or 0, "Other costs VAT rate")
+    other_vat_amount = vat_amount_from_ex_vat(other, other_vat_rate)
+    vat_total = money(product_vat_total + freight_vat_amount + other_vat_amount)
     return {
         "receipt": receipt,
         "lines": line_previews,
         "purchase_total_ex_vat": money(purchase_total),
         "freight_total_ex_vat": freight,
+        "freight_vat_rate": freight_vat_rate,
+        "freight_vat_amount": freight_vat_amount,
+        "freight_total_inc_vat": money(freight + freight_vat_amount),
         "other_costs_total_ex_vat": other,
+        "other_costs_vat_rate": other_vat_rate,
+        "other_costs_vat_amount": other_vat_amount,
+        "other_costs_total_inc_vat": money(other + other_vat_amount),
         "total_landed_cost_ex_vat": money(landed_total),
+        "product_vat_total": money(product_vat_total),
         "vat_total": money(vat_total),
         "total_inc_vat": money(purchase_total + freight + other + vat_total),
         "allocation_method": receipt.allocation_method or "by_value",
@@ -346,6 +411,163 @@ def _ledger_state_from_transactions(db: Session, product_id: int) -> tuple[Decim
     value = sum((parse_decimal(row.total_inventory_cost) for row in transactions), Decimal("0"))
     avg = cost(value / stock) if stock > 0 else None
     return quantity(stock), money(value), avg
+
+
+def _within_tolerance(actual: Decimal | None, expected: Decimal | None, tolerance: Decimal) -> bool:
+    actual_value = Decimal("0") if actual is None else parse_decimal(actual)
+    expected_value = Decimal("0") if expected is None else parse_decimal(expected)
+    return abs(actual_value - expected_value) <= tolerance
+
+
+def inventory_reconciliation(db: Session, *, product_ids: set[int] | None = None) -> dict:
+    product_query = db.query(Product).filter(Product.is_stock_item.is_(True))
+    if product_ids:
+        product_query = product_query.filter(Product.id.in_(product_ids))
+    products = product_query.order_by(Product.id.asc()).all()
+    product_mismatches: list[dict] = []
+    location_mismatches: list[dict] = []
+
+    for product in products:
+        expected_qty, expected_value, expected_avg = _ledger_state_from_transactions(db, product.id)
+        cached_qty = quantity(parse_decimal(product.current_inventory_quantity or 0))
+        cached_value = money(parse_decimal(product.current_inventory_value_ex_vat or 0))
+        cached_avg = (
+            cost(parse_decimal(product.current_weighted_average_cost_ex_vat))
+            if product.current_weighted_average_cost_ex_vat is not None
+            else None
+        )
+        if (
+            not _within_tolerance(cached_qty, expected_qty, QTY_TOLERANCE)
+            or not _within_tolerance(cached_value, expected_value, MONEY_TOLERANCE)
+            or not _within_tolerance(cached_avg, expected_avg, COST_TOLERANCE)
+        ):
+            product_mismatches.append(
+                {
+                    "product": product,
+                    "cached_quantity": cached_qty,
+                    "expected_quantity": expected_qty,
+                    "cached_value": cached_value,
+                    "expected_value": expected_value,
+                    "cached_average": cached_avg,
+                    "expected_average": expected_avg,
+                }
+            )
+
+        balances = db.query(InventoryBalance).filter(InventoryBalance.product_id == product.id).all()
+        location_ids = {balance.warehouse_location_id for balance in balances}
+        transaction_location_ids = {
+            row[0]
+            for row in db.query(InventoryTransaction.shelf_location_id)
+            .filter(InventoryTransaction.product_id == product.id, InventoryTransaction.shelf_location_id.is_not(None))
+            .distinct()
+            .all()
+        }
+        for location_id in sorted(location_ids | transaction_location_ids):
+            balance = next((row for row in balances if row.warehouse_location_id == location_id), None)
+            transactions = (
+                db.query(InventoryTransaction)
+                .filter(InventoryTransaction.product_id == product.id, InventoryTransaction.shelf_location_id == location_id)
+                .all()
+            )
+            expected_location_qty = quantity(
+                sum((parse_decimal(row.quantity_change or 0) for row in transactions), Decimal("0"))
+            )
+            expected_location_value = money(
+                sum((parse_decimal(row.total_inventory_cost or 0) for row in transactions), Decimal("0"))
+            )
+            expected_location_avg = (
+                cost(expected_location_value / expected_location_qty)
+                if expected_location_qty > 0
+                else None
+            )
+            cached_location_qty = quantity(parse_decimal(balance.quantity_on_hand or 0)) if balance else Decimal("0.000")
+            cached_location_value = money(parse_decimal(balance.inventory_value_ex_vat or 0)) if balance else Decimal("0.00")
+            cached_location_avg = (
+                cost(parse_decimal(balance.weighted_average_cost_ex_vat))
+                if balance and balance.weighted_average_cost_ex_vat is not None
+                else None
+            )
+            if (
+                not _within_tolerance(cached_location_qty, expected_location_qty, QTY_TOLERANCE)
+                or not _within_tolerance(cached_location_value, expected_location_value, MONEY_TOLERANCE)
+                or not _within_tolerance(cached_location_avg, expected_location_avg, COST_TOLERANCE)
+            ):
+                location_mismatches.append(
+                    {
+                        "product": product,
+                        "location_id": location_id,
+                        "balance": balance,
+                        "cached_quantity": cached_location_qty,
+                        "expected_quantity": expected_location_qty,
+                        "cached_value": cached_location_value,
+                        "expected_value": expected_location_value,
+                        "cached_average": cached_location_avg,
+                        "expected_average": expected_location_avg,
+                    }
+                )
+
+    return {
+        "product_mismatches": product_mismatches,
+        "location_mismatches": location_mismatches,
+        "is_clean": not product_mismatches and not location_mismatches,
+        "tolerances": {
+            "quantity": QTY_TOLERANCE,
+            "money": MONEY_TOLERANCE,
+            "cost": COST_TOLERANCE,
+        },
+    }
+
+
+def assert_inventory_cache_consistent(db: Session, *, product_ids: set[int]) -> None:
+    report = inventory_reconciliation(db, product_ids=product_ids)
+    if not report["is_clean"]:
+        raise ValueError("Inventory cache differs from ledger. Run reconciliation repair before posting new stock changes.")
+
+
+def repair_inventory_caches_from_ledger(db: Session, *, user_id: int, reason: str) -> dict:
+    user = require_inventory_manager(db.get(User, user_id))
+    repair_reason = reason.strip()
+    if not repair_reason:
+        raise ValueError("Repair reason is required.")
+    before = inventory_reconciliation(db)
+    touched_products = {item["product"].id for item in before["product_mismatches"]}
+    touched_products.update(item["product"].id for item in before["location_mismatches"])
+    for product_id in touched_products:
+        product = db.get(Product, product_id)
+        if product is None:
+            continue
+        expected_qty, expected_value, expected_avg = _ledger_state_from_transactions(db, product.id)
+        _sync_product_cache(product, stock=expected_qty, value=expected_value, average_cost=expected_avg)
+        location_ids = {
+            row[0]
+            for row in db.query(InventoryTransaction.shelf_location_id)
+            .filter(InventoryTransaction.product_id == product.id, InventoryTransaction.shelf_location_id.is_not(None))
+            .distinct()
+            .all()
+        }
+        for location_id in location_ids:
+            balance = _get_or_create_balance(db, product_id=product.id, location_id=location_id)
+            transactions = (
+                db.query(InventoryTransaction)
+                .filter(InventoryTransaction.product_id == product.id, InventoryTransaction.shelf_location_id == location_id)
+                .all()
+            )
+            location_qty = quantity(sum((parse_decimal(row.quantity_change or 0) for row in transactions), Decimal("0")))
+            location_value = money(sum((parse_decimal(row.total_inventory_cost or 0) for row in transactions), Decimal("0")))
+            balance.quantity_on_hand = location_qty
+            balance.quantity_available = quantity(location_qty - parse_decimal(balance.quantity_reserved or 0))
+            balance.inventory_value_ex_vat = location_value
+            balance.weighted_average_cost_ex_vat = cost(location_value / location_qty) if location_qty > 0 else None
+            balance.updated_at = utc_now()
+    log_audit_event(
+        db,
+        event_type="inventory.cache_repaired",
+        entity_type="inventory",
+        entity_id=None,
+        description=f"Inventory caches repaired from ledger by {user.id}/{user.name}: {repair_reason}.",
+    )
+    db.commit()
+    return before
 
 
 def _create_transaction(
@@ -422,25 +644,23 @@ def post_goods_receipt(db: Session, *, goods_receipt_id: int, posted_by_user_id:
     if receipt.status != "draft":
         raise ValueError("Only draft goods receipts can be posted.")
     preview = preview_goods_receipt(db, receipt)
+    assert_inventory_cache_consistent(db, product_ids=set(preview["projected_by_product"].keys()))
 
     for item in preview["lines"]:
         line = item["line"]
         product = line.product
         location = _location(db, line.destination_location_id)
         balance = _get_or_create_balance(db, product_id=line.product_id, location_id=line.destination_location_id)
-        old_product_qty = quantity(parse_decimal(product.current_inventory_quantity or 0))
-        old_product_avg = cost(parse_decimal(product.current_weighted_average_cost_ex_vat or 0))
-        old_product_value = money(parse_decimal(product.current_inventory_value_ex_vat if product.current_inventory_value_ex_vat is not None else old_product_qty * old_product_avg))
-        if old_product_qty < 0:
-            raise ValueError("Negative stock must be corrected before posting receipts.")
-
+        old_product_qty = quantity(parse_decimal(item["calculation"]["old_quantity"]))
+        old_product_avg = cost(parse_decimal(item["calculation"]["old_average_cost"]))
+        old_product_value = money(parse_decimal(item["calculation"]["old_value"]))
         received_qty = quantity(parse_decimal(line.quantity))
         landed_line_total = money(item["purchase_value_ex_vat"] + item["allocated_freight_ex_vat"] + item["allocated_other_costs_ex_vat"])
-        new_product_qty = quantity(old_product_qty + received_qty)
+        new_product_qty = quantity(parse_decimal(item["calculation"]["combined_quantity"]))
         if new_product_qty <= 0:
             raise ValueError("Posting receipt would not create positive inventory quantity.")
-        new_product_value = money(old_product_value + landed_line_total)
-        new_product_avg = cost(new_product_value / new_product_qty)
+        new_product_value = money(parse_decimal(item["calculation"]["combined_value"]))
+        new_product_avg = cost(parse_decimal(item["calculation"]["new_average_cost"]))
 
         line.allocated_freight_ex_vat = item["allocated_freight_ex_vat"]
         line.allocated_other_costs_ex_vat = item["allocated_other_costs_ex_vat"]
@@ -458,7 +678,6 @@ def post_goods_receipt(db: Session, *, goods_receipt_id: int, posted_by_user_id:
         balance.weighted_average_cost_ex_vat = cost(new_balance_value / new_balance_qty)
         balance.updated_at = utc_now()
 
-        _sync_product_cache(product, stock=new_product_qty, value=new_product_value, average_cost=new_product_avg)
         product.current_purchase_price_ex_vat = line.purchase_unit_price_ex_vat
         product.current_purchase_price_inc_vat = line.purchase_unit_price_inc_vat
 
@@ -486,6 +705,22 @@ def post_goods_receipt(db: Session, *, goods_receipt_id: int, posted_by_user_id:
             created_by_user_id=user.id,
         )
 
+    for product_id, projected in preview["projected_by_product"].items():
+        product = db.get(Product, product_id)
+        if product is not None:
+            _sync_product_cache(
+                product,
+                stock=parse_decimal(projected["quantity"] or 0),
+                value=parse_decimal(projected["value"] or 0),
+                average_cost=parse_decimal(projected["average"]) if projected["average"] is not None else None,
+            )
+
+    receipt.freight_vat_rate = preview["freight_vat_rate"]
+    receipt.freight_vat_amount = preview["freight_vat_amount"]
+    receipt.freight_total_inc_vat = preview["freight_total_inc_vat"]
+    receipt.other_costs_vat_rate = preview["other_costs_vat_rate"]
+    receipt.other_costs_vat_amount = preview["other_costs_vat_amount"]
+    receipt.other_costs_total_inc_vat = preview["other_costs_total_inc_vat"]
     receipt.status = "posted"
     receipt.posted_at = utc_now()
     log_audit_event(
@@ -518,6 +753,7 @@ def cancel_goods_receipt(db: Session, *, goods_receipt_id: int, user_id: int, re
         for transaction in receipt.transactions
         if transaction.transaction_type == "purchase" and transaction.reversal_of_transaction_id is None
     ]
+    assert_inventory_cache_consistent(db, product_ids={transaction.product_id for transaction in original_transactions})
     for transaction in original_transactions:
         product = transaction.product
         location = _location(db, transaction.shelf_location_id)
@@ -600,6 +836,7 @@ def issue_stock_for_sale(
     product = db.get(Product, product_id)
     if product is None or not product.is_stock_item:
         raise ValueError("Stock product is required.")
+    assert_inventory_cache_consistent(db, product_ids={product_id})
     location = _location(db, warehouse_location_id)
     balance = _get_or_create_balance(db, product_id=product_id, location_id=warehouse_location_id)
     qty = require_positive_quantity(quantity_value)
@@ -717,6 +954,7 @@ def transfer_stock(
     product = db.get(Product, product_id)
     if product is None or not product.is_stock_item:
         raise ValueError("Stock product is required.")
+    assert_inventory_cache_consistent(db, product_ids={product_id})
     source_location = _location(db, from_location_id)
     target_location = _location(db, to_location_id)
     source = _get_or_create_balance(db, product_id=product_id, location_id=from_location_id)

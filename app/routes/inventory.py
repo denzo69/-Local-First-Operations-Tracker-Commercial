@@ -14,9 +14,11 @@ from app.services.inventory_service import (
     create_default_warehouse,
     create_goods_receipt,
     inventory_ledger,
+    inventory_reconciliation,
     inventory_valuation,
     post_goods_receipt,
     preview_goods_receipt,
+    repair_inventory_caches_from_ledger,
 )
 from app.template_context import templates
 
@@ -74,7 +76,9 @@ def create_goods_receipt_route(
     delivery_number: str = Form(""),
     invoice_number: str = Form(""),
     freight_total_ex_vat: str = Form("0"),
+    freight_vat_rate: str = Form("0"),
     other_costs_total_ex_vat: str = Form("0"),
+    other_costs_vat_rate: str = Form("0"),
     allocation_method: str = Form("by_value"),
     received_by_user_id: int | None = Form(None),
     db: Session = Depends(get_db),
@@ -88,7 +92,9 @@ def create_goods_receipt_route(
             delivery_number=delivery_number,
             invoice_number=invoice_number,
             freight_total_ex_vat=freight_total_ex_vat,
+            freight_vat_rate=freight_vat_rate,
             other_costs_total_ex_vat=other_costs_total_ex_vat,
+            other_costs_vat_rate=other_costs_vat_rate,
             allocation_method=allocation_method,
         )
     except ValueError as exc:
@@ -200,6 +206,39 @@ def inventory_valuation_report(request: Request, db: Session = Depends(get_db)):
             "valuation": inventory_valuation(db),
         },
     )
+
+
+@router.get("/reconciliation", response_class=HTMLResponse)
+def inventory_reconciliation_report(request: Request, db: Session = Depends(get_db)):
+    return templates.TemplateResponse(
+        "inventory/reconciliation.html",
+        {
+            "request": request,
+            "app_name": settings.app_name,
+            "active_page": "inventory_reconciliation",
+            "page_title": "Inventory reconciliation",
+            "report": inventory_reconciliation(db),
+            "users": db.query(User).filter(User.is_active.is_(True)).order_by(User.name.asc()).all(),
+        },
+    )
+
+
+@router.post("/reconciliation/repair")
+def repair_inventory_reconciliation(
+    request: Request,
+    reason: str = Form(...),
+    user_id: int | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    try:
+        repair_inventory_caches_from_ledger(
+            db,
+            user_id=operator_id_from_request(request, user_id),
+            reason=reason,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(url="/inventory/reconciliation", status_code=303)
 
 
 @router.get("/ledger", response_class=HTMLResponse)

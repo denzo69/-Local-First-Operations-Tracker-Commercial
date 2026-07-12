@@ -199,6 +199,7 @@ Current limitations:
 - Sale documents, payment transaction numbers, refund numbers, shift numbers, and closing numbers are not official stable document numbers yet.
 - Sales UI creates one line and one payment. Future versions should finalize sales from multiple validated lines and separate payment balancing.
 - Multi-VAT refunds are rejected until line-level refund allocation is added.
+- Financial refunds do not yet create customer-return inventory transactions.
 
 Sales also store cost snapshots for stock-product sales:
 
@@ -217,11 +218,12 @@ The inventory accounting backbone is `inventory_transactions`. It is the source 
 
 Important inventory rules:
 
-- Inventory transactions are immutable. Corrections create new reversal or adjustment transactions.
+- Inventory transactions are protected from normal application edits and SQLite `UPDATE`/`DELETE` operations. Corrections create new reversal or adjustment transactions.
 - `quantity_change` stores the signed stock effect.
 - `total_inventory_cost` stores the signed ex-VAT inventory value effect.
 - `stock_before`, `stock_after`, `inventory_value_before`, `inventory_value_after`, `weighted_average_cost_before`, and `weighted_average_cost_after` preserve the running balance at the moment of the transaction.
-- Goods receipt posting creates `purchase` transactions and includes allocated freight and other landed costs.
+- Goods receipt posting creates `purchase` transactions and includes allocated ex-VAT freight and other landed costs.
+- Goods receipts also store freight and other-cost VAT rates, VAT amounts, and VAT-inclusive totals for purchase-document reconciliation. Deductible VAT is excluded from inventory value.
 - Posted goods receipt cancellation creates reversal transactions and never deletes the original purchase history.
 - Stock-product sales create `sale` transactions and store sale-line cost of goods sold and gross profit snapshots.
 - Transfers create balanced transactions so total company inventory value remains unchanged.
@@ -272,4 +274,6 @@ new average cost =
 (old quantity + received quantity)
 ```
 
-Freight and other landed costs are allocated to receipt lines before weighted average cost is recalculated. Ledger rows must always make the current stock and current inventory value reconstructable from history.
+Freight and other landed costs are allocated to receipt lines before weighted average cost is recalculated. If the same product appears on several receipt lines, product-level quantity, value, and average cost are calculated from all lines for that product, while ledger rows preserve deterministic line order by `goods_receipt_lines.id`. Ledger rows must always make the current stock and current inventory value reconstructable from history.
+
+Cache fields such as `products.current_inventory_quantity`, `products.current_inventory_value_ex_vat`, `products.current_weighted_average_cost_ex_vat`, and `inventory_balances` are derived caches. The reconciliation report compares those caches to `inventory_transactions` with documented quantity, money, and cost tolerances. Repair rewrites caches from the ledger only; it never rewrites ledger rows.

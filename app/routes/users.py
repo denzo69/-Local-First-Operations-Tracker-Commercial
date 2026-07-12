@@ -52,6 +52,7 @@ def create_user(
     password: str = Form(""),
     role_id: int = Form(...),
     is_active: str | None = Form(None),
+    can_receive_sales_credit: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
     if not name.strip():
@@ -70,6 +71,7 @@ def create_user(
         password_hash=hash_password(password) if password else None,
         role_id=role_id,
         is_active=is_active == "on",
+        can_receive_sales_credit=can_receive_sales_credit == "on",
     )
     db.add(user)
     db.flush()
@@ -110,6 +112,7 @@ def update_user(
     password: str = Form(""),
     role_id: int = Form(...),
     is_active: str | None = Form(None),
+    can_receive_sales_credit: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
     user = db.get(User, user_id)
@@ -133,5 +136,6 @@ def update_user(
         user.password_hash = hash_password(password)
     user.role_id = role_id
     user.is_active = is_active == "on"
+    user.can_receive_sales_credit = can_receive_sales_credit == "on"
     db.commit()
     return RedirectResponse(url="/users", status_code=303)

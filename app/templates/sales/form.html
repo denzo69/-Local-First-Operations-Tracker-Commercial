@@ -11,7 +11,16 @@
         </select>
         {% if not shifts %}<div class="form-text">{{ t.open_shift_required_for_refund }}</div>{% endif %}
     </div>
-    <input type="hidden" id="seller_id" name="seller_id" value="{{ shifts[0].seller_id if shifts else '' }}">
+    <div class="mb-3">
+        <label class="form-label" for="seller_id">{{ t.seller }}</label>
+        <select class="form-select" id="seller_id" name="seller_id" required>
+            {% for seller in sellers %}
+            {% if seller.can_receive_sales_credit or (seller.role and seller.role.code == "seller") %}
+            <option value="{{ seller.id }}">{{ seller.name }}</option>
+            {% endif %}
+            {% endfor %}
+        </select>
+    </div>
     <div class="mb-3">
         <label class="form-label" for="work_order_id">{{ t.work_orders }}</label>
         <select class="form-select" id="work_order_id" name="work_order_id">
@@ -51,9 +60,6 @@
     <button class="btn btn-primary" type="submit" {% if not shifts %}disabled{% endif %}>{{ t.save }}</button>
 </form>
 <script>
-document.getElementById("shift_id")?.addEventListener("change", function () {
-    document.getElementById("seller_id").value = this.selectedOptions[0]?.dataset.sellerId || "";
-});
 document.getElementById("product_id")?.addEventListener("change", function () {
     const selected = this.selectedOptions[0];
     if (!selected || !selected.value) return;

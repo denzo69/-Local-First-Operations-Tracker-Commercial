@@ -28,6 +28,7 @@ def test_main_navigation_targets_load():
             "/inventory/warehouses",
             "/inventory/valuation",
             "/inventory/ledger",
+            "/inventory/reconciliation",
             "/sales",
             "/shifts",
             "/daily-closings",

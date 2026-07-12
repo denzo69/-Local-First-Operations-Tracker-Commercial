@@ -4,12 +4,16 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.models import Job, Product, Sale, Shift
+from app.models import Job, Product, Sale, Shift, User
+from app.services.auth_service import request_current_user
 from app.services.sales_service import (
+    AuthorizationError,
     PAYMENT_METHODS,
     add_refund,
+    correct_sale_seller,
     create_sale_with_payment,
     remaining_refundable_amount,
+    user_can_override_sale_seller,
 )
 from app.template_context import templates
 
@@ -42,6 +46,7 @@ def new_sale(request: Request, db: Session = Depends(get_db)):
             "shifts": db.query(Shift).filter(Shift.status == "open").order_by(Shift.opened_at.desc()).all(),
             "products": db.query(Product).filter(Product.is_active.is_(True)).order_by(Product.name.asc()).all(),
             "work_orders": db.query(Job).order_by(Job.created_at.desc()).limit(100).all(),
+            "sellers": db.query(User).filter(User.is_active.is_(True)).order_by(User.name.asc()).all(),
             "payment_methods": PAYMENT_METHODS,
         },
     )
@@ -49,6 +54,7 @@ def new_sale(request: Request, db: Session = Depends(get_db)):
 
 @router.post("")
 def create_sale(
+    request: Request,
     shift_id: int = Form(...),
     seller_id: int = Form(...),
     payment_method: str = Form(...),
@@ -61,6 +67,7 @@ def create_sale(
     product_id: int | None = Form(None),
     db: Session = Depends(get_db),
 ):
+    current_user = request_current_user(request)
     try:
         sale = create_sale_with_payment(
             db,
@@ -74,10 +81,38 @@ def create_sale(
             discount_amount=discount_amount,
             work_order_id=work_order_id,
             product_id=product_id,
+            created_by_user_id=current_user.id if current_user is not None else None,
+            seller_selection_mode="selectable_active_seller",
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return RedirectResponse(url=f"/sales/{sale.id}", status_code=303)
+
+
+@router.post("/{sale_id}/seller")
+def correct_sale_seller_route(
+    sale_id: int,
+    request: Request,
+    sold_by_user_id: int = Form(...),
+    reason: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    current_user = request_current_user(request)
+    if not user_can_override_sale_seller(current_user):
+        raise HTTPException(status_code=403, detail="Only Admin or Manager can correct sale seller attribution")
+    try:
+        correct_sale_seller(
+            db,
+            sale_id=sale_id,
+            new_sold_by_user_id=sold_by_user_id,
+            corrected_by_user_id=current_user.id,
+            reason=reason,
+        )
+    except AuthorizationError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(url=f"/sales/{sale_id}", status_code=303)
 
 
 @router.get("/{sale_id}", response_class=HTMLResponse)
@@ -93,6 +128,8 @@ def sale_detail(sale_id: int, request: Request, db: Session = Depends(get_db)):
             "active_page": "sales",
             "sale": sale,
             "open_shifts": db.query(Shift).filter(Shift.status == "open").order_by(Shift.opened_at.desc()).all(),
+            "sellers": db.query(User).filter(User.is_active.is_(True)).order_by(User.name.asc()).all(),
+            "can_correct_seller": user_can_override_sale_seller(request_current_user(request)),
             "payment_methods": PAYMENT_METHODS,
             "remaining_refundable": remaining_refundable_amount(sale),
         },

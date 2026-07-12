@@ -1,10 +1,11 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.exc import DatabaseError
 
 from app.database import SessionLocal
 from app.models import AuditLog, CashRegister, InventoryTransaction, Product, Role, Sale, Supplier, User, WarehouseLocation
@@ -15,19 +16,27 @@ from app.services.inventory_service import (
     create_default_warehouse,
     create_goods_receipt,
     inventory_valuation,
+    inventory_reconciliation,
     product_cost_profile,
     issue_stock_for_sale,
     post_goods_receipt,
     preview_goods_receipt,
+    repair_inventory_caches_from_ledger,
     transfer_stock,
 )
-from app.services.sales_service import create_sale_with_payment, ensure_default_roles, open_shift
+from app.services.sales_service import correct_sale_seller, create_sale_with_payment, ensure_default_roles, open_shift, seller_report
 
 
 def create_user(db, name="Inventory Manager", role_code="manager"):
     ensure_default_roles(db)
     role = db.query(Role).filter(Role.code == role_code).one()
-    user = User(name=name, login_name=name.lower().replace(" ", "."), role=role, is_active=True)
+    user = User(
+        name=name,
+        login_name=name.lower().replace(" ", "."),
+        role=role,
+        is_active=True,
+        can_receive_sales_credit=role_code == "seller",
+    )
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -141,6 +150,74 @@ def test_first_and_second_receipts_update_weighted_average_higher_and_lower_cost
         assert product.current_weighted_average_cost_ex_vat == Decimal("106.000000")
 
 
+def test_duplicate_product_receipt_lines_preview_and_post_reconcile_same_location():
+    with SessionLocal() as db:
+        user = create_user(db)
+        supplier = create_supplier(db)
+        location = create_location(db)
+        product = create_product(db, "Test Duplicate Lines Same")
+        opening = receipt_with_line(db, product=product, location=location, user=user, supplier=supplier, qty="10", unit_cost="10")
+        post_goods_receipt(db, goods_receipt_id=opening.id, posted_by_user_id=user.id)
+
+        receipt = create_goods_receipt(
+            db,
+            supplier_id=supplier.id,
+            receipt_date=date.today(),
+            received_by_user_id=user.id,
+            freight_total_ex_vat="10",
+            allocation_method="by_value",
+        )
+        add_goods_receipt_line(db, goods_receipt_id=receipt.id, product_id=product.id, destination_location_id=location.id, quantity_value="5", purchase_unit_price_ex_vat="12")
+        add_goods_receipt_line(db, goods_receipt_id=receipt.id, product_id=product.id, destination_location_id=location.id, quantity_value="5", purchase_unit_price_ex_vat="14")
+        db.refresh(receipt)
+        preview = preview_goods_receipt(db, receipt)
+
+        assert preview["projected_by_product"][product.id]["quantity"] == Decimal("20.000")
+        assert preview["projected_by_product"][product.id]["value"] == Decimal("240.00")
+        assert preview["projected_by_product"][product.id]["average"] == Decimal("12.000000")
+        assert sum(item["allocated_freight_ex_vat"] for item in preview["lines"]) == Decimal("10.00")
+
+        post_goods_receipt(db, goods_receipt_id=receipt.id, posted_by_user_id=user.id)
+        db.refresh(product)
+        assert product.current_inventory_quantity == Decimal("20.000")
+        assert product.current_inventory_value_ex_vat == Decimal("240.00")
+        assert product.current_weighted_average_cost_ex_vat == Decimal("12.000000")
+        assert product.inventory_balances[0].quantity_on_hand == Decimal("20.000")
+        assert inventory_reconciliation(db, product_ids={product.id})["is_clean"]
+
+
+def test_duplicate_product_receipt_lines_reconcile_different_locations():
+    with SessionLocal() as db:
+        user = create_user(db)
+        supplier = create_supplier(db)
+        loc_one = create_location(db)
+        loc_two = create_location(db, "DUP2")
+        product = create_product(db, "Test Duplicate Lines Locations")
+        receipt = create_goods_receipt(
+            db,
+            supplier_id=supplier.id,
+            receipt_date=date.today(),
+            received_by_user_id=user.id,
+            freight_total_ex_vat="3",
+            other_costs_total_ex_vat="2",
+            allocation_method="by_quantity",
+        )
+        add_goods_receipt_line(db, goods_receipt_id=receipt.id, product_id=product.id, destination_location_id=loc_one.id, quantity_value="1", purchase_unit_price_ex_vat="10")
+        add_goods_receipt_line(db, goods_receipt_id=receipt.id, product_id=product.id, destination_location_id=loc_two.id, quantity_value="2", purchase_unit_price_ex_vat="20")
+        db.refresh(receipt)
+        preview = preview_goods_receipt(db, receipt)
+        assert preview["projected_by_product"][product.id]["quantity"] == Decimal("3.000")
+        assert preview["total_landed_cost_ex_vat"] == Decimal("55.00")
+
+        post_goods_receipt(db, goods_receipt_id=receipt.id, posted_by_user_id=user.id)
+        db.refresh(product)
+        balances = {balance.warehouse_location_id: balance for balance in product.inventory_balances}
+        assert balances[loc_one.id].quantity_on_hand == Decimal("1.000")
+        assert balances[loc_two.id].quantity_on_hand == Decimal("2.000")
+        assert product.current_inventory_value_ex_vat == Decimal("55.00")
+        assert inventory_reconciliation(db, product_ids={product.id})["is_clean"]
+
+
 def test_landed_cost_allocation_by_value_quantity_and_rounding_reconciliation():
     with SessionLocal() as db:
         user = create_user(db)
@@ -188,6 +265,48 @@ def test_vat_is_excluded_from_inventory_value_and_draft_has_no_stock_impact():
         post_goods_receipt(db, goods_receipt_id=receipt.id, posted_by_user_id=user.id)
         db.refresh(product)
         assert product.current_inventory_value_ex_vat == Decimal("200.00")
+
+
+def test_freight_and_other_cost_vat_reconcile_without_inventory_valuation():
+    with SessionLocal() as db:
+        user = create_user(db)
+        supplier = create_supplier(db)
+        location = create_location(db)
+        product = create_product(db, "Test Landed VAT", vat=Decimal("10"))
+        receipt = create_goods_receipt(
+            db,
+            supplier_id=supplier.id,
+            receipt_date=date.today(),
+            received_by_user_id=user.id,
+            freight_total_ex_vat="20",
+            freight_vat_rate="24",
+            other_costs_total_ex_vat="10",
+            other_costs_vat_rate="0",
+        )
+        add_goods_receipt_line(
+            db,
+            goods_receipt_id=receipt.id,
+            product_id=product.id,
+            destination_location_id=location.id,
+            quantity_value="2",
+            purchase_unit_price_ex_vat="100",
+            vat_rate="10",
+        )
+        db.refresh(receipt)
+        preview = preview_goods_receipt(db, receipt)
+        assert preview["product_vat_total"] == Decimal("20.00")
+        assert preview["freight_vat_amount"] == Decimal("4.80")
+        assert preview["other_costs_vat_amount"] == Decimal("0.00")
+        assert preview["vat_total"] == Decimal("24.80")
+        assert preview["total_landed_cost_ex_vat"] == Decimal("230.00")
+        assert preview["total_inc_vat"] == Decimal("254.80")
+
+        post_goods_receipt(db, goods_receipt_id=receipt.id, posted_by_user_id=user.id)
+        db.refresh(product)
+        db.refresh(receipt)
+        assert product.current_inventory_value_ex_vat == Decimal("230.00")
+        assert receipt.freight_total_inc_vat == Decimal("24.80")
+        assert receipt.other_costs_total_inc_vat == Decimal("10.00")
 
 
 def test_posting_creates_transactions_balances_audit_and_posted_receipt_is_immutable():
@@ -308,6 +427,55 @@ def test_multi_line_multiple_warehouse_report_reconciles_with_movement_ledger():
         assert report["recent_cost_changes"]
 
 
+def test_inventory_reconciliation_detects_and_repairs_cache_tampering_without_changing_ledger():
+    with SessionLocal() as db:
+        user = create_user(db)
+        supplier = create_supplier(db)
+        location = create_location(db)
+        product = create_product(db, "Test Reconciliation")
+        receipt = receipt_with_line(db, product=product, location=location, user=user, supplier=supplier, qty="2", unit_cost="10")
+        post_goods_receipt(db, goods_receipt_id=receipt.id, posted_by_user_id=user.id)
+        transaction_count = db.query(InventoryTransaction).count()
+        assert inventory_reconciliation(db, product_ids={product.id})["is_clean"]
+
+        product.current_inventory_value_ex_vat = Decimal("999.00")
+        product.inventory_balances[0].quantity_on_hand = Decimal("999.000")
+        db.commit()
+        report = inventory_reconciliation(db, product_ids={product.id})
+        assert not report["is_clean"]
+        assert report["product_mismatches"]
+        assert report["location_mismatches"]
+
+        repaired_from = repair_inventory_caches_from_ledger(db, user_id=user.id, reason="Test repair")
+        assert repaired_from["product_mismatches"]
+        assert db.query(InventoryTransaction).count() == transaction_count
+        db.refresh(product)
+        assert product.current_inventory_quantity == Decimal("2.000")
+        assert product.current_inventory_value_ex_vat == Decimal("20.00")
+        assert inventory_reconciliation(db, product_ids={product.id})["is_clean"]
+
+
+def test_new_posting_is_blocked_on_material_cache_ledger_mismatch_but_allows_rounding_tolerance():
+    with SessionLocal() as db:
+        user = create_user(db)
+        supplier = create_supplier(db)
+        location = create_location(db)
+        product = create_product(db, "Test Block Mismatch")
+        receipt = receipt_with_line(db, product=product, location=location, user=user, supplier=supplier, qty="2", unit_cost="10")
+        post_goods_receipt(db, goods_receipt_id=receipt.id, posted_by_user_id=user.id)
+
+        product.current_inventory_value_ex_vat = Decimal("20.004")
+        db.commit()
+        tolerated = receipt_with_line(db, product=product, location=location, user=user, supplier=supplier, qty="1", unit_cost="10")
+        post_goods_receipt(db, goods_receipt_id=tolerated.id, posted_by_user_id=user.id)
+
+        product.current_inventory_value_ex_vat = Decimal("999.00")
+        db.commit()
+        blocked = receipt_with_line(db, product=product, location=location, user=user, supplier=supplier, qty="1", unit_cost="10")
+        with pytest.raises(ValueError, match="cache differs from ledger"):
+            post_goods_receipt(db, goods_receipt_id=blocked.id, posted_by_user_id=user.id)
+
+
 def test_historical_cost_snapshots_do_not_change_when_product_purchase_price_changes():
     with SessionLocal() as db:
         user = create_user(db)
@@ -344,6 +512,32 @@ def test_inventory_transactions_are_immutable():
         with pytest.raises(ValueError, match="Inventory transactions are immutable"):
             db.commit()
         db.rollback()
+
+
+def test_inventory_transaction_sqlite_triggers_reject_update_delete_but_allow_reversal_insert():
+    with SessionLocal() as db:
+        user = create_user(db)
+        supplier = create_supplier(db)
+        location = create_location(db)
+        product = create_product(db, "Test Trigger Ledger")
+        receipt = receipt_with_line(db, product=product, location=location, user=user, supplier=supplier, qty="1", unit_cost="10")
+        post_goods_receipt(db, goods_receipt_id=receipt.id, posted_by_user_id=user.id)
+        transaction = receipt.transactions[0]
+        transaction_id = transaction.id
+
+        with pytest.raises(DatabaseError, match="immutable"):
+            db.execute(text("UPDATE inventory_transactions SET reference = 'raw edit' WHERE id = :id"), {"id": transaction_id})
+            db.commit()
+        db.rollback()
+
+        with pytest.raises(DatabaseError, match="immutable"):
+            db.execute(text("DELETE FROM inventory_transactions WHERE id = :id"), {"id": transaction_id})
+            db.commit()
+        db.rollback()
+
+        cancel_goods_receipt(db, goods_receipt_id=receipt.id, user_id=user.id, reason="Trigger reversal")
+        reversals = db.query(InventoryTransaction).filter(InventoryTransaction.reversal_of_transaction_id == transaction_id).all()
+        assert len(reversals) == 1
 
 
 def test_sale_records_cogs_and_historical_profit_snapshot_from_weighted_average():
@@ -410,6 +604,150 @@ def test_sale_records_cogs_and_historical_profit_snapshot_from_weighted_average(
         assert product.current_weighted_average_cost_ex_vat != Decimal("50.000000")
         assert sale.cost_of_goods_sold_ex_vat == Decimal("100.00")
         assert sale.gross_profit_ex_vat == Decimal("100.00")
+
+
+def test_shared_register_stock_sale_keeps_operator_and_credited_seller_separate():
+    with SessionLocal() as db:
+        manager = create_user(db, "Shared Register Operator", "manager")
+        credited_seller = create_user(db, "Shared Register Seller", "seller")
+        replacement_seller = create_user(db, "Shared Register Replacement", "seller")
+        supplier = create_supplier(db)
+        location = create_location(db)
+        register = create_register(db)
+        product = create_product(db, "Test Shared Register Stock", vat=Decimal("0"))
+        receipt = receipt_with_line(db, product=product, location=location, user=manager, supplier=supplier, qty="5", unit_cost="10", vat="0")
+        post_goods_receipt(db, goods_receipt_id=receipt.id, posted_by_user_id=manager.id)
+        shift = open_shift(
+            db,
+            seller_id=manager.id,
+            cash_register_id=register.id,
+            business_date=date.today(),
+            starting_cash="0",
+        )
+
+        sale = create_sale_with_payment(
+            db,
+            seller_id=credited_seller.id,
+            shift_id=shift.id,
+            payment_method="card",
+            description="Shared sale",
+            quantity="1",
+            unit_price="30",
+            vat_percent="0",
+            product_id=product.id,
+            created_by_user_id=manager.id,
+            seller_selection_mode="selectable_active_seller",
+        )
+
+        transaction = sale.inventory_transactions[0]
+        assert sale.sold_by_user_id == credited_seller.id
+        assert sale.created_by_user_id == manager.id
+        assert sale.payments[0].received_by_user_id == manager.id
+        assert transaction.created_by_user_id == manager.id
+        assert sale.cost_of_goods_sold_ex_vat == Decimal("10.00")
+        report = seller_report(
+            db,
+            seller_id=credited_seller.id,
+            start_date=date.today(),
+            end_date=date.today() + timedelta(days=1),
+        )
+        assert report["gross_sales"] == Decimal("30.00")
+
+        original_cogs = sale.cost_of_goods_sold_ex_vat
+        correct_sale_seller(
+            db,
+            sale_id=sale.id,
+            new_sold_by_user_id=replacement_seller.id,
+            corrected_by_user_id=manager.id,
+            reason="Wrong seller at shared register",
+        )
+        db.refresh(transaction)
+        db.refresh(sale)
+        assert transaction.created_by_user_id == manager.id
+        assert sale.cost_of_goods_sold_ex_vat == original_cogs
+        assert sale.sold_by_user_id == replacement_seller.id
+
+
+def test_discounted_fractional_stock_sale_margin_and_service_sale_no_inventory_cogs():
+    with SessionLocal() as db:
+        manager = create_user(db)
+        seller = create_user(db, "Margin Seller", "seller")
+        supplier = create_supplier(db)
+        location = create_location(db)
+        register = create_register(db)
+        stock_product = create_product(db, "Test Margin Stock", vat=Decimal("0"))
+        service_product = Product(name="Test Service Product", is_stock_item=False, is_active=True, vat_percent=Decimal("0"))
+        db.add(service_product)
+        db.commit()
+        receipt = receipt_with_line(db, product=stock_product, location=location, user=manager, supplier=supplier, qty="2", unit_cost="10", vat="0")
+        post_goods_receipt(db, goods_receipt_id=receipt.id, posted_by_user_id=manager.id)
+        shift = open_shift(db, seller_id=seller.id, cash_register_id=register.id, business_date=date.today(), starting_cash="0")
+
+        sale = create_sale_with_payment(
+            db,
+            seller_id=seller.id,
+            shift_id=shift.id,
+            payment_method="card",
+            description="Discounted fractional stock",
+            quantity="1.500",
+            unit_price="20",
+            vat_percent="0",
+            discount_amount="5",
+            product_id=stock_product.id,
+        )
+        assert sale.subtotal == Decimal("25.00")
+        assert sale.cost_of_goods_sold_ex_vat == Decimal("15.00")
+        assert sale.gross_profit_ex_vat == Decimal("10.00")
+        assert sale.gross_margin_percent == Decimal("40.000")
+
+        service_sale = create_sale_with_payment(
+            db,
+            seller_id=seller.id,
+            shift_id=shift.id,
+            payment_method="card",
+            description="Service sale",
+            quantity="1",
+            unit_price="100",
+            vat_percent="0",
+            product_id=service_product.id,
+        )
+        assert service_sale.cost_of_goods_sold_ex_vat == Decimal("0.00")
+        assert service_sale.gross_profit_ex_vat == Decimal("100.00")
+        assert not service_sale.inventory_transactions
+
+        zero_sale = create_sale_with_payment(
+            db,
+            seller_id=seller.id,
+            shift_id=shift.id,
+            payment_method="card",
+            description="Zero sale",
+            quantity="1",
+            unit_price="0",
+            vat_percent="0",
+        )
+        assert zero_sale.gross_profit_ex_vat == Decimal("0.00")
+        assert zero_sale.gross_margin_percent is None
+
+
+def test_refund_does_not_restore_stock_until_customer_return_flow_exists():
+    with SessionLocal() as db:
+        manager = create_user(db)
+        seller = create_user(db, "Refund Stock Seller", "seller")
+        supplier = create_supplier(db)
+        location = create_location(db)
+        register = create_register(db)
+        product = create_product(db, "Test Refund No Stock Return", vat=Decimal("0"))
+        receipt = receipt_with_line(db, product=product, location=location, user=manager, supplier=supplier, qty="2", unit_cost="10", vat="0")
+        post_goods_receipt(db, goods_receipt_id=receipt.id, posted_by_user_id=manager.id)
+        shift = open_shift(db, seller_id=seller.id, cash_register_id=register.id, business_date=date.today(), starting_cash="0")
+        sale = create_sale_with_payment(db, seller_id=seller.id, shift_id=shift.id, payment_method="card", description="Refunded stock", quantity="1", unit_price="20", vat_percent="0", product_id=product.id)
+        before_refund_qty = product.current_inventory_quantity
+        from app.services.sales_service import add_refund
+
+        add_refund(db, sale_id=sale.id, refund_shift_id=shift.id, seller_id=seller.id, amount="20", payment_method="card", reason="Customer refund")
+        db.refresh(product)
+        assert product.current_inventory_quantity == before_refund_qty
+        assert len(sale.inventory_transactions) == 1
 
 
 def test_failed_stock_sale_rolls_back_flushed_sale_rows():

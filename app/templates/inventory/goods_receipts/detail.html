@@ -59,13 +59,17 @@
     <h2 class="h5">{{ t.how_calculated }}</h2>
     {% for item in preview.lines %}
     <p class="mb-1"><strong>{{ item.line.product.name }}</strong></p>
-    <pre class="mb-3">Existing stock: {{ item.calculation.old_quantity }} x {{ item.calculation.old_average_cost }} = {{ item.calculation.old_value }}
-New receipt: {{ item.calculation.new_quantity }} x {{ item.calculation.new_landed_unit_cost }} = {{ item.calculation.new_value }}
-Combined: {{ item.calculation.combined_value }} / {{ item.calculation.combined_quantity }} = {{ item.calculation.new_average_cost }}</pre>
+    <pre class="mb-3">{{ t.existing_stock }}: {{ item.calculation.old_quantity }} x {{ item.calculation.old_average_cost }} = {{ item.calculation.old_value }}
+{{ t.new_receipt }}: {{ item.calculation.new_quantity }} x {{ item.calculation.new_landed_unit_cost }} = {{ item.calculation.new_value }}
+{{ t.combined }}: {{ item.calculation.combined_value }} / {{ item.calculation.combined_quantity }} = {{ item.calculation.new_average_cost }}</pre>
     {% endfor %}
     <div>{{ t.purchase_total_ex_vat }}: <strong>{{ preview.purchase_total_ex_vat }}</strong></div>
     <div>{{ t.freight_ex_vat }}: <strong>{{ preview.freight_total_ex_vat }}</strong></div>
+    <div>{{ t.freight_vat_amount }}: <strong>{{ preview.freight_vat_amount }}</strong></div>
+    <div>{{ t.freight_inc_vat }}: <strong>{{ preview.freight_total_inc_vat }}</strong></div>
     <div>{{ t.other_costs_ex_vat }}: <strong>{{ preview.other_costs_total_ex_vat }}</strong></div>
+    <div>{{ t.other_costs_vat_amount }}: <strong>{{ preview.other_costs_vat_amount }}</strong></div>
+    <div>{{ t.other_costs_inc_vat }}: <strong>{{ preview.other_costs_total_inc_vat }}</strong></div>
     <div>{{ t.total_landed_cost }}: <strong>{{ preview.total_landed_cost_ex_vat }}</strong></div>
     <div>{{ t.vat }}: <strong>{{ preview.vat_total }}</strong></div>
     <div>{{ t.total }} {{ t.received }}: <strong>{{ preview.total_inc_vat }}</strong></div>
