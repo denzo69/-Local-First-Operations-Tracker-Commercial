@@ -19,7 +19,7 @@ if not exist backups mkdir backups
 set PYTHONPATH=%CD%
 
 echo Applying database migrations...
-python -m alembic upgrade head
+python -m app.migration_bootstrap
 if errorlevel 1 (
     echo Database migration failed.
     exit /b 1
