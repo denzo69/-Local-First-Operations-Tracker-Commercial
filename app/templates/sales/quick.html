@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1>Quick sale</h1>
+        <p class="text-muted">Direct POS sale using the shared sales engine.</p>
+    </div>
+    <a class="btn btn-outline-secondary" href="/sales">Sales</a>
+</div>
+<form method="post" action="/sales/quick" class="card p-3">
+    <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
+    <div class="row g-3 mb-3">
+        <div class="col-md-4">
+            <label class="form-label" for="shift_id">Open shift</label>
+            <select class="form-select" id="shift_id" name="shift_id" required>
+                {% for shift in shifts %}
+                <option value="{{ shift.id }}">#{{ shift.id }} {{ shift.seller.name }} / {{ shift.cash_register.name }} / {{ shift.business_date }}</option>
+                {% endfor %}
+            </select>
+            {% if not shifts %}<div class="form-text text-danger">An open shift is required.</div>{% endif %}
+        </div>
+        <div class="col-md-4">
+            <label class="form-label" for="seller_id">Credited seller</label>
+            <select class="form-select" id="seller_id" name="seller_id" required>
+                {% for seller in sellers %}
+                {% if seller.can_receive_sales_credit or (seller.role and seller.role.code == "seller") %}
+                <option value="{{ seller.id }}">{{ seller.name }}</option>
+                {% endif %}
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label" for="product_picker">Add product/service</label>
+            <select class="form-select" id="product_picker">
+                <option value="">Manual row</option>
+                {% for product in products %}
+                <option value="{{ product.id }}" data-name="{{ product.name }}" data-price="{{ product.unit_price }}" data-vat="{{ product.vat_percent }}">{{ product.name }} / {{ product.unit_price }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+    <div class="table-responsive responsive-card-table">
+        <table class="table align-middle" id="sale-lines">
+            <thead><tr><th>Product</th><th>Description</th><th>Qty</th><th>Unit price</th><th>VAT %</th><th>Discount</th><th class="text-end" style="min-width: 6.5rem;"></th></tr></thead>
+            <tbody>
+                <tr>
+                    <td data-label="Product"><input type="hidden" name="product_id"><span class="text-muted product-label">Manual</span></td>
+                    <td data-label="Description"><input class="form-control" name="description" required></td>
+                    <td data-label="Qty"><input class="form-control" name="quantity" value="1" inputmode="decimal"></td>
+                    <td data-label="Unit price"><input class="form-control" name="unit_price" value="0" inputmode="decimal"></td>
+                    <td data-label="VAT %"><input class="form-control" name="vat_percent" value="24" inputmode="decimal"></td>
+                    <td data-label="Discount"><input class="form-control" name="discount_amount" value="0" inputmode="decimal"></td>
+                    <td class="text-end"><button class="btn btn-sm btn-outline-danger remove-line text-nowrap" type="button">Remove</button></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    <button class="btn btn-outline-primary mb-3" id="add-line" type="button">Add line</button>
+    <div class="row g-3">
+        <div class="col-md-4">
+            <label class="form-label">Payment 1</label>
+            <select class="form-select mb-2" name="payment_method">
+                {% for code, label in payment_methods.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+            </select>
+            <input class="form-control" name="payment_amount" placeholder="Amount, blank = full balance">
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">Payment 2</label>
+            <select class="form-select mb-2" name="payment_method">
+                <option value="">None</option>
+                {% for code, label in payment_methods.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+            </select>
+            <input class="form-control" name="payment_amount" placeholder="Amount">
+        </div>
+        <div class="col-md-4 d-flex align-items-end">
+            <button class="btn btn-primary btn-lg w-100" type="submit" {% if not shifts %}disabled{% endif %}>Complete sale</button>
+        </div>
+    </div>
+</form>
+<script>
+const picker = document.getElementById("product_picker");
+const tbody = document.querySelector("#sale-lines tbody");
+function bindRow(row) {
+  row.querySelector(".remove-line")?.addEventListener("click", () => {
+    if (tbody.rows.length > 1) row.remove();
+  });
+}
+function fillRowFromProduct(row, option) {
+  row.querySelector("[name='product_id']").value = option.value || "";
+  row.querySelector(".product-label").textContent = option.dataset.name || "Manual";
+  if (option.value) {
+    row.querySelector("[name='description']").value = option.dataset.name || "";
+    row.querySelector("[name='unit_price']").value = option.dataset.price || "0";
+    row.querySelector("[name='vat_percent']").value = option.dataset.vat || "24";
+  }
+}
+document.getElementById("add-line").addEventListener("click", () => {
+  const row = tbody.rows[0].cloneNode(true);
+  row.querySelectorAll("input").forEach((input) => input.value = input.name === "quantity" ? "1" : (input.name === "vat_percent" ? "24" : "0"));
+  row.querySelector("[name='description']").value = "";
+  row.querySelector("[name='product_id']").value = "";
+  row.querySelector(".product-label").textContent = "Manual";
+  tbody.appendChild(row);
+  bindRow(row);
+});
+picker?.addEventListener("change", () => {
+  const option = picker.selectedOptions[0];
+  if (!option) return;
+  const row = tbody.rows[tbody.rows.length - 1];
+  fillRowFromProduct(row, option);
+});
+document.querySelectorAll("#sale-lines tbody tr").forEach(bindRow);
+</script>
+{% endblock %}

@@ -23,6 +23,13 @@ body {
     font-size: 15px;
 }
 
+.card,
+.form-control,
+.form-select,
+.btn {
+    min-width: 0;
+}
+
 a {
     color: var(--primary);
 }
@@ -160,6 +167,14 @@ button:focus-visible,
     align-items: center;
     flex-wrap: wrap;
     justify-content: flex-end;
+}
+
+.topbar-status > * {
+    max-width: 100%;
+}
+
+.alert {
+    overflow-wrap: anywhere;
 }
 
 .app-main {
@@ -445,7 +460,14 @@ button:focus-visible,
     }
 
     .topbar-status {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         justify-content: flex-start;
+    }
+
+    .topbar-status .btn {
+        width: 100%;
+        white-space: normal;
     }
 
     .kpi-grid {
@@ -519,11 +541,6 @@ button:focus-visible,
     .topbar-status,
     .quick-actions {
         width: 100%;
-    }
-
-    .topbar-status {
-        align-items: flex-start;
-        gap: .65rem;
     }
 
     .quick-actions .btn {

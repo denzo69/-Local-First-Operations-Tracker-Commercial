@@ -13,6 +13,7 @@
         {% endif %}
     </div>
     <a class="btn btn-outline-secondary" href="/sales">{{ t.back }}</a>
+    <a class="btn btn-outline-primary" href="/sales/{{ sale.id }}/receipt">Receipt / summary</a>
 </div>
 <div class="row g-3 mb-3">
     <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.net }}</div><strong>{{ sale.subtotal }}</strong></div></div>
@@ -24,6 +25,11 @@
     <div class="col-md-4"><div class="card p-3"><div class="text-muted">{{ t.cost_of_goods_sold }}</div><strong>{{ sale.cost_of_goods_sold_ex_vat }}</strong></div></div>
     <div class="col-md-4"><div class="card p-3"><div class="text-muted">{{ t.gross_profit }}</div><strong>{{ sale.gross_profit_ex_vat }}</strong></div></div>
     <div class="col-md-4"><div class="card p-3"><div class="text-muted">{{ t.gross_margin }}</div><strong>{{ sale.gross_margin_percent or "-" }}</strong></div></div>
+</div>
+<div class="row g-3 mb-3">
+    <div class="col-md-4"><div class="card p-3"><div class="text-muted">Settlement</div><strong>{{ sale.settlement_status or sale.status }}</strong></div></div>
+    <div class="col-md-4"><div class="card p-3"><div class="text-muted">Paid</div><strong>{{ paid_amount }}</strong></div></div>
+    <div class="col-md-4"><div class="card p-3"><div class="text-muted">Balance due</div><strong>{{ balance_due }}</strong></div></div>
 </div>
 {% if sale.work_order %}
 <p>Work Order: <a href="/work-orders/{{ sale.work_order.id }}">{{ sale.work_order.title }}</a></p>

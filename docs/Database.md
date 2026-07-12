@@ -181,7 +181,16 @@ The MVP now includes seller accounts, cash registers, shifts, sales, payments, r
 Important accounting rules:
 
 - Work Orders, Sales, Payments, and Refunds are separate records.
+- A Work Order is operational, not financial. It becomes billable by creating a Sale.
+- A Sale may originate from direct POS sale or from a Work Order.
 - A Sale may reference a Work Order, but payments are stored in `payments`.
+- Work Order conversion is idempotent. A Work Order must not create multiple active Sales accidentally.
+- Sales store `source_type`, `settlement_status`, `finalized_at`, and optional `invoice_customer_snapshot_json`.
+- `settlement_status` tracks paid, partially paid, awaiting invoice, and partially paid awaiting invoice states.
+- Invoice handoff creates no fake cash/card payment row. It is not statutory invoicing or accounting export.
+- Split and partial payments are represented as multiple `payments` rows for the same Sale.
+- `payments.received_by_user_id` is the operator who received or recorded payment; it is separate from the credited seller.
+- `sales.sold_by_user_id` credits the seller for reports; `sales.created_by_user_id` records the operator.
 - Refunds are stored in `refunds` and include `vat_breakdown_json`.
 - Refunds reference the original sale through `sale_id`, but `shift_id`, `seller_id`, and `refunded_at` describe the actual refund event.
 - A later refund is attributed to the refund shift business date and refunding seller. It does not move the original sale away from the original sale shift or seller.
@@ -197,7 +206,7 @@ Current limitations:
 - Authentication exists for local trusted-network use, but some MVP forms still preserve explicit user selectors for operational workflows.
 - Role checks protect routes and business operations, but the app is still not hardened for public internet exposure.
 - Sale documents, payment transaction numbers, refund numbers, shift numbers, and closing numbers are not official stable document numbers yet.
-- Sales UI creates one line and one payment. Future versions should finalize sales from multiple validated lines and separate payment balancing.
+- Sales support multiple validated lines and multiple payment rows. Full accounting invoicing, external payment gateways, and statutory e-invoicing are not implemented.
 - Multi-VAT refunds are rejected until line-level refund allocation is added.
 - Financial refunds do not yet create customer-return inventory transactions.
 

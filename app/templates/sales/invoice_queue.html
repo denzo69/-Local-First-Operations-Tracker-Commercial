@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1>Invoice queue</h1>
+        <p class="text-muted">Sales awaiting external invoicing handoff. This is not statutory invoicing.</p>
+    </div>
+    <a class="btn btn-outline-secondary" href="/sales">Sales</a>
+</div>
+<div class="card">
+    <div class="table-responsive responsive-card-table">
+        <table class="table mb-0">
+            <thead><tr><th>Sale</th><th>Customer</th><th>Work order</th><th>Total</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead>
+            <tbody>
+            {% for sale in sales %}
+            <tr>
+                <td data-label="Sale"><a href="/sales/{{ sale.id }}">#{{ sale.id }}</a></td>
+                <td data-label="Customer">{{ sale.work_order.customer.name if sale.work_order and sale.work_order.customer else "-" }}</td>
+                <td data-label="Work order">{% if sale.work_order %}<a href="/work-orders/{{ sale.work_order.id }}">{{ sale.work_order.title }}</a>{% else %}-{% endif %}</td>
+                <td data-label="Total">{{ sale.total }}</td>
+                <td data-label="Paid">{{ sale.payments|sum(attribute='amount') }}</td>
+                <td data-label="Balance">{{ sale.total - sale.payments|sum(attribute='amount') }}</td>
+                <td data-label="Status">{{ sale.settlement_status }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-muted">No sales awaiting invoicing.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

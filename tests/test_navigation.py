@@ -30,6 +30,8 @@ def test_main_navigation_targets_load():
             "/inventory/ledger",
             "/inventory/reconciliation",
             "/sales",
+            "/sales/quick",
+            "/sales/invoice-queue",
             "/shifts",
             "/daily-closings",
             "/seller-reports",

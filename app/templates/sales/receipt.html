@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="receipt-page">
+    <div class="d-flex justify-content-between align-items-start mb-3">
+        <div>
+            <h1>Sale summary #{{ sale.document_number or sale.id }}</h1>
+            <p class="text-muted">{{ sale.sold_at }}</p>
+        </div>
+        <button class="btn btn-outline-secondary d-print-none" onclick="window.print()">Print</button>
+    </div>
+    {% if sale.settlement_status in ["awaiting_invoice", "partially_paid_awaiting_invoice"] %}
+    <div class="alert alert-warning">Awaiting invoicing - this is a sales summary, not a statutory invoice.</div>
+    {% endif %}
+    <dl class="row">
+        <dt class="col-sm-3">Customer</dt><dd class="col-sm-9">{{ sale.work_order.customer.name if sale.work_order and sale.work_order.customer else "-" }}</dd>
+        <dt class="col-sm-3">Work order</dt><dd class="col-sm-9">{{ sale.work_order.title if sale.work_order else "-" }}</dd>
+        <dt class="col-sm-3">Credited seller</dt><dd class="col-sm-9">{{ (sale.sold_by or sale.seller).name if (sale.sold_by or sale.seller) else "-" }}</dd>
+        <dt class="col-sm-3">Operator</dt><dd class="col-sm-9">{{ sale.created_by.name if sale.created_by else "-" }}</dd>
+        <dt class="col-sm-3">Settlement</dt><dd class="col-sm-9">{{ sale.settlement_status }}</dd>
+    </dl>
+    <table class="table">
+        <thead><tr><th>Description</th><th class="text-end">Qty</th><th class="text-end">Unit</th><th class="text-end">VAT</th><th class="text-end">Total</th></tr></thead>
+        <tbody>
+        {% for line in sale.lines %}
+        <tr><td>{{ line.description_snapshot }}</td><td class="text-end">{{ line.quantity }}</td><td class="text-end">{{ line.unit_price }}</td><td class="text-end">{{ line.vat_percent }}%</td><td class="text-end">{{ line.line_total }}</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    <div class="row">
+        <div class="col-md-6">
+            <h2 class="h5">Payments</h2>
+            {% for payment in sale.payments %}
+            <div>{{ payment.payment_method }}: {{ payment.amount }}</div>
+            {% else %}
+            <div class="text-muted">No payments</div>
+            {% endfor %}
+        </div>
+        <div class="col-md-6 text-md-end">
+            <div>Net: {{ sale.subtotal }}</div>
+            <div>VAT: {{ sale.vat_total }}</div>
+            <div class="h4">Total: {{ sale.total }}</div>
+            <div>Paid: {{ paid_amount }}</div>
+            <div>Remaining balance: {{ balance_due }}</div>
+        </div>
+    </div>
+</div>
+{% endblock %}

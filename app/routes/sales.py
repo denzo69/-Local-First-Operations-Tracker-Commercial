@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
@@ -9,10 +11,16 @@ from app.services.auth_service import request_current_user
 from app.services.sales_service import (
     AuthorizationError,
     PAYMENT_METHODS,
+    PaymentInput,
+    SaleLineInput,
     add_refund,
     correct_sale_seller,
+    create_sale_from_lines,
+    create_sale_from_work_order,
     create_sale_with_payment,
     remaining_refundable_amount,
+    sale_balance_due,
+    sale_paid_amount,
     user_can_override_sale_seller,
 )
 from app.template_context import templates
@@ -50,6 +58,155 @@ def new_sale(request: Request, db: Session = Depends(get_db)):
             "payment_methods": PAYMENT_METHODS,
         },
     )
+
+
+@router.get("/quick", response_class=HTMLResponse)
+def quick_sale(request: Request, db: Session = Depends(get_db)):
+    return templates.TemplateResponse(
+        "sales/quick.html",
+        {
+            "request": request,
+            "app_name": settings.app_name,
+            "active_page": "sales",
+            "shifts": db.query(Shift).filter(Shift.status == "open").order_by(Shift.opened_at.desc()).all(),
+            "products": db.query(Product).filter(Product.is_active.is_(True)).order_by(Product.name.asc()).all(),
+            "sellers": db.query(User).filter(User.is_active.is_(True)).order_by(User.name.asc()).all(),
+            "payment_methods": {key: value for key, value in PAYMENT_METHODS.items() if key != "invoice"},
+            "idempotency_key": str(uuid4()),
+        },
+    )
+
+
+def _optional_int(raw: str | None) -> int | None:
+    if raw is None or raw == "":
+        return None
+    return int(raw)
+
+
+def _parse_sale_lines(form) -> list[SaleLineInput]:
+    descriptions = form.getlist("description")
+    quantities = form.getlist("quantity")
+    unit_prices = form.getlist("unit_price")
+    vat_percents = form.getlist("vat_percent")
+    discounts = form.getlist("discount_amount")
+    product_ids = form.getlist("product_id")
+    lines: list[SaleLineInput] = []
+    for index, description in enumerate(descriptions):
+        if not (description or "").strip() and not (product_ids[index] if index < len(product_ids) else ""):
+            continue
+        lines.append(
+            SaleLineInput(
+                product_id=_optional_int(product_ids[index] if index < len(product_ids) else None),
+                description=description,
+                quantity=quantities[index] if index < len(quantities) else "1",
+                unit_price=unit_prices[index] if index < len(unit_prices) else "0",
+                vat_percent=vat_percents[index] if index < len(vat_percents) else "24",
+                discount_amount=discounts[index] if index < len(discounts) else "0",
+            )
+        )
+    return lines
+
+
+def _parse_payments(form) -> tuple[list[PaymentInput], bool]:
+    methods = form.getlist("payment_method")
+    amounts = form.getlist("payment_amount")
+    payments: list[PaymentInput] = []
+    send_to_invoice = False
+    for index, method in enumerate(methods):
+        if not method:
+            continue
+        if method == "invoice":
+            send_to_invoice = True
+            continue
+        amount = amounts[index] if index < len(amounts) else None
+        payments.append(PaymentInput(payment_method=method, amount=amount or None))
+    if form.get("send_to_invoice") == "true":
+        send_to_invoice = True
+    return payments, send_to_invoice
+
+
+@router.post("/quick")
+async def create_quick_sale(request: Request, db: Session = Depends(get_db)):
+    form = await request.form()
+    current_user = request_current_user(request)
+    try:
+        sale = create_sale_from_lines(
+            db,
+            shift_id=int(form["shift_id"]),
+            seller_id=int(form["seller_id"]),
+            lines=_parse_sale_lines(form),
+            payments=_parse_payments(form)[0],
+            created_by_user_id=current_user.id if current_user is not None else None,
+            seller_selection_mode="selectable_active_seller",
+            source_type="pos",
+            send_to_invoice=_parse_payments(form)[1],
+            idempotency_key=(form.get("idempotency_key") or "").strip() or None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(url=f"/sales/{sale.id}", status_code=303)
+
+
+@router.get("/invoice-queue", response_class=HTMLResponse)
+def invoice_queue(request: Request, db: Session = Depends(get_db)):
+    sales = (
+        db.query(Sale)
+        .filter(Sale.settlement_status.in_(["awaiting_invoice", "partially_paid_awaiting_invoice"]))
+        .order_by(Sale.sold_at.desc())
+        .all()
+    )
+    return templates.TemplateResponse(
+        "sales/invoice_queue.html",
+        {
+            "request": request,
+            "app_name": settings.app_name,
+            "active_page": "sales",
+            "sales": sales,
+        },
+    )
+
+
+@router.get("/work-orders/{work_order_id}", response_class=HTMLResponse)
+def work_order_sale_form(work_order_id: int, request: Request, db: Session = Depends(get_db)):
+    work_order = db.get(Job, work_order_id)
+    if work_order is None:
+        raise HTTPException(status_code=404, detail="Work Order not found")
+    return templates.TemplateResponse(
+        "sales/work_order_conversion.html",
+        {
+            "request": request,
+            "app_name": settings.app_name,
+            "active_page": "sales",
+            "work_order": work_order,
+            "shifts": db.query(Shift).filter(Shift.status == "open").order_by(Shift.opened_at.desc()).all(),
+            "sellers": db.query(User).filter(User.is_active.is_(True)).order_by(User.name.asc()).all(),
+            "payment_methods": {key: value for key, value in PAYMENT_METHODS.items() if key != "invoice"},
+            "existing_sale": next((sale for sale in work_order.sales if sale.status != "cancelled"), None),
+            "idempotency_key": f"work-order:{work_order.id}",
+        },
+    )
+
+
+@router.post("/work-orders/{work_order_id}")
+async def create_work_order_sale(work_order_id: int, request: Request, db: Session = Depends(get_db)):
+    form = await request.form()
+    current_user = request_current_user(request)
+    payments, send_to_invoice = _parse_payments(form)
+    try:
+        sale = create_sale_from_work_order(
+            db,
+            work_order_id=work_order_id,
+            shift_id=int(form["shift_id"]),
+            seller_id=int(form["seller_id"]),
+            payments=payments,
+            created_by_user_id=current_user.id if current_user is not None else None,
+            seller_selection_mode="selectable_active_seller",
+            send_to_invoice=send_to_invoice,
+            idempotency_key=(form.get("idempotency_key") or "").strip() or None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(url=f"/sales/{sale.id}", status_code=303)
 
 
 @router.post("")
@@ -132,6 +289,25 @@ def sale_detail(sale_id: int, request: Request, db: Session = Depends(get_db)):
             "can_correct_seller": user_can_override_sale_seller(request_current_user(request)),
             "payment_methods": PAYMENT_METHODS,
             "remaining_refundable": remaining_refundable_amount(sale),
+            "paid_amount": sale_paid_amount(sale),
+            "balance_due": sale_balance_due(sale),
+        },
+    )
+
+
+@router.get("/{sale_id}/receipt", response_class=HTMLResponse)
+def sale_receipt(sale_id: int, request: Request, db: Session = Depends(get_db)):
+    sale = db.get(Sale, sale_id)
+    if sale is None:
+        raise HTTPException(status_code=404, detail="Sale not found")
+    return templates.TemplateResponse(
+        "sales/receipt.html",
+        {
+            "request": request,
+            "app_name": settings.app_name,
+            "sale": sale,
+            "paid_amount": sale_paid_amount(sale),
+            "balance_due": sale_balance_due(sale),
         },
     )
 

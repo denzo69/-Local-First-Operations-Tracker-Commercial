@@ -5,25 +5,29 @@
         <h1>Sales</h1>
         <p class="text-muted">Sales and payments, optionally linked to Work Orders.</p>
     </div>
-    <a class="btn btn-primary" href="/sales/new">New sale</a>
+    <div class="d-flex gap-2">
+        <a class="btn btn-outline-secondary" href="/sales/invoice-queue">Invoice queue</a>
+        <a class="btn btn-primary" href="/sales/quick">Quick sale</a>
+    </div>
 </div>
 <div class="card">
     <div class="table-responsive responsive-card-table">
         <table class="table mb-0">
-            <thead><tr><th>Time</th><th>Seller</th><th>Work Order</th><th>Payment</th><th>Total</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Time</th><th>Seller</th><th>Source</th><th>Work Order</th><th>Payment</th><th>Total</th><th>Settlement</th><th></th></tr></thead>
             <tbody>
             {% for sale in sales %}
             <tr>
                 <td data-label="Time">{{ sale.sold_at }}</td>
                 <td data-label="Seller">{{ sale.seller.name if sale.seller else "-" }}</td>
+                <td data-label="Source">{{ sale.source_type or ("work_order" if sale.work_order else "pos") }}</td>
                 <td data-label="Work Order">{% if sale.work_order %}<a href="/work-orders/{{ sale.work_order.id }}">{{ sale.work_order.title }}</a>{% else %}-{% endif %}</td>
                 <td data-label="Payment">{{ sale.payment_method }}</td>
                 <td data-label="Total">{{ sale.total }}</td>
-                <td data-label="Status">{{ sale.status }}</td>
+                <td data-label="Settlement">{{ sale.settlement_status or sale.status }}</td>
                 <td data-label="Action" class="text-end"><a href="/sales/{{ sale.id }}">View</a></td>
             </tr>
             {% else %}
-            <tr><td colspan="7" class="text-muted">No sales yet.</td></tr>
+            <tr><td colspan="8" class="text-muted">No sales yet.</td></tr>
             {% endfor %}
             </tbody>
         </table>

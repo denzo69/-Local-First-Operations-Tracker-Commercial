@@ -49,6 +49,11 @@ def test_alembic_upgrade_head_creates_current_schema(tmp_path):
     assert "sold_by_user_id" in sale_columns
     assert "created_by_user_id" in sale_columns
     assert "cash_register_id" in sale_columns
+    assert "source_type" in sale_columns
+    assert "idempotency_key" in sale_columns
+    assert "settlement_status" in sale_columns
+    assert "finalized_at" in sale_columns
+    assert "invoice_customer_snapshot_json" in sale_columns
     payment_columns = {column["name"] for column in inspector.get_columns("payments")}
     assert "received_by_user_id" in payment_columns
     receipt_columns = {column["name"] for column in inspector.get_columns("goods_receipts")}
@@ -79,4 +84,7 @@ def test_alembic_upgrade_head_creates_current_schema(tmp_path):
 
     assert "trg_inventory_transactions_no_update" in triggers
     assert "trg_inventory_transactions_no_delete" in triggers
-    assert version == "9e4c3b2a1f08"
+    sale_indexes = {index["name"] for index in inspector.get_indexes("sales")}
+    assert "ix_sales_settlement_status" in sale_indexes
+    assert "ux_sales_active_work_order" in sale_indexes
+    assert version == "a4d7b9c2e1f3"
