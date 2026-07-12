@@ -2,7 +2,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
-        <h1>{{ t.sales }} #{{ sale.id }}</h1>
+        <h1>{{ t.sales }} #{{ sale.document_number or sale.id }}</h1>
         <p class="text-muted">
             {{ t.original_seller }}: {{ (sale.sold_by or sale.seller).name if (sale.sold_by or sale.seller) else "-" }} -
             {{ t.shifts }} #{{ sale.shift_id }} -
@@ -27,7 +27,7 @@
     <div class="col-md-4"><div class="card p-3"><div class="text-muted">{{ t.gross_margin }}</div><strong>{{ sale.gross_margin_percent or "-" }}</strong></div></div>
 </div>
 <div class="row g-3 mb-3">
-    <div class="col-md-4"><div class="card p-3"><div class="text-muted">Settlement</div><strong>{{ sale.settlement_status or sale.status }}</strong></div></div>
+    <div class="col-md-4"><div class="card p-3"><div class="text-muted">Document</div><strong>{{ sale.document_number or "-" }}</strong></div></div>
     <div class="col-md-4"><div class="card p-3"><div class="text-muted">Paid</div><strong>{{ paid_amount }}</strong></div></div>
     <div class="col-md-4"><div class="card p-3"><div class="text-muted">Balance due</div><strong>{{ balance_due }}</strong></div></div>
 </div>

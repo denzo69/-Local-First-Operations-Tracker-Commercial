@@ -25,6 +25,7 @@ from app.models import (
 )
 from app.services.audit_service import log_audit_event
 from app.services.money_service import money, parse_decimal, sum_money, vat_included_breakdown
+from app.services.receipt_number_service import allocate_sale_document_number
 
 
 ROLE_DEFINITIONS = {
@@ -478,6 +479,7 @@ def create_sale_from_lines(
         )
         db.add(sale)
         db.flush()
+        sale.document_number = allocate_sale_document_number(db, sale.sold_at.date())
 
         cogs_total = Decimal("0.00")
         gross_profit_total = Decimal("0.00")
@@ -547,7 +549,7 @@ def create_sale_from_lines(
             entity_type="sale",
             entity_id=sale.id,
             description=(
-                f"{source} sale created for {total}; settlement={settlement_status}; "
+                f"{source} sale {sale.document_number} created for {total}; settlement={settlement_status}; "
                 f"sold by {sold_by.id}/{sold_by.name}; operator {operator_id}; "
                 f"shift {shift.id}; cash register {shift.cash_register_id}."
             ),

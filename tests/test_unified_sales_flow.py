@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import Customer, InventoryTransaction, Job, JobItem, Payment, Product, Role, Sale, Supplier, User
+from app.models import Customer, InventoryTransaction, Job, JobItem, Payment, Product, Role, Sale, Setting, Supplier, User
 from app.services.inventory_service import (
     add_goods_receipt_line,
     create_default_warehouse,
@@ -359,6 +359,157 @@ def invoice_sale(db, *, title="Follow-up work") -> Sale:
         payments=[],
         send_to_invoice=True,
     )
+
+
+def configure_sale_document_sequence(db, *, sequence: str = "1") -> None:
+    db.add_all(
+        [
+            Setting(key="sale_document_prefix", value="SALE-"),
+            Setting(key="sale_document_padding", value="6"),
+            Setting(key="sale_document_annual_reset", value="false"),
+            Setting(key="next_sale_document_sequence", value=sequence),
+            Setting(key="sale_document_sequence_year", value="2026"),
+        ]
+    )
+    db.commit()
+
+
+def test_quick_pos_and_work_order_cash_sale_use_same_sale_document_sequence():
+    with SessionLocal() as db:
+        configure_sale_document_sequence(db)
+        seller = user(db, "Number Seller")
+        shift = open_test_shift(db, seller)
+        service = service_product(db, "Number Service", "25", "24")
+
+        quick_sale = create_sale_from_lines(
+            db,
+            shift_id=shift.id,
+            seller_id=seller.id,
+            created_by_user_id=seller.id,
+            lines=[SaleLineInput(product_id=service.id, description="Counter sale", quantity="1", unit_price="25", vat_percent="24")],
+            payments=[PaymentInput("cash")],
+            idempotency_key="number-quick",
+        )
+
+        customer = Customer(name="Number Customer")
+        job = Job(title="Number work", customer=customer, receipt_number="WO-2026-000123")
+        db.add(job)
+        db.commit()
+        db.add(JobItem(job_id=job.id, product_id=service.id, description="Number work", quantity=Decimal("1"), unit_price=Decimal("25"), vat_percent=Decimal("24"), line_total=Decimal("25")))
+        db.commit()
+
+        work_order_sale = create_sale_from_work_order(
+            db,
+            work_order_id=job.id,
+            shift_id=shift.id,
+            seller_id=seller.id,
+            created_by_user_id=seller.id,
+            payments=[PaymentInput("cash")],
+            idempotency_key="number-work-order",
+        )
+        quick_document_number = quick_sale.document_number
+        work_order_document_number = work_order_sale.document_number
+
+    assert quick_document_number == "SALE-2026-000001"
+    assert work_order_document_number == "SALE-2026-000002"
+    assert work_order_document_number != "WO-2026-000123"
+
+
+def test_work_order_duplicate_conversion_does_not_allocate_second_sale_number():
+    with SessionLocal() as db:
+        configure_sale_document_sequence(db)
+        seller = user(db, "Duplicate Number Seller")
+        shift = open_test_shift(db, seller)
+        service = service_product(db, "Duplicate Number Service", "40", "24")
+        customer = Customer(name="Duplicate Number Customer")
+        job = Job(title="Duplicate number work", customer=customer, receipt_number="WO-DUP-1")
+        db.add(job)
+        db.commit()
+        db.add(JobItem(job_id=job.id, product_id=service.id, description="Duplicate number work", quantity=Decimal("1"), unit_price=Decimal("40"), vat_percent=Decimal("24"), line_total=Decimal("40")))
+        db.commit()
+
+        first = create_sale_from_work_order(
+            db,
+            work_order_id=job.id,
+            shift_id=shift.id,
+            seller_id=seller.id,
+            created_by_user_id=seller.id,
+            payments=[PaymentInput("card")],
+            idempotency_key="duplicate-number",
+        )
+        second = create_sale_from_work_order(
+            db,
+            work_order_id=job.id,
+            shift_id=shift.id,
+            seller_id=seller.id,
+            created_by_user_id=seller.id,
+            payments=[PaymentInput("card")],
+            idempotency_key="duplicate-number",
+        )
+        sequence = db.query(Setting).filter(Setting.key == "next_sale_document_sequence").one().value
+
+    assert second.id == first.id
+    assert first.document_number == "SALE-2026-000001"
+    assert sequence == "2"
+
+
+def test_external_invoice_number_never_replaces_sale_document_number():
+    with SessionLocal() as db:
+        configure_sale_document_sequence(db)
+        sale = invoice_sale(db, title="External number")
+        sale_id = sale.id
+        sale_document_number = sale.document_number
+
+        transfer_sale_to_invoicing(
+            db,
+            sale_id=sale.id,
+            service_name="External Books",
+            external_invoice_number="EXT-INV-900",
+            invoice_date_value=date(2026, 7, 1),
+            due_date_value=date(2026, 7, 14),
+            actor_user_id=sale.sold_by_user_id,
+        )
+        db.refresh(sale)
+
+    assert sale_document_number == "SALE-2026-000001"
+    assert sale.external_invoice_number == "EXT-INV-900"
+    assert sale.document_number == sale_document_number
+    assert sale.document_number != sale.external_invoice_number
+
+
+def test_sales_register_and_receipt_show_same_sale_document_number_and_work_order_reference():
+    with SessionLocal() as db:
+        configure_sale_document_sequence(db)
+        seller = user(db, "Register Number Seller")
+        shift = open_test_shift(db, seller)
+        service = service_product(db, "Register Number Service", "30", "24")
+        customer = Customer(name="Register Number Customer")
+        job = Job(title="Register number work", customer=customer, receipt_number="WO-REF-900")
+        db.add(job)
+        db.commit()
+        db.add(JobItem(job_id=job.id, product_id=service.id, description="Register number work", quantity=Decimal("1"), unit_price=Decimal("30"), vat_percent=Decimal("24"), line_total=Decimal("30")))
+        db.commit()
+        sale = create_sale_from_work_order(
+            db,
+            work_order_id=job.id,
+            shift_id=shift.id,
+            seller_id=seller.id,
+            created_by_user_id=seller.id,
+            payments=[PaymentInput("cash")],
+            idempotency_key="register-receipt-number",
+        )
+        sale_id = sale.id
+        sale_document_number = sale.document_number
+
+    with TestClient(app) as client:
+        sales_register = client.get("/sales")
+        receipt = client.get(f"/sales/{sale_id}/receipt")
+
+    assert sales_register.status_code == 200
+    assert receipt.status_code == 200
+    assert sale_document_number in sales_register.text
+    assert sale_document_number in receipt.text
+    assert "WO-REF-900" in receipt.text
 
 
 def test_invoice_due_date_creates_dashboard_followup_alert():

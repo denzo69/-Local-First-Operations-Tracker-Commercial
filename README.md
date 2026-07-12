@@ -101,6 +101,8 @@ Settlement and invoice follow-up states include paid, partially paid, awaiting i
 
 External invoicing handoff can store the external invoicing service, external invoice number, invoice date, due date, optional external reference or URL, and notes. The app never assumes an external invoice has been paid without explicit user confirmation. If the due date or next follow-up date has passed, the dashboard shows an alert telling the user to check the external invoicing service or send a reminder. Confirming paid, confirming unpaid, and recording a sent reminder are explicit audited actions.
 
+Every finalized Sale receives one unique sequential Sale document number. Direct POS sales and Work Order-originated sales use the same Sale document-number sequence. A Work Order number remains only a source reference on the receipt or sale detail, and an external invoice number remains a separate handoff field; neither replaces the Sale document number.
+
 Seller and operator identity remain separate:
 
 - `Sale.sold_by_user_id` credits the seller for reports and receipts

@@ -13,10 +13,11 @@
 <div class="card">
     <div class="table-responsive responsive-card-table">
         <table class="table mb-0">
-            <thead><tr><th>Time</th><th>Seller</th><th>Source</th><th>Work Order</th><th>Payment</th><th>Total</th><th>Settlement</th><th></th></tr></thead>
+            <thead><tr><th>Document</th><th>Time</th><th>Seller</th><th>Source</th><th>Work Order</th><th>Payment</th><th>Total</th><th>Settlement</th><th></th></tr></thead>
             <tbody>
             {% for sale in sales %}
             <tr>
+                <td data-label="Document"><a href="/sales/{{ sale.id }}">{{ sale.document_number or sale.id }}</a></td>
                 <td data-label="Time">{{ sale.sold_at }}</td>
                 <td data-label="Seller">{{ sale.seller.name if sale.seller else "-" }}</td>
                 <td data-label="Source">{{ sale.source_type or ("work_order" if sale.work_order else "pos") }}</td>
@@ -27,7 +28,7 @@
                 <td data-label="Action" class="text-end"><a href="/sales/{{ sale.id }}">View</a></td>
             </tr>
             {% else %}
-            <tr><td colspan="8" class="text-muted">No sales yet.</td></tr>
+            <tr><td colspan="9" class="text-muted">No sales yet.</td></tr>
             {% endfor %}
             </tbody>
         </table>

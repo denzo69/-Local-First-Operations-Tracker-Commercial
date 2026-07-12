@@ -185,6 +185,7 @@ Important accounting rules:
 - A Sale may originate from direct POS sale or from a Work Order.
 - A Sale may reference a Work Order, but payments are stored in `payments`.
 - Work Order conversion is idempotent. A Work Order must not create multiple active Sales accidentally.
+- `sales.document_number` is the Sale receipt/register document number. Direct POS Sales and Work Order-originated Sales use the same Sale document-number sequence. Work Order numbers and external invoice numbers are separate references and must not replace it.
 - Sales store `source_type`, `settlement_status`, `finalized_at`, and optional `invoice_customer_snapshot_json`.
 - Invoice handoff fields include `transferred_to_invoicing_at`, `external_invoice_service`, `external_invoice_number`, `invoice_date`, `due_date`, `external_invoice_reference`, `invoice_handoff_notes`, `payment_status_checked_at`, `paid_at`, `next_follow_up_at`, `reminder_count`, `last_reminder_sent_at`, and `follow_up_notes`.
 - `settlement_status` tracks paid, partially paid, awaiting invoice, transferred to invoicing, unpaid, reminder sent, and cancelled states. `payment_check_due` and `reminder_due` are derived from due and follow-up dates for alerts and reports.

@@ -100,4 +100,4 @@ def test_alembic_upgrade_head_creates_current_schema(tmp_path):
     assert "ux_sales_active_work_order" in sale_indexes
     assert "ix_sales_due_date" in sale_indexes
     assert "ix_sales_next_follow_up_at" in sale_indexes
-    assert version == "b5c8d2e4f6a1"
+    assert version == "c9d1e7a4b2f6"
