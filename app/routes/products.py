@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import get_db
 from app.models import Product
+from app.services.inventory_service import product_cost_profile
 from app.services.money_service import parse_decimal
 from app.services.settings_service import get_app_settings
 from app.template_context import templates
@@ -140,6 +141,28 @@ def edit_product(product_id: int, request: Request, db: Session = Depends(get_db
             "form_action": f"/products/{product.id}",
             "page_title": "Edit product",
             "default_vat_percent": product.vat_percent,
+        },
+    )
+
+
+@router.get("/{product_id}", response_class=HTMLResponse)
+def product_detail(product_id: int, request: Request, db: Session = Depends(get_db)):
+    product = db.get(Product, product_id)
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+    try:
+        cost_profile = product_cost_profile(db, product_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return templates.TemplateResponse(
+        "products/detail.html",
+        {
+            "request": request,
+            "app_name": settings.app_name,
+            "active_page": "products",
+            "product": product,
+            "cost_profile": cost_profile,
+            "page_title": product.name,
         },
     )
 

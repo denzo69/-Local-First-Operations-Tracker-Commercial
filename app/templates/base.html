@@ -34,11 +34,16 @@
         <div class="sidebar-group">
             <div class="sidebar-group-label">{{ t.catalog }}</div>
             <a class="sidebar-link {% if active_page == 'products' %}active{% endif %}" href="/products"><span class="nav-icon" aria-hidden="true">PR</span><span>{{ t.products }}</span></a>
+            <a class="sidebar-link {% if active_page == 'inventory' %}active{% endif %}" href="/inventory/goods-receipts"><span class="nav-icon" aria-hidden="true">GR</span><span>{{ t.goods_receipts }}</span></a>
+            <a class="sidebar-link {% if active_page == 'inventory' %}active{% endif %}" href="/inventory/warehouses"><span class="nav-icon" aria-hidden="true">WH</span><span>{{ t.warehouses }}</span></a>
         </div>
         <div class="sidebar-group">
             <div class="sidebar-group-label">{{ t.reports }}</div>
             <a class="sidebar-link {% if active_page == 'reports' %}active{% endif %}" href="/reports"><span class="nav-icon" aria-hidden="true">SR</span><span>{{ t.reports }}</span></a>
             <a class="sidebar-link {% if active_page == 'seller_reports' %}active{% endif %}" href="/seller-reports"><span class="nav-icon" aria-hidden="true">SE</span><span>{{ t.seller_reports }}</span></a>
+            <a class="sidebar-link {% if active_page == 'inventory_valuation' %}active{% endif %}" href="/inventory/valuation"><span class="nav-icon" aria-hidden="true">IV</span><span>{{ t.inventory_valuation }}</span></a>
+            <a class="sidebar-link {% if active_page == 'inventory_ledger' %}active{% endif %}" href="/inventory/ledger"><span class="nav-icon" aria-hidden="true">IL</span><span>{{ t.inventory_ledger }}</span></a>
+            <a class="sidebar-link {% if active_page == 'inventory_reconciliation' %}active{% endif %}" href="/inventory/reconciliation"><span class="nav-icon" aria-hidden="true">IR</span><span>{{ t.inventory_reconciliation }}</span></a>
         </div>
         <div class="sidebar-group">
             <div class="sidebar-group-label">{{ t.administration }}</div>
@@ -69,9 +74,14 @@
             <a class="sidebar-link" href="/daily-closings">{{ t.daily_closing }}</a>
             <div class="sidebar-group-label">{{ t.catalog }}</div>
             <a class="sidebar-link" href="/products">{{ t.products }}</a>
+            <a class="sidebar-link" href="/inventory/goods-receipts">{{ t.goods_receipts }}</a>
+            <a class="sidebar-link" href="/inventory/warehouses">{{ t.warehouses }}</a>
             <div class="sidebar-group-label">{{ t.reports }}</div>
             <a class="sidebar-link" href="/reports">{{ t.reports }}</a>
             <a class="sidebar-link" href="/seller-reports">{{ t.seller_reports }}</a>
+            <a class="sidebar-link" href="/inventory/valuation">{{ t.inventory_valuation }}</a>
+            <a class="sidebar-link" href="/inventory/ledger">{{ t.inventory_ledger }}</a>
+            <a class="sidebar-link" href="/inventory/reconciliation">{{ t.inventory_reconciliation }}</a>
             <div class="sidebar-group-label">{{ t.administration }}</div>
             <a class="sidebar-link" href="/users">{{ t.users }}</a>
             <a class="sidebar-link" href="/cash-registers">{{ t.cash_registers }}</a>

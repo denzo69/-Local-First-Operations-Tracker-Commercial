@@ -47,6 +47,14 @@ def ensure_sqlite_schema_compatibility(engine: Engine) -> list[str]:
             "INTEGER",
         )
         _add_column_if_missing(connection, "users", "password_hash", "VARCHAR(255)")
+        _add_column_if_missing(connection, "users", "can_receive_sales_credit", "BOOLEAN DEFAULT 0")
+        _add_column_if_missing(connection, "goods_receipts", "freight_vat_rate", "NUMERIC(5, 2) DEFAULT 0")
+        _add_column_if_missing(connection, "goods_receipts", "freight_vat_amount", "NUMERIC(12, 2) DEFAULT 0")
+        _add_column_if_missing(connection, "goods_receipts", "freight_total_inc_vat", "NUMERIC(12, 2) DEFAULT 0")
+        _add_column_if_missing(connection, "goods_receipts", "other_costs_vat_rate", "NUMERIC(5, 2) DEFAULT 0")
+        _add_column_if_missing(connection, "goods_receipts", "other_costs_vat_amount", "NUMERIC(12, 2) DEFAULT 0")
+        _add_column_if_missing(connection, "goods_receipts", "other_costs_total_inc_vat", "NUMERIC(12, 2) DEFAULT 0")
+        _create_inventory_transaction_immutability_triggers(connection)
         diagnostics.extend(
             _create_partial_unique_index_if_safe(
                 connection,
@@ -66,6 +74,37 @@ def ensure_sqlite_schema_compatibility(engine: Engine) -> list[str]:
             )
         )
     return diagnostics
+
+
+def _create_inventory_transaction_immutability_triggers(connection) -> None:
+    tables = {
+        row[0]
+        for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type = 'table'")).fetchall()
+    }
+    if "inventory_transactions" not in tables:
+        return
+    connection.execute(
+        text(
+            """
+            CREATE TRIGGER IF NOT EXISTS trg_inventory_transactions_no_update
+            BEFORE UPDATE ON inventory_transactions
+            BEGIN
+                SELECT RAISE(ABORT, 'inventory_transactions are immutable');
+            END
+            """
+        )
+    )
+    connection.execute(
+        text(
+            """
+            CREATE TRIGGER IF NOT EXISTS trg_inventory_transactions_no_delete
+            BEFORE DELETE ON inventory_transactions
+            BEGIN
+                SELECT RAISE(ABORT, 'inventory_transactions are immutable');
+            END
+            """
+        )
+    )
 
 
 def _create_unique_index_if_safe(connection, *, table: str, column: str, index_name: str) -> None:
@@ -90,6 +129,12 @@ def _create_unique_index_if_safe(connection, *, table: str, column: str, index_n
 
 
 def _add_column_if_missing(connection, table: str, column: str, definition: str) -> None:
+    table_exists = connection.execute(
+        text("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = :table"),
+        {"table": table},
+    ).first()
+    if table_exists is None:
+        return
     columns = {
         row[1]
         for row in connection.execute(text(f"PRAGMA table_info({table})")).fetchall()

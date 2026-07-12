@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ t.inventory_valuation }}</h1>
+<div class="row g-3 mb-3">
+    <div class="col-md-4"><div class="card p-3"><div class="text-muted">{{ t.current_inventory_value }}</div><strong>{{ valuation.total_inventory_value_ex_vat }}</strong></div></div>
+    <div class="col-md-4"><div class="card p-3"><div class="text-muted">{{ t.transaction_ledger_value }}</div><strong>{{ valuation.transaction_ledger_value_ex_vat }}</strong></div></div>
+</div>
+<div class="card mb-3">
+    <div class="card-header">{{ t.value_by_product }}</div>
+    <div class="table-responsive responsive-card-table">
+        <table class="table mb-0">
+            <thead><tr><th>{{ t.product }}</th><th>{{ t.quantity }}</th><th>{{ t.weighted_average_cost }}</th><th>{{ t.value }}</th></tr></thead>
+            <tbody>
+            {% for row in valuation.by_product %}
+            <tr>
+                <td data-label="{{ t.product }}">{{ row.product.name }}</td>
+                <td data-label="{{ t.quantity }}">{{ row.quantity }}</td>
+                <td data-label="{{ t.weighted_average_cost }}">{{ row.product.current_weighted_average_cost_ex_vat or "-" }}</td>
+                <td data-label="{{ t.value }}">{{ row.value }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" class="text-muted">{{ t.no_inventory }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+<div class="card mb-3">
+    <div class="card-header">{{ t.value_by_warehouse }}</div>
+    <div class="table-responsive responsive-card-table">
+        <table class="table mb-0">
+            <thead><tr><th>{{ t.warehouse }}</th><th>{{ t.value }}</th></tr></thead>
+            <tbody>
+            {% for row in valuation.by_warehouse %}
+            <tr><td data-label="{{ t.warehouse }}">{{ row.warehouse.name }}</td><td data-label="{{ t.value }}">{{ row.value }}</td></tr>
+            {% else %}
+            <tr><td colspan="2" class="text-muted">{{ t.no_inventory }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+<div class="card">
+    <div class="card-header">{{ t.recent_cost_changes }}</div>
+    <div class="table-responsive responsive-card-table">
+        <table class="table mb-0">
+            <thead><tr><th>{{ t.date }}</th><th>{{ t.product }}</th><th>{{ t.old_average_cost }}</th><th>{{ t.new_average_cost }}</th><th>{{ t.quantity }}</th><th>{{ t.value }}</th></tr></thead>
+            <tbody>
+            {% for transaction in valuation.recent_cost_changes %}
+            <tr>
+                <td data-label="{{ t.date }}">{{ transaction.created_at }}</td>
+                <td data-label="{{ t.product }}">{{ transaction.product.name }}</td>
+                <td data-label="{{ t.old_average_cost }}">{{ transaction.weighted_average_cost_before or "-" }}</td>
+                <td data-label="{{ t.new_average_cost }}">{{ transaction.weighted_average_cost_after or "-" }}</td>
+                <td data-label="{{ t.quantity }}">{{ transaction.quantity_change }}</td>
+                <td data-label="{{ t.value }}">{{ transaction.inventory_value_after }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" class="text-muted">{{ t.no_cost_changes }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -18,6 +18,13 @@ if not exist backups mkdir backups
 
 set PYTHONPATH=%CD%
 
+echo Applying database migrations...
+python -m alembic upgrade head
+if errorlevel 1 (
+    echo Database migration failed.
+    exit /b 1
+)
+
 echo Starting Local-First Operations Tracker for LAN access...
 echo.
 echo Open this app on this computer:

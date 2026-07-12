@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+    <div>
+        <h1 class="h3 mb-1">{{ t.inventory_ledger }}</h1>
+        <p class="text-muted mb-0">{{ t.inventory_ledger_help }}</p>
+    </div>
+    <a class="btn btn-outline-secondary" href="/inventory/valuation">{{ t.inventory_valuation }}</a>
+</div>
+
+<form class="card shadow-sm border-0 mb-3" method="get" action="/inventory/ledger">
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label" for="product_id">{{ t.product }}</label>
+                <select class="form-select" id="product_id" name="product_id">
+                    <option value="">-</option>
+                    {% for product in products %}
+                    <option value="{{ product.id }}" {% if selected.product_id == product.id %}selected{% endif %}>{{ product.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="warehouse_id">{{ t.warehouse }}</label>
+                <select class="form-select" id="warehouse_id" name="warehouse_id">
+                    <option value="">-</option>
+                    {% for warehouse in warehouses %}
+                    <option value="{{ warehouse.id }}" {% if selected.warehouse_id == warehouse.id %}selected{% endif %}>{{ warehouse.code }} - {{ warehouse.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="supplier_id">{{ t.supplier }}</label>
+                <select class="form-select" id="supplier_id" name="supplier_id">
+                    <option value="">-</option>
+                    {% for supplier in suppliers %}
+                    <option value="{{ supplier.id }}" {% if selected.supplier_id == supplier.id %}selected{% endif %}>{{ supplier.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="transaction_type">{{ t.transaction_type }}</label>
+                <select class="form-select" id="transaction_type" name="transaction_type">
+                    <option value="">-</option>
+                    {% for type in transaction_types %}
+                    <option value="{{ type }}" {% if selected.transaction_type == type %}selected{% endif %}>{{ type }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="user_id">{{ t.created_by }}</label>
+                <select class="form-select" id="user_id" name="user_id">
+                    <option value="">-</option>
+                    {% for user in users %}
+                    <option value="{{ user.id }}" {% if selected.user_id == user.id %}selected{% endif %}>{{ user.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="date_from">{{ t.from_date }}</label>
+                <input class="form-control" id="date_from" name="date_from" type="date" value="{{ selected.date_from or '' }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="date_to">{{ t.to_date }}</label>
+                <input class="form-control" id="date_to" name="date_to" type="date" value="{{ selected.date_to or '' }}">
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <button class="btn btn-primary w-100" type="submit">{{ t.view }}</button>
+            </div>
+        </div>
+    </div>
+</form>
+
+<div class="card shadow-sm border-0">
+    <div class="table-responsive responsive-card-table">
+        <table class="table mb-0 align-middle">
+            <thead>
+            <tr>
+                <th>{{ t.date }}</th>
+                <th>{{ t.product }}</th>
+                <th>{{ t.warehouse }}</th>
+                <th>{{ t.location }}</th>
+                <th>{{ t.transaction_type }}</th>
+                <th>{{ t.quantity_change }}</th>
+                <th>{{ t.unit_cost }}</th>
+                <th>{{ t.total_inventory_cost }}</th>
+                <th>{{ t.stock_after }}</th>
+                <th>{{ t.inventory_value_after }}</th>
+                <th>{{ t.weighted_average_cost }}</th>
+                <th>{{ t.supplier }}</th>
+                <th>{{ t.created_by }}</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for transaction in transactions %}
+            <tr>
+                <td data-label="{{ t.date }}">{{ transaction.created_at }}</td>
+                <td data-label="{{ t.product }}">{{ transaction.product.name }}</td>
+                <td data-label="{{ t.warehouse }}">{{ transaction.warehouse.code if transaction.warehouse else "-" }}</td>
+                <td data-label="{{ t.location }}">{{ transaction.shelf_location.code if transaction.shelf_location else "-" }}</td>
+                <td data-label="{{ t.transaction_type }}">{{ transaction.transaction_type }}</td>
+                <td data-label="{{ t.quantity_change }}">{{ transaction.quantity_change }}</td>
+                <td data-label="{{ t.unit_cost }}">{{ transaction.unit_cost_ex_vat }}</td>
+                <td data-label="{{ t.total_inventory_cost }}">{{ transaction.total_inventory_cost }}</td>
+                <td data-label="{{ t.stock_after }}">{{ transaction.stock_after }}</td>
+                <td data-label="{{ t.inventory_value_after }}">{{ transaction.inventory_value_after }}</td>
+                <td data-label="{{ t.weighted_average_cost }}">{{ transaction.weighted_average_cost_after or "-" }}</td>
+                <td data-label="{{ t.supplier }}">{{ transaction.supplier.name if transaction.supplier else "-" }}</td>
+                <td data-label="{{ t.created_by }}">{{ transaction.created_by.name if transaction.created_by else "-" }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="13" class="text-muted p-4">{{ t.no_inventory }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ t.warehouses }}</h1>
+<form method="post" action="/inventory/warehouses" class="card p-3 mb-3">
+    <div class="row g-3">
+        <div class="col-md-6"><label class="form-label" for="name">{{ t.warehouse }}</label><input class="form-control" id="name" name="name" required></div>
+        <div class="col-md-6"><label class="form-label" for="code">{{ t.code }}</label><input class="form-control" id="code" name="code" required></div>
+    </div>
+    <button class="btn btn-primary mt-3" type="submit">{{ t.save }}</button>
+</form>
+<div class="card">
+    <div class="table-responsive responsive-card-table">
+        <table class="table mb-0">
+            <thead><tr><th>{{ t.code }}</th><th>{{ t.warehouse }}</th><th>{{ t.location }}</th></tr></thead>
+            <tbody>
+            {% for warehouse in warehouses %}
+            <tr>
+                <td data-label="{{ t.code }}">{{ warehouse.code }}</td>
+                <td data-label="{{ t.warehouse }}">{{ warehouse.name }}</td>
+                <td data-label="{{ t.location }}">{% for location in warehouse.locations %}{{ location.code }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

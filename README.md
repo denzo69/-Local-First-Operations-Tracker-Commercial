@@ -52,6 +52,10 @@ The app is not intended to be exposed directly to the public internet.
 - Read-only browsing for historical daily closing snapshot versions
 - Seller reports for daily, weekly, and monthly sales metrics
 - Sales report totals
+- Goods receipts with freight and additional landed cost allocation
+- Weighted-average inventory cost and ex-VAT inventory valuation
+- Immutable inventory transaction ledger, receipt cancellation by reversal transaction, and valuation reports
+- Sale-line cost of goods sold and gross profit snapshots based on the weighted average cost at sale time
 - Audit log
 - SQLite backups using SQLite's backup API
 - Backup restore, health status, and retention cleanup
@@ -69,12 +73,13 @@ The app is not intended to be exposed directly to the public internet.
 - No cloud deployment, PostgreSQL, or object storage
 - No native mobile application
 - Backup scheduler is in-process and intended for the local single-computer deployment model; use an external scheduler for stricter production guarantees
-- Alembic has a baseline migration for new databases, but existing SQLite databases are not migrated automatically on application startup
+- Alembic has a baseline migration for new databases. The Windows run scripts and Docker startup run `alembic upgrade head`; direct `uvicorn app.main:app` startup still requires running Alembic first when schema changes exist.
 - Receipt numbering is local-MVP safe, but not designed for high-concurrency multi-server use
 - Money columns now use SQLAlchemy `Numeric`; existing SQLite columns may still have older storage affinity until a future migration rebuilds the tables
 - Bootstrap CSS and JavaScript are bundled locally under `app/static/vendor/bootstrap`; the app does not require a CDN for the normal UI
 - Sales UI creates one sale line and one payment today. The data model is prepared for more rows, but split/partial payments and multi-line sale finalization are not yet implemented.
 - Multi-VAT refunds are rejected until line-level refund allocation is implemented.
+- Refunds do not yet create customer-return stock movements. A financial refund leaves inventory unchanged until a dedicated return workflow is implemented.
 
 ## Sales, Shifts, Refunds, And Daily Closing
 
@@ -101,6 +106,39 @@ Security notes:
 - Admin and Manager roles can access administration routes. Read only users cannot perform write requests.
 - The app is still not intended to be exposed directly to the public internet.
 
+## Inventory Costing
+
+Inventory valuation is based on ex-VAT cost. VAT is stored and shown, but deductible VAT is not included in inventory value by default.
+
+Goods receipts are created as drafts. Draft receipts do not affect stock, balances, weighted average cost, or valuation. Posting a receipt allocates freight and other landed costs, creates inventory transactions protected by application guards and SQLite update/delete triggers, updates location balance caches, updates product-level cache totals, and writes audit events in one transaction.
+
+Receipt-level freight and other landed costs store both ex-VAT amounts and VAT amounts. Inventory value uses only ex-VAT landed cost. Purchase-document VAT totals include product-line VAT, freight VAT, and other-cost VAT.
+
+Default landed cost allocation is by purchase value:
+
+```text
+line share = line purchase value / total receipt purchase value
+allocated freight = receipt freight total * line share
+allocated other costs = receipt other costs total * line share
+landed unit cost = (line purchase value + allocated freight + allocated other costs) / quantity
+```
+
+Quantity-based allocation is also supported. Monetary allocations are rounded to 2 decimals and the final rounding remainder is assigned to the last line deterministically, so allocated freight and additional costs reconcile exactly to the receipt totals.
+
+If the same stock product appears on multiple receipt lines, posting processes receipt lines in `GoodsReceiptLine.id` order for traceable ledger rows, while product-level projected quantity, value, and weighted average are reconciled from all lines for that product. Lines may target the same or different shelf locations.
+
+Weighted average cost uses 6 decimal places internally:
+
+```text
+old value = old quantity * old weighted average cost
+new receipt value = received quantity * landed unit cost
+new average cost = (old value + new receipt value) / (old quantity + received quantity)
+```
+
+The inventory transaction ledger is the accounting source of truth. Current balance caches and product-level cost fields must be reproducible from ledger rows. Inventory value is stored as the actual ex-VAT transaction value rounded to 2 decimals. Negative stock is rejected by default because it would make weighted average cost ambiguous. Cache/ledger reconciliation can detect mismatches and repair caches from ledger rows without rewriting transaction history. Posted receipts are immutable through application-level guards and SQLite triggers; cancellation creates reversal transactions instead of deleting history.
+
+Sales of stock products create a `sale` inventory transaction and store cost of goods sold, gross profit, and gross margin snapshots on the sale line and sale header. These snapshots use the weighted average cost that existed at the moment of sale; later purchases do not rewrite historical profit. Non-stock products and services have zero inventory COGS in the current MVP cost model, so gross profit is revenue excluding VAT.
+
 ## Technology Stack
 
 - Python
@@ -126,6 +164,8 @@ Start the local development server:
 ```powershell
 .\run.bat
 ```
+
+The run script installs requirements and applies Alembic migrations before starting Uvicorn.
 
 Open:
 
@@ -188,6 +228,8 @@ Use the LAN script when another device should access the app:
 ```powershell
 .\run-lan.bat
 ```
+
+The LAN script also applies Alembic migrations before binding to `0.0.0.0`.
 
 Then open the server computer's LAN or Tailscale address in a browser, for example:
 

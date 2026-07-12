@@ -45,6 +45,15 @@ VAT_PERCENT_MAX = Decimal("100")
 SNAPSHOT_SCHEMA_VERSION = 1
 OPERATIONAL_ROLE_CODES = {"admin", "manager", "seller"}
 CLOSING_MANAGER_ROLE_CODES = {"admin", "manager"}
+SALE_SELLER_SELECTION_MODES = {
+    "authenticated_user",
+    "shift_owner",
+    "selectable_active_seller",
+}
+
+
+class AuthorizationError(ValueError):
+    pass
 
 
 def format_decimal_key(value) -> str:
@@ -108,6 +117,49 @@ def require_operational_user(user: User | None) -> User:
     if not user.role or user.role.code not in OPERATIONAL_ROLE_CODES:
         raise ValueError("User role is not allowed to perform financial writes.")
     return user
+
+
+def require_sales_credit_user(user: User | None) -> User:
+    user = require_operational_user(user)
+    if user.can_receive_sales_credit or (user.role and user.role.code == "seller"):
+        return user
+    raise ValueError("User is not eligible to receive sales credit.")
+
+
+def user_can_override_sale_seller(user: User | None) -> bool:
+    return bool(user and user.is_active and user.role and user.role.code in {"admin", "manager"})
+
+
+def require_sale_seller_override_user(user: User | None) -> User:
+    if not user_can_override_sale_seller(user):
+        raise AuthorizationError("Only Admin or Manager can correct sale seller attribution.")
+    return user
+
+
+def resolve_sale_seller(
+    db: Session,
+    *,
+    shift: Shift,
+    selected_seller_id: int | None,
+    created_by_user_id: int | None,
+    seller_selection_mode: str,
+) -> tuple[User, User | None]:
+    mode = seller_selection_mode if seller_selection_mode in SALE_SELLER_SELECTION_MODES else "shift_owner"
+    operator = db.get(User, created_by_user_id) if created_by_user_id else None
+    if operator is not None:
+        require_operational_user(operator)
+
+    if mode == "authenticated_user" and operator is not None:
+        sold_by_id = operator.id
+    elif mode == "selectable_active_seller":
+        sold_by_id = selected_seller_id or shift.seller_id
+    elif operator is not None and user_can_override_sale_seller(operator) and selected_seller_id:
+        sold_by_id = selected_seller_id
+    else:
+        sold_by_id = shift.seller_id
+
+    sold_by = require_sales_credit_user(db.get(User, sold_by_id))
+    return sold_by, operator
 
 
 def require_closing_manager(user: User | None) -> User:
@@ -208,14 +260,21 @@ def create_sale_with_payment(
     work_order_id: int | None = None,
     product_id: int | None = None,
     work_order_item_id: int | None = None,
+    created_by_user_id: int | None = None,
+    seller_selection_mode: str = "shift_owner",
 ) -> Sale:
     shift = db.get(Shift, shift_id)
     if shift is None or shift.status != "open":
         raise ValueError("Sale requires an open shift.")
     assert_business_date_open(db, shift.business_date)
-    seller = require_operational_user(db.get(User, seller_id))
-    if shift.seller_id != seller_id:
-        raise ValueError("Sale seller must match shift seller.")
+    sold_by, operator = resolve_sale_seller(
+        db,
+        shift=shift,
+        selected_seller_id=seller_id,
+        created_by_user_id=created_by_user_id,
+        seller_selection_mode=seller_selection_mode,
+    )
+    operator_id = operator.id if operator is not None else sold_by.id
     require_payment_method(payment_method)
 
     work_order = db.get(Job, work_order_id) if work_order_id else None
@@ -251,21 +310,24 @@ def create_sale_with_payment(
             "vat": str(vat_amount),
         }
     }
-    sale = Sale(
-        seller_id=seller_id,
-        shift_id=shift_id,
-        work_order_id=work_order_id,
-        payment_method=payment_method,
-        subtotal=subtotal,
-        vat_total=vat_amount,
-        discount_total=money(parsed_discount),
-        total=line_total,
-        vat_breakdown_json=json.dumps(vat_breakdown, sort_keys=True),
-    )
-    db.add(sale)
-    db.flush()
-    db.add(
-        SaleLine(
+    try:
+        sale = Sale(
+            seller_id=sold_by.id,
+            sold_by_user_id=sold_by.id,
+            created_by_user_id=operator_id,
+            shift_id=shift_id,
+            cash_register_id=shift.cash_register_id,
+            work_order_id=work_order_id,
+            payment_method=payment_method,
+            subtotal=subtotal,
+            vat_total=vat_amount,
+            discount_total=money(parsed_discount),
+            total=line_total,
+            vat_breakdown_json=json.dumps(vat_breakdown, sort_keys=True),
+        )
+        db.add(sale)
+        db.flush()
+        sale_line = SaleLine(
             sale_id=sale.id,
             work_order_item_id=work_order_item_id,
             product_id=product_id,
@@ -277,22 +339,99 @@ def create_sale_with_payment(
             line_total=line_total,
             vat_amount=vat_amount,
         )
-    )
-    db.add(
-        Payment(
-            sale_id=sale.id,
-            shift_id=shift_id,
-            seller_id=seller_id,
-            payment_method=payment_method,
-            amount=line_total,
+        db.add(sale_line)
+        cogs_total = Decimal("0.00")
+        if product is not None and product.is_stock_item:
+            from app.services.inventory_service import issue_stock_for_sale_from_available_locations
+
+            inventory_transactions = issue_stock_for_sale_from_available_locations(
+                db,
+                product_id=product.id,
+                quantity_value=parsed_quantity,
+                sale_id=sale.id,
+                created_by_user_id=operator_id,
+                commit=False,
+            )
+            cogs_total = money(
+                sum((-parse_decimal(transaction.total_inventory_cost) for transaction in inventory_transactions), Decimal("0"))
+            )
+        gross_profit = money(subtotal - cogs_total)
+        gross_margin_percent = (
+            (gross_profit / subtotal * Decimal("100")).quantize(Decimal("0.001"))
+            if subtotal > 0
+            else None
         )
-    )
+        sale_line.cost_of_goods_sold_ex_vat = cogs_total
+        sale_line.gross_profit_ex_vat = gross_profit
+        sale_line.gross_margin_percent = gross_margin_percent
+        sale.cost_of_goods_sold_ex_vat = cogs_total
+        sale.gross_profit_ex_vat = gross_profit
+        sale.gross_margin_percent = gross_margin_percent
+        db.add(
+            Payment(
+                sale_id=sale.id,
+                shift_id=shift_id,
+                seller_id=sold_by.id,
+                received_by_user_id=operator_id,
+                payment_method=payment_method,
+                amount=line_total,
+            )
+        )
+        log_audit_event(
+            db,
+            event_type="sale.created",
+            entity_type="sale",
+            entity_id=sale.id,
+            description=(
+                f"Sale created for {line_total}; sold by {sold_by.id}/{sold_by.name}; "
+                f"operator {operator_id}; shift {shift.id}; cash register {shift.cash_register_id}."
+            ),
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    db.refresh(sale)
+    return sale
+
+
+def correct_sale_seller(
+    db: Session,
+    *,
+    sale_id: int,
+    new_sold_by_user_id: int,
+    corrected_by_user_id: int,
+    reason: str,
+) -> Sale:
+    sale = db.get(Sale, sale_id)
+    if sale is None:
+        raise ValueError("Sale not found.")
+    if sale.shift is None:
+        raise ValueError("Sale has no shift for business date validation.")
+    assert_business_date_open(db, sale.shift.business_date)
+    corrected_by = require_sale_seller_override_user(db.get(User, corrected_by_user_id))
+    correction_reason = reason.strip()
+    if not correction_reason:
+        raise ValueError("Seller correction reason is required.")
+    new_seller = require_sales_credit_user(db.get(User, new_sold_by_user_id))
+    old_seller_id = sale.sold_by_user_id or sale.seller_id
+    old_seller_name = sale.sold_by.name if sale.sold_by else (sale.seller.name if sale.seller else "Unknown")
+
+    sale.sold_by_user_id = new_seller.id
+    sale.seller_id = new_seller.id
+    sale.seller_override_reason = correction_reason
+    sale.seller_overridden_by_user_id = corrected_by.id
+    sale.seller_overridden_at = utc_now()
     log_audit_event(
         db,
-        event_type="sale.created",
+        event_type="sale.seller_corrected",
         entity_type="sale",
         entity_id=sale.id,
-        description=f"Sale created for {line_total} by {seller.name}.",
+        description=(
+            f"Sale seller corrected for sale {sale.id}: "
+            f"{old_seller_id}/{old_seller_name} -> {new_seller.id}/{new_seller.name}; "
+            f"corrected by {corrected_by.id}/{corrected_by.name}; reason: {correction_reason}."
+        ),
     )
     db.commit()
     db.refresh(sale)
@@ -512,9 +651,11 @@ def build_daily_closing_snapshot(db: Session, business_date: date) -> dict:
     refund_vat = Decimal("0")
 
     for sale in sales:
-        seller_bucket = seller_totals[sale.seller_id]
-        seller_bucket["seller_id"] = sale.seller_id
-        seller_bucket["seller_name"] = sale.seller.name if sale.seller else f"User {sale.seller_id}"
+        sale_seller_id = sale.sold_by_user_id or sale.seller_id
+        sale_seller = sale.sold_by or sale.seller
+        seller_bucket = seller_totals[sale_seller_id]
+        seller_bucket["seller_id"] = sale_seller_id
+        seller_bucket["seller_name"] = sale_seller.name if sale_seller else f"User {sale_seller_id}"
         seller_bucket["gross_sales"] += parse_decimal(sale.total)
         seller_bucket["discounts"] += parse_decimal(sale.discount_total)
         seller_bucket["transaction_count"] += 1
@@ -724,7 +865,7 @@ def seller_report(db: Session, *, seller_id: int, start_date: date, end_date: da
     end_at = datetime.combine(end_date, time.min, tzinfo=UTC)
     sales = (
         db.query(Sale)
-        .filter(Sale.seller_id == seller_id)
+        .filter(((Sale.sold_by_user_id == seller_id) | ((Sale.sold_by_user_id.is_(None)) & (Sale.seller_id == seller_id))))
         .filter(Sale.sold_at >= start_at)
         .filter(Sale.sold_at < end_at)
         .all()
