@@ -16,12 +16,18 @@ def inject_global_template_context(request: Request) -> dict:
         app_settings = get_app_settings(db)
         language = app_settings.get("language", "en")
         current_user = getattr(request.state, "current_user", None)
+        current_role_code = (
+            current_user.role.code
+            if current_user is not None and current_user.role is not None
+            else None
+        )
         return {
             "language": language,
             "t": get_translations(language),
             "current_date": date.today(),
             "current_user": current_user,
             "is_authenticated": current_user is not None,
+            "can_manage_administration": current_user is None or current_role_code in {"admin", "manager"},
             "current_operator_label": (
                 current_user.name
                 if current_user is not None
