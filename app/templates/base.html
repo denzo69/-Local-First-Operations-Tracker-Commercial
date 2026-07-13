@@ -47,16 +47,16 @@
             <a class="sidebar-link {% if active_page == 'inventory_ledger' %}active{% endif %}" href="/inventory/ledger"><span class="nav-icon" aria-hidden="true">IL</span><span>{{ t.inventory_ledger }}</span></a>
             <a class="sidebar-link {% if active_page == 'inventory_reconciliation' %}active{% endif %}" href="/inventory/reconciliation"><span class="nav-icon" aria-hidden="true">IR</span><span>{{ t.inventory_reconciliation }}</span></a>
         </div>
-        {% if can_manage_administration %}
         <div class="sidebar-group">
             <div class="sidebar-group-label">{{ t.administration }}</div>
+            {% if can_manage_administration %}
             <a class="sidebar-link {% if active_page == 'users' %}active{% endif %}" href="/users"><span class="nav-icon" aria-hidden="true">US</span><span>{{ t.users }}</span></a>
             <a class="sidebar-link {% if active_page == 'cash_registers' %}active{% endif %}" href="/cash-registers"><span class="nav-icon" aria-hidden="true">CR</span><span>{{ t.cash_registers }}</span></a>
             <a class="sidebar-link {% if active_page == 'audit_log' %}active{% endif %}" href="/audit-log"><span class="nav-icon" aria-hidden="true">AL</span><span>{{ t.audit_log }}</span></a>
             <a class="sidebar-link {% if active_page == 'backups' %}active{% endif %}" href="/backups"><span class="nav-icon" aria-hidden="true">BU</span><span>{{ t.backups }}</span></a>
+            {% endif %}
             <a class="sidebar-link {% if active_page == 'settings' %}active{% endif %}" href="/settings"><span class="nav-icon" aria-hidden="true">ST</span><span>{{ t.settings }}</span></a>
         </div>
-        {% endif %}
     </nav>
 </aside>
 
@@ -88,14 +88,14 @@
             <a class="sidebar-link" href="/inventory/valuation">{{ t.inventory_valuation }}</a>
             <a class="sidebar-link" href="/inventory/ledger">{{ t.inventory_ledger }}</a>
             <a class="sidebar-link" href="/inventory/reconciliation">{{ t.inventory_reconciliation }}</a>
-            {% if can_manage_administration %}
             <div class="sidebar-group-label">{{ t.administration }}</div>
+            {% if can_manage_administration %}
             <a class="sidebar-link" href="/users">{{ t.users }}</a>
             <a class="sidebar-link" href="/cash-registers">{{ t.cash_registers }}</a>
             <a class="sidebar-link" href="/audit-log">{{ t.audit_log }}</a>
             <a class="sidebar-link" href="/backups">{{ t.backups }}</a>
-            <a class="sidebar-link" href="/settings">{{ t.settings }}</a>
             {% endif %}
+            <a class="sidebar-link" href="/settings">{{ t.settings }}</a>
         </nav>
     </div>
 </div>
