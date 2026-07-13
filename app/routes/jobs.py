@@ -98,6 +98,15 @@ def route_base_for(request: Request) -> str:
     return "/work-orders" if request.url.path.startswith("/work-orders") else "/jobs"
 
 
+def optional_form_int(value: str | int | None, field_name: str) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"{field_name} must be a valid number") from exc
+
+
 @router.get("", response_class=HTMLResponse)
 def list_jobs(
     request: Request,
@@ -170,7 +179,7 @@ def new_job(request: Request, db: Session = Depends(get_db)):
 def create_job(
     request: Request,
     title: str = Form(...),
-    customer_id: int | None = Form(None),
+    customer_id: str = Form(""),
     description: str = Form(""),
     arrival_date: str = Form(""),
     requested_pickup_date: str = Form(""),
@@ -182,8 +191,9 @@ def create_job(
     if not title.strip():
         raise HTTPException(status_code=400, detail="Work order title is required")
 
-    customer = db.get(Customer, customer_id) if customer_id else None
-    if customer_id and customer is None:
+    parsed_customer_id = optional_form_int(customer_id, "Customer")
+    customer = db.get(Customer, parsed_customer_id) if parsed_customer_id else None
+    if parsed_customer_id and customer is None:
         raise HTTPException(status_code=400, detail="Selected customer was not found")
 
     try:
@@ -252,7 +262,7 @@ def update_job(
     request: Request,
     job_id: int,
     title: str = Form(...),
-    customer_id: int | None = Form(None),
+    customer_id: str = Form(""),
     description: str = Form(""),
     arrival_date: str = Form(""),
     requested_pickup_date: str = Form(""),
@@ -267,8 +277,9 @@ def update_job(
     if not title.strip():
         raise HTTPException(status_code=400, detail="Work order title is required")
 
-    customer = db.get(Customer, customer_id) if customer_id else None
-    if customer_id and customer is None:
+    parsed_customer_id = optional_form_int(customer_id, "Customer")
+    customer = db.get(Customer, parsed_customer_id) if parsed_customer_id else None
+    if parsed_customer_id and customer is None:
         raise HTTPException(status_code=400, detail="Selected customer was not found")
 
     status = db.get(JobStatus, status_id) if status_id else None
@@ -360,7 +371,7 @@ def job_receipt(job_id: int, request: Request, db: Session = Depends(get_db)):
 def add_job_item(
     request: Request,
     job_id: int,
-    product_id: int | None = Form(None),
+    product_id: str = Form(""),
     description: str = Form(""),
     quantity: str = Form("1"),
     unit_price: str = Form("0"),
@@ -371,7 +382,10 @@ def add_job_item(
     if job is None:
         raise HTTPException(status_code=404, detail="Work order not found")
 
-    product = db.get(Product, product_id) if product_id else None
+    parsed_product_id = optional_form_int(product_id, "Product")
+    product = db.get(Product, parsed_product_id) if parsed_product_id else None
+    if parsed_product_id and product is None:
+        raise HTTPException(status_code=400, detail="Selected product was not found")
     parsed_quantity = parse_decimal(quantity, "1")
     parsed_unit_price = parse_decimal(unit_price, "0")
     parsed_vat_percent = parse_decimal(vat_percent, "24")

@@ -27,7 +27,7 @@ def new_work_order(request: Request, db: Session = Depends(get_db)):
 def create_work_order(
     request: Request,
     title: str = Form(...),
-    customer_id: int | None = Form(None),
+    customer_id: str = Form(""),
     description: str = Form(""),
     arrival_date: str = Form(""),
     requested_pickup_date: str = Form(""),
@@ -60,7 +60,7 @@ def update_work_order(
     request: Request,
     job_id: int,
     title: str = Form(...),
-    customer_id: int | None = Form(None),
+    customer_id: str = Form(""),
     description: str = Form(""),
     arrival_date: str = Form(""),
     requested_pickup_date: str = Form(""),
@@ -108,7 +108,7 @@ def print_receipt(job_id: int, request: Request, db: Session = Depends(get_db)):
 def add_work_order_item(
     request: Request,
     job_id: int,
-    product_id: int | None = Form(None),
+    product_id: str = Form(""),
     description: str = Form(""),
     quantity: str = Form("1"),
     unit_price: str = Form("0"),
