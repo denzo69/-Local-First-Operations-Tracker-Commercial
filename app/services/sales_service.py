@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -26,6 +27,7 @@ from app.models import (
 from app.services.audit_service import log_audit_event
 from app.services.money_service import money, parse_decimal, sum_money, vat_included_breakdown
 from app.services.receipt_number_service import allocate_sale_document_number
+from app.services.settings_service import get_app_settings
 
 
 ROLE_DEFINITIONS = {
@@ -75,6 +77,7 @@ SALE_SELLER_SELECTION_MODES = {
     "shift_owner",
     "selectable_active_seller",
 }
+SELLER_MODES = {"default", "selected", "none"}
 
 
 class AuthorizationError(ValueError):
@@ -97,6 +100,15 @@ class PaymentInput:
     payment_method: str
     amount: object | None = None
     reference: str = ""
+
+
+@dataclass(frozen=True)
+class SaleContext:
+    shift: Shift | None
+    business_date: date
+    cash_register_id: int | None
+    sold_by: User | None
+    operator: User | None
 
 
 def format_decimal_key(value) -> str:
@@ -238,6 +250,15 @@ def require_sales_credit_user(user: User | None) -> User:
     raise ValueError("User is not eligible to receive sales credit.")
 
 
+def cashier_shift_required(db: Session) -> bool:
+    return str(get_app_settings(db).get("require_cashier_shift", "false")).lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 def user_can_override_sale_seller(user: User | None) -> bool:
     return bool(user and user.is_active and user.role and user.role.code in {"admin", "manager"})
 
@@ -272,6 +293,72 @@ def resolve_sale_seller(
 
     sold_by = require_sales_credit_user(db.get(User, sold_by_id))
     return sold_by, operator
+
+
+def resolve_sale_context(
+    db: Session,
+    *,
+    shift_id: int | None,
+    cash_register_id: int | None,
+    seller_mode: str,
+    selected_seller_id: int | None,
+    created_by_user_id: int | None,
+    seller_selection_mode: str,
+) -> SaleContext:
+    shift = db.get(Shift, shift_id) if shift_id else None
+    if shift_id and (shift is None or shift.status != "open"):
+        raise ValueError("Selected cashier shift must be open.")
+    if shift is None and cashier_shift_required(db):
+        raise ValueError("An active cashier shift is required by configuration.")
+
+    operator = db.get(User, created_by_user_id) if created_by_user_id else None
+    if operator is not None:
+        require_operational_user(operator)
+
+    business_date = shift.business_date if shift is not None else date.today()
+    assert_business_date_open(db, business_date)
+
+    resolved_cash_register_id: int | None = None
+    if shift is not None:
+        resolved_cash_register_id = shift.cash_register_id
+    elif cash_register_id:
+        register = db.get(CashRegister, cash_register_id)
+        if register is None or not register.is_active:
+            raise ValueError("Active cash register not found.")
+        resolved_cash_register_id = register.id
+
+    mode = seller_mode if seller_mode in SELLER_MODES else "default"
+    sold_by: User | None
+    if mode == "none":
+        sold_by = None
+    elif mode == "selected":
+        if not selected_seller_id:
+            raise ValueError("Select a credited seller or use default seller mode.")
+        sold_by = require_sales_credit_user(db.get(User, selected_seller_id))
+    else:
+        sold_by = None
+        normalized_selection = (
+            seller_selection_mode
+            if seller_selection_mode in SALE_SELLER_SELECTION_MODES
+            else "selectable_active_seller"
+        )
+        if normalized_selection == "authenticated_user" and operator is not None:
+            if operator.can_receive_sales_credit or (operator.role and operator.role.code == "seller"):
+                sold_by = operator
+        elif selected_seller_id:
+            sold_by = require_sales_credit_user(db.get(User, selected_seller_id))
+        elif operator is not None and (operator.can_receive_sales_credit or (operator.role and operator.role.code == "seller")):
+            sold_by = operator
+        elif shift is not None:
+            sold_by = require_sales_credit_user(shift.seller)
+
+    return SaleContext(
+        shift=shift,
+        business_date=business_date,
+        cash_register_id=resolved_cash_register_id,
+        sold_by=sold_by,
+        operator=operator,
+    )
 
 
 def _customer_snapshot_for_invoice(work_order: Job | None) -> str | None:
@@ -322,11 +409,13 @@ def _validate_sale_source(source_type: str) -> str:
 def create_sale_from_lines(
     db: Session,
     *,
-    shift_id: int,
-    seller_id: int,
+    shift_id: int | None = None,
+    seller_id: int | None = None,
     lines: list[SaleLineInput | dict],
     payments: list[PaymentInput | dict] | None,
     work_order_id: int | None = None,
+    cash_register_id: int | None = None,
+    seller_mode: str = "default",
     created_by_user_id: int | None = None,
     seller_selection_mode: str = "shift_owner",
     source_type: str = "pos",
@@ -338,19 +427,20 @@ def create_sale_from_lines(
         if existing is not None:
             return existing
 
-    shift = db.get(Shift, shift_id)
-    if shift is None or shift.status != "open":
-        raise ValueError("Sale requires an open shift.")
-    assert_business_date_open(db, shift.business_date)
     source = _validate_sale_source(source_type)
-    sold_by, operator = resolve_sale_seller(
+    context = resolve_sale_context(
         db,
-        shift=shift,
+        shift_id=shift_id,
+        cash_register_id=cash_register_id,
+        seller_mode=seller_mode,
         selected_seller_id=seller_id,
         created_by_user_id=created_by_user_id,
         seller_selection_mode=seller_selection_mode,
     )
-    operator_id = operator.id if operator is not None else sold_by.id
+    shift = context.shift
+    sold_by = context.sold_by
+    operator = context.operator
+    operator_id = operator.id if operator is not None else (sold_by.id if sold_by is not None else None)
 
     work_order = db.get(Job, work_order_id) if work_order_id else None
     if work_order_id and work_order is None:
@@ -448,15 +538,16 @@ def create_sale_from_lines(
 
     try:
         sale = Sale(
-            seller_id=sold_by.id,
-            sold_by_user_id=sold_by.id,
+            seller_id=sold_by.id if sold_by is not None else None,
+            sold_by_user_id=sold_by.id if sold_by is not None else None,
             created_by_user_id=operator_id,
-            shift_id=shift.id,
-            cash_register_id=shift.cash_register_id,
+            shift_id=shift.id if shift is not None else None,
+            cash_register_id=context.cash_register_id,
             work_order_id=work_order_id,
             source_type=source,
             idempotency_key=idempotency_key.strip() if idempotency_key else None,
             finalized_at=utc_now(),
+            business_date=context.business_date,
             payment_method=_sale_payment_method_label(immediate_payments, invoice_requested),
             settlement_status=settlement_status,
             invoice_customer_snapshot_json=_customer_snapshot_for_invoice(work_order) if invoice_requested else None,
@@ -479,7 +570,7 @@ def create_sale_from_lines(
         )
         db.add(sale)
         db.flush()
-        sale.document_number = allocate_sale_document_number(db, sale.sold_at.date())
+        sale.document_number = allocate_sale_document_number(db, sale.business_date or sale.sold_at.date())
 
         cogs_total = Decimal("0.00")
         gross_profit_total = Decimal("0.00")
@@ -535,8 +626,8 @@ def create_sale_from_lines(
             db.add(
                 Payment(
                     sale_id=sale.id,
-                    shift_id=shift.id,
-                    seller_id=sold_by.id,
+                    shift_id=shift.id if shift is not None else None,
+                    seller_id=sold_by.id if sold_by is not None else None,
                     received_by_user_id=operator_id,
                     payment_method=payment.payment_method,
                     amount=money(parse_decimal(payment.amount)),
@@ -550,8 +641,10 @@ def create_sale_from_lines(
             entity_id=sale.id,
             description=(
                 f"{source} sale {sale.document_number} created for {total}; settlement={settlement_status}; "
-                f"sold by {sold_by.id}/{sold_by.name}; operator {operator_id}; "
-                f"shift {shift.id}; cash register {shift.cash_register_id}."
+                f"sold by {sold_by.id if sold_by else 'none'}/{sold_by.name if sold_by else 'Not specified'}; "
+                f"operator {operator_id if operator_id is not None else 'unknown'}; "
+                f"business date {context.business_date}; "
+                f"shift {shift.id if shift else 'none'}; cash register {context.cash_register_id if context.cash_register_id else 'none'}."
             ),
         )
         db.commit()
@@ -566,9 +659,11 @@ def create_sale_from_work_order(
     db: Session,
     *,
     work_order_id: int,
-    shift_id: int,
-    seller_id: int,
+    shift_id: int | None = None,
+    seller_id: int | None = None,
     payments: list[PaymentInput | dict] | None,
+    cash_register_id: int | None = None,
+    seller_mode: str = "default",
     created_by_user_id: int | None = None,
     seller_selection_mode: str = "shift_owner",
     send_to_invoice: bool = False,
@@ -598,6 +693,8 @@ def create_sale_from_work_order(
         lines=lines,
         payments=payments,
         work_order_id=work_order.id,
+        cash_register_id=cash_register_id,
+        seller_mode=seller_mode,
         created_by_user_id=created_by_user_id,
         seller_selection_mode=seller_selection_mode,
         source_type="work_order",
@@ -889,8 +986,10 @@ def open_shift(
 def create_sale_with_payment(
     db: Session,
     *,
-    seller_id: int,
-    shift_id: int,
+    seller_id: int | None = None,
+    shift_id: int | None = None,
+    cash_register_id: int | None = None,
+    seller_mode: str = "default",
     payment_method: str,
     description: str,
     quantity,
@@ -907,6 +1006,8 @@ def create_sale_with_payment(
         db,
         shift_id=shift_id,
         seller_id=seller_id,
+        cash_register_id=cash_register_id,
+        seller_mode=seller_mode,
         lines=[
             SaleLineInput(
                 product_id=product_id,
@@ -937,9 +1038,8 @@ def correct_sale_seller(
     sale = db.get(Sale, sale_id)
     if sale is None:
         raise ValueError("Sale not found.")
-    if sale.shift is None:
-        raise ValueError("Sale has no shift for business date validation.")
-    assert_business_date_open(db, sale.shift.business_date)
+    business_date = sale.business_date or (sale.shift.business_date if sale.shift else sale.sold_at.date())
+    assert_business_date_open(db, business_date)
     corrected_by = require_sale_seller_override_user(db.get(User, corrected_by_user_id))
     correction_reason = reason.strip()
     if not correction_reason:
@@ -1149,9 +1249,13 @@ def close_shift(db: Session, *, shift_id: int, counted_cash, notes: str = "") ->
 def build_daily_closing_snapshot(db: Session, business_date: date) -> dict:
     shifts = db.query(Shift).filter(Shift.business_date == business_date).all()
     shift_ids = [shift.id for shift in shifts]
-    sales = db.query(Sale).filter(Sale.shift_id.in_(shift_ids)).all() if shift_ids else []
+    sales_filter = Sale.business_date == business_date
+    if shift_ids:
+        sales_filter = or_(sales_filter, (Sale.business_date.is_(None)) & Sale.shift_id.in_(shift_ids))
+    sales = db.query(Sale).filter(sales_filter).all()
     refunds = db.query(Refund).filter(Refund.shift_id.in_(shift_ids)).all() if shift_ids else []
-    payments = db.query(Payment).filter(Payment.shift_id.in_(shift_ids)).all() if shift_ids else []
+    sale_ids = [sale.id for sale in sales]
+    payments = db.query(Payment).filter(Payment.sale_id.in_(sale_ids)).all() if sale_ids else []
 
     vat_totals = defaultdict(
         lambda: {
@@ -1180,13 +1284,17 @@ def build_daily_closing_snapshot(db: Session, business_date: date) -> dict:
     discount_total = Decimal("0")
     gross_vat = Decimal("0")
     refund_vat = Decimal("0")
+    shift_linked_cash = Decimal("0")
+    shiftless_cash_assigned = Decimal("0")
+    shiftless_cash_unassigned = Decimal("0")
+    unassigned_cash_sales: list[dict] = []
 
     for sale in sales:
         sale_seller_id = sale.sold_by_user_id or sale.seller_id
         sale_seller = sale.sold_by or sale.seller
         seller_bucket = seller_totals[sale_seller_id]
         seller_bucket["seller_id"] = sale_seller_id
-        seller_bucket["seller_name"] = sale_seller.name if sale_seller else f"User {sale_seller_id}"
+        seller_bucket["seller_name"] = sale_seller.name if sale_seller else "Unspecified seller"
         seller_bucket["gross_sales"] += parse_decimal(sale.total)
         seller_bucket["discounts"] += parse_decimal(sale.discount_total)
         seller_bucket["transaction_count"] += 1
@@ -1199,6 +1307,25 @@ def build_daily_closing_snapshot(db: Session, business_date: date) -> dict:
 
     for payment in payments:
         payment_totals[payment.payment_method]["gross_received"] += parse_decimal(payment.amount)
+        if payment.payment_method == "cash":
+            payment_sale = payment.sale
+            if payment.shift_id:
+                shift_linked_cash += parse_decimal(payment.amount)
+            elif payment_sale and payment_sale.cash_register_id:
+                shiftless_cash_assigned += parse_decimal(payment.amount)
+            else:
+                shiftless_cash_unassigned += parse_decimal(payment.amount)
+                if payment_sale is not None:
+                    unassigned_cash_sales.append(
+                        {
+                            "sale_id": payment_sale.id,
+                            "document_number": payment_sale.document_number,
+                            "business_date": (payment_sale.business_date or payment_sale.sold_at.date()).isoformat(),
+                            "amount": decimal_string(payment.amount),
+                            "operator": payment_sale.created_by.name if payment_sale.created_by else "",
+                            "seller": (payment_sale.sold_by or payment_sale.seller).name if (payment_sale.sold_by or payment_sale.seller) else "",
+                        }
+                    )
 
     for refund in refunds:
         payment_totals[refund.payment_method]["refunds"] += parse_decimal(refund.amount)
@@ -1257,6 +1384,10 @@ def build_daily_closing_snapshot(db: Session, business_date: date) -> dict:
             for status, values in sorted(invoice_status_totals.items())
         ],
         "payment_received_total": decimal_string(payment_received_total),
+        "shift_linked_cash": decimal_string(shift_linked_cash),
+        "shiftless_cash_assigned": decimal_string(shiftless_cash_assigned),
+        "shiftless_cash_unassigned": decimal_string(shiftless_cash_unassigned),
+        "unassigned_cash_sales": unassigned_cash_sales,
         "gross_vat": decimal_string(gross_vat),
         "refund_vat": decimal_string(refund_vat),
         "net_vat": decimal_string(gross_vat - refund_vat),

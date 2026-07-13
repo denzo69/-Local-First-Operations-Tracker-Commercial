@@ -3,23 +3,43 @@
 <h1>{{ t.new_sale }}</h1>
 <form method="post" action="/sales" class="card p-3">
     <div class="mb-3">
-        <label class="form-label" for="shift_id">{{ t.open_shift }}</label>
-        <select class="form-select" id="shift_id" name="shift_id" required>
+        <label class="form-label" for="shift_id">Cashier shift (optional)</label>
+        <select class="form-select" id="shift_id" name="shift_id">
+            <option value="">No cashier shift</option>
             {% for shift in shifts %}
             <option value="{{ shift.id }}" data-seller-id="{{ shift.seller_id }}">{{ shift.seller.name }} · {{ shift.cash_register.name }} · {{ shift.business_date }}</option>
             {% endfor %}
         </select>
-        {% if not shifts %}<div class="form-text">{{ t.open_shift_required_for_refund }}</div>{% endif %}
+        {% if not shifts %}<div class="form-text">No active shift. Sale can still be completed.</div>{% endif %}
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="seller_mode">Credited seller</label>
+        <select class="form-select" id="seller_mode" name="seller_mode">
+            <option value="default">Default</option>
+            <option value="selected">Select seller</option>
+            <option value="none">No seller on receipt</option>
+        </select>
     </div>
     <div class="mb-3">
         <label class="form-label" for="seller_id">{{ t.seller }}</label>
-        <select class="form-select" id="seller_id" name="seller_id" required>
+        <select class="form-select" id="seller_id" name="seller_id">
+            <option value="">Select seller when needed</option>
             {% for seller in sellers %}
             {% if seller.can_receive_sales_credit or (seller.role and seller.role.code == "seller") %}
             <option value="{{ seller.id }}">{{ seller.name }}</option>
             {% endif %}
             {% endfor %}
         </select>
+    </div>
+    <div class="mb-3">
+        <label class="form-label" for="cash_register_id">Cash register without shift</label>
+        <select class="form-select" id="cash_register_id" name="cash_register_id">
+            <option value="">No cash register / unassigned</option>
+            {% for register in cash_registers %}
+            <option value="{{ register.id }}">{{ register.name }}</option>
+            {% endfor %}
+        </select>
+        <div class="form-text">Ignored when a cashier shift is selected.</div>
     </div>
     <div class="mb-3">
         <label class="form-label" for="work_order_id">{{ t.work_orders }}</label>
@@ -57,7 +77,7 @@
             {% endfor %}
         </select>
     </div>
-    <button class="btn btn-primary" type="submit" {% if not shifts %}disabled{% endif %}>{{ t.save }}</button>
+    <button class="btn btn-primary" type="submit">{{ t.save }}</button>
 </form>
 <script>
 document.getElementById("product_id")?.addEventListener("change", function () {

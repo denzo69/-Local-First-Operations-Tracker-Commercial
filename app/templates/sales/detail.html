@@ -4,9 +4,9 @@
     <div>
         <h1>{{ t.sales }} #{{ sale.document_number or sale.id }}</h1>
         <p class="text-muted">
-            {{ t.original_seller }}: {{ (sale.sold_by or sale.seller).name if (sale.sold_by or sale.seller) else "-" }} -
-            {{ t.shifts }} #{{ sale.shift_id }} -
-            {{ t.business_date }} {{ sale.shift.business_date if sale.shift else "-" }}
+            {{ t.original_seller }}: {{ (sale.sold_by or sale.seller).name if (sale.sold_by or sale.seller) else "Not specified" }} -
+            Cashier shift: {% if sale.shift %}#{{ sale.shift_id }}{% else %}No cashier shift{% endif %} -
+            {{ t.business_date }} {{ sale.business_date or (sale.shift.business_date if sale.shift else "-") }}
         </p>
         {% if sale.created_by %}
         <p class="text-muted mb-0">{{ t.created_by }}: {{ sale.created_by.name }}</p>

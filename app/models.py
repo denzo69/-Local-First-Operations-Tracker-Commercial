@@ -387,10 +387,10 @@ class Sale(Base):
     __tablename__ = "sales"
 
     id = Column(Integer, primary_key=True, index=True)
-    seller_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    seller_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     sold_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
-    shift_id = Column(Integer, ForeignKey("shifts.id"), nullable=False)
+    shift_id = Column(Integer, ForeignKey("shifts.id"), nullable=True)
     cash_register_id = Column(Integer, ForeignKey("cash_registers.id"), nullable=True, index=True)
     work_order_id = Column(Integer, ForeignKey("jobs.id"), nullable=True)
     source_type = Column(String(50), default="pos", index=True)
@@ -398,6 +398,7 @@ class Sale(Base):
     document_number = Column(String(100), nullable=True, unique=True, index=True)
     created_at = Column(DateTime, default=utc_now)
     sold_at = Column(DateTime, default=utc_now, index=True)
+    business_date = Column(Date, nullable=True, index=True)
     finalized_at = Column(DateTime, nullable=True)
     payment_method = Column(String(50), nullable=False)
     settlement_status = Column(String(50), default="paid", index=True)
@@ -470,8 +471,8 @@ class Payment(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     sale_id = Column(Integer, ForeignKey("sales.id"), nullable=False)
-    shift_id = Column(Integer, ForeignKey("shifts.id"), nullable=False)
-    seller_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    shift_id = Column(Integer, ForeignKey("shifts.id"), nullable=True)
+    seller_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     received_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     payment_method = Column(String(50), nullable=False, index=True)
     amount = Column(Numeric(12, 2), nullable=False)

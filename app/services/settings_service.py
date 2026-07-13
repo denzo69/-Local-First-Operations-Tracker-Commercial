@@ -19,6 +19,7 @@ DEFAULT_SETTINGS = {
     "sale_document_annual_reset": "false",
     "next_sale_document_sequence": "1",
     "sale_document_sequence_year": "",
+    "require_cashier_shift": "false",
     "language": "en",
 }
 

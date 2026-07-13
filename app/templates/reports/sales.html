@@ -4,7 +4,7 @@
 <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
     <div>
         <h1 class="h3 mb-1">Reports</h1>
-        <p class="text-muted mb-0">Daily and monthly sales totals from work order rows.</p>
+        <p class="text-muted mb-0">Financial totals use finalized Sale records. Work Orders are shown separately as operational pipeline until converted.</p>
     </div>
 </div>
 
@@ -54,8 +54,50 @@
     </div>
 </div>
 
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card shadow-sm border-0">
+            <div class="card-body">
+                <div class="text-muted small">Day billable pipeline</div>
+                <div class="h4 mb-0">{{ "%.2f"|format(day_pipeline_total) }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card shadow-sm border-0">
+            <div class="card-body">
+                <div class="text-muted small">Month billable pipeline</div>
+                <div class="h4 mb-0">{{ "%.2f"|format(month_pipeline_total) }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="card shadow-sm border-0 mb-4">
-    <div class="card-header bg-white fw-semibold">Day work orders</div>
+    <div class="card-header bg-white fw-semibold">Day sales register</div>
+    <div class="card-body p-0">
+        {% if day_sales %}
+        <div class="list-group list-group-flush">
+            {% for sale in day_sales %}
+            <a class="list-group-item list-group-item-action py-3" href="/sales/{{ sale.id }}">
+                <div class="d-flex justify-content-between gap-3">
+                    <div>
+                        <div class="fw-semibold">{{ sale.document_number or sale.id }}</div>
+                        <div class="text-muted small">{{ sale.payment_method }} / {{ sale.settlement_status or sale.status }}</div>
+                    </div>
+                    <div class="fw-semibold">{{ "%.2f"|format(sale.total) }}</div>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="p-4 text-muted">No finalized sales for this day.</div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white fw-semibold">Day work orders / billable pipeline</div>
     <div class="card-body p-0">
         {% if day_jobs %}
         <div class="list-group list-group-flush">
@@ -66,7 +108,7 @@
                         <div class="fw-semibold">{{ job.title }}</div>
                         <div class="text-muted small">{{ job.receipt_number or "No receipt" }}</div>
                     </div>
-                    <div class="fw-semibold">{{ "%.2f"|format(job_total(job)) }}</div>
+                    <div class="fw-semibold">{% if job.sales %}Converted{% else %}{{ "%.2f"|format(job_total(job)) }}{% endif %}</div>
                 </div>
             </a>
             {% endfor %}
@@ -78,7 +120,7 @@
 </div>
 
 <div class="card shadow-sm border-0">
-    <div class="card-header bg-white fw-semibold">Month work orders</div>
+    <div class="card-header bg-white fw-semibold">Month work orders / billable pipeline</div>
     <div class="card-body p-0">
         {% if month_jobs %}
         <div class="list-group list-group-flush">
@@ -89,7 +131,7 @@
                         <div class="fw-semibold">{{ job.title }}</div>
                         <div class="text-muted small">{{ job.receipt_number or "No receipt" }}</div>
                     </div>
-                    <div class="fw-semibold">{{ "%.2f"|format(job_total(job)) }}</div>
+                    <div class="fw-semibold">{% if job.sales %}Converted{% else %}{{ "%.2f"|format(job_total(job)) }}{% endif %}</div>
                 </div>
             </a>
             {% endfor %}

@@ -46,7 +46,7 @@ The app is not intended to be exposed directly to the public internet.
 - Settings for company details, VAT default, receipt prefix, and language
 - Finnish and English UI text baseline
 - Local login with signed session cookie, first-admin setup, password hashes, and operational roles for Admin, Manager, Seller, and Read only
-- Cash registers and seller shifts with starting cash, cash movements, closing count, expected cash, and over/short calculation
+- Optional cash registers and seller shifts with starting cash, cash movements, closing count, expected cash, and over/short calculation for businesses that need cashier balancing
 - Sales, payments, and refunds stored separately from Work Orders
 - Unified sales flow for direct POS sales and Work Order billing
 - Work Orders can be converted into Sales and settled by cash, card, split payment, or invoice handoff
@@ -91,6 +91,10 @@ Work Orders, Sales, Payments, and Refunds are separate business objects. A Sale 
 
 A Work Order is operational, not financial. When it becomes billable, it is converted into a Sale. That Sale stores immutable line snapshots, credited seller, operator, shift, cash register, VAT totals, inventory COGS snapshots, and settlement status.
 
+Cashier shifts are optional by default. Small businesses, sole traders, and mobile workers can complete Sales without opening a shift. When a shift is selected, the Sale uses the shift business date and cash register and is included in shift closing. When no shift is selected, the Sale stores its own business date, may optionally reference a cash register, and remains visible in sales reports, daily totals, inventory reports, and seller reports without appearing in a shift closing. A future configuration flag, `require_cashier_shift`, can make active shifts mandatory for installations that need stricter cashier control.
+
+Credited seller attribution is also optional. By default, the logged-in operator is used as seller when eligible. The operator may explicitly select an eligible credited seller or choose no seller on the receipt. Operator identity remains stored separately from credited seller, payment receiver, and inventory actor.
+
 Direct POS sales and Work Order billing use the same sales service. The UI has separate entry points for speed and clarity:
 
 - `/sales/quick` for direct retail / POS sale
@@ -123,7 +127,7 @@ Daily closing rules:
 - Refund VAT is stored with the refund. Single-VAT sales are supported; multi-VAT refunds require future line allocation.
 - Snapshot version history is available from the Daily Closing detail page.
 
-Daily closing counts Sales by their shift business date, but payment method totals come from actual `Payment` rows. Awaiting-invoice and external-invoice follow-up Sales are visible as sales revenue handoff items and are not counted as cash/card received.
+Daily closing counts Sales by `Sale.business_date`. Shift-linked Sales use the shift business date; shiftless Sales use the local business date at finalization. Payment method totals come from actual `Payment` rows. Awaiting-invoice and external-invoice follow-up Sales are visible as sales revenue handoff items and are not counted as cash/card received. Cash reporting distinguishes shift-linked cash, shiftless cash assigned to a register, and shiftless unassigned cash.
 
 Security notes:
 

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.models import Job, Product, Sale, Shift, User
+from app.models import CashRegister, Job, Product, Sale, Shift, User
 from app.services.auth_service import request_current_user
 from app.services.sales_service import (
     AuthorizationError,
@@ -74,7 +74,8 @@ def new_sale(request: Request, db: Session = Depends(get_db)):
             "shifts": db.query(Shift).filter(Shift.status == "open").order_by(Shift.opened_at.desc()).all(),
             "products": db.query(Product).filter(Product.is_active.is_(True)).order_by(Product.name.asc()).all(),
             "work_orders": db.query(Job).order_by(Job.created_at.desc()).limit(100).all(),
-            "sellers": db.query(User).filter(User.is_active.is_(True)).order_by(User.name.asc()).all(),
+            "sellers": _eligible_sellers(db),
+            "cash_registers": db.query(CashRegister).filter(CashRegister.is_active.is_(True)).order_by(CashRegister.name.asc()).all(),
             "payment_methods": PAYMENT_METHODS,
         },
     )
@@ -91,6 +92,7 @@ def quick_sale(request: Request, db: Session = Depends(get_db)):
             "shifts": db.query(Shift).filter(Shift.status == "open").order_by(Shift.opened_at.desc()).all(),
             "products": db.query(Product).filter(Product.is_active.is_(True)).order_by(Product.name.asc()).all(),
             "sellers": _eligible_sellers(db),
+            "cash_registers": db.query(CashRegister).filter(CashRegister.is_active.is_(True)).order_by(CashRegister.name.asc()).all(),
             "payment_methods": {key: value for key, value in PAYMENT_METHODS.items() if key != "invoice"},
             "idempotency_key": str(uuid4()),
         },
@@ -152,8 +154,10 @@ async def create_quick_sale(request: Request, db: Session = Depends(get_db)):
     try:
         sale = create_sale_from_lines(
             db,
-            shift_id=int(form["shift_id"]),
-            seller_id=int(form["seller_id"]),
+            shift_id=_optional_int(form.get("shift_id")),
+            cash_register_id=_optional_int(form.get("cash_register_id")),
+            seller_id=_optional_int(form.get("seller_id")),
+            seller_mode=str(form.get("seller_mode") or "default"),
             lines=_parse_sale_lines(form),
             payments=_parse_payments(form)[0],
             created_by_user_id=current_user.id if current_user is not None else None,
@@ -207,6 +211,7 @@ def work_order_sale_form(work_order_id: int, request: Request, db: Session = Dep
             "work_order": work_order,
             "shifts": db.query(Shift).filter(Shift.status == "open").order_by(Shift.opened_at.desc()).all(),
             "sellers": _eligible_sellers(db),
+            "cash_registers": db.query(CashRegister).filter(CashRegister.is_active.is_(True)).order_by(CashRegister.name.asc()).all(),
             "payment_methods": {key: value for key, value in PAYMENT_METHODS.items() if key != "invoice"},
             "existing_sale": next((sale for sale in work_order.sales if sale.status != "cancelled"), None),
             "idempotency_key": f"work-order:{work_order.id}",
@@ -223,8 +228,10 @@ async def create_work_order_sale(work_order_id: int, request: Request, db: Sessi
         sale = create_sale_from_work_order(
             db,
             work_order_id=work_order_id,
-            shift_id=int(form["shift_id"]),
-            seller_id=int(form["seller_id"]),
+            shift_id=_optional_int(form.get("shift_id")),
+            cash_register_id=_optional_int(form.get("cash_register_id")),
+            seller_id=_optional_int(form.get("seller_id")),
+            seller_mode=str(form.get("seller_mode") or "default"),
             payments=payments,
             created_by_user_id=current_user.id if current_user is not None else None,
             seller_selection_mode="selectable_active_seller",
@@ -239,8 +246,10 @@ async def create_work_order_sale(work_order_id: int, request: Request, db: Sessi
 @router.post("")
 def create_sale(
     request: Request,
-    shift_id: int = Form(...),
-    seller_id: int = Form(...),
+    shift_id: str = Form(""),
+    cash_register_id: str = Form(""),
+    seller_id: str = Form(""),
+    seller_mode: str = Form("default"),
     payment_method: str = Form(...),
     description: str = Form(...),
     quantity: str = Form("1"),
@@ -255,8 +264,10 @@ def create_sale(
     try:
         sale = create_sale_with_payment(
             db,
-            seller_id=seller_id,
-            shift_id=shift_id,
+            seller_id=_optional_int(seller_id),
+            shift_id=_optional_int(shift_id),
+            cash_register_id=_optional_int(cash_register_id),
+            seller_mode=seller_mode,
             payment_method=payment_method,
             description=description,
             quantity=quantity,

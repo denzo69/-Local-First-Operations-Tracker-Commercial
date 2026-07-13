@@ -10,6 +10,7 @@ from app.migration_bootstrap import (
     CLASS_EMPTY,
     CLASS_INVENTORY,
     CLASS_INVOICE_FOLLOWUP,
+    CLASS_OPTIONAL_SHIFTS,
     CLASS_SALE_DOCUMENTS,
     CLASS_STABILIZATION,
     CLASS_UNKNOWN,
@@ -17,6 +18,7 @@ from app.migration_bootstrap import (
     HEAD_REVISION,
     INVOICE_FOLLOWUP_REVISION,
     INVENTORY_REVISION,
+    OPTIONAL_SHIFTS_REVISION,
     SALE_DOCUMENT_REVISION,
     STABILIZATION_REVISION,
     UNIFIED_SALES_REVISION,
@@ -27,6 +29,7 @@ from app.migration_bootstrap import (
     run_bootstrap,
     sqlite_path_from_url,
 )
+from app.services.migration_service import ensure_sqlite_schema_compatibility
 
 
 def _database_url(db_path):
@@ -127,8 +130,16 @@ def test_alembic_upgrade_head_creates_current_schema(tmp_path):
     assert "reminder_count" in sale_columns
     assert "last_reminder_sent_at" in sale_columns
     assert "follow_up_notes" in sale_columns
+    assert "business_date" in sale_columns
     payment_columns = {column["name"] for column in inspector.get_columns("payments")}
     assert "received_by_user_id" in payment_columns
+    sale_column_meta = {column["name"]: column for column in inspector.get_columns("sales")}
+    payment_column_meta = {column["name"]: column for column in inspector.get_columns("payments")}
+    assert sale_column_meta["shift_id"]["nullable"] is True
+    assert sale_column_meta["seller_id"]["nullable"] is True
+    assert sale_column_meta["business_date"]["nullable"] is True
+    assert payment_column_meta["shift_id"]["nullable"] is True
+    assert payment_column_meta["seller_id"]["nullable"] is True
     receipt_columns = {column["name"] for column in inspector.get_columns("goods_receipts")}
     assert "freight_vat_rate" in receipt_columns
     assert "freight_vat_amount" in receipt_columns
@@ -162,7 +173,8 @@ def test_alembic_upgrade_head_creates_current_schema(tmp_path):
     assert "ux_sales_active_work_order" in sale_indexes
     assert "ix_sales_due_date" in sale_indexes
     assert "ix_sales_next_follow_up_at" in sale_indexes
-    assert version == "c9d1e7a4b2f6"
+    assert "ix_sales_business_date" in sale_indexes
+    assert version == HEAD_REVISION
 
 
 def test_empty_database_bootstrap_upgrades_to_head(tmp_path):
@@ -230,6 +242,47 @@ def test_unstamped_stabilization_database_is_stamped_without_rebuild(tmp_path):
     assert _current_revision(db_path) == HEAD_REVISION
 
 
+def test_sqlite_compatibility_adds_later_sales_columns_to_stabilized_database(tmp_path):
+    db_path = tmp_path / "stabilization-compatibility.sqlite"
+    _upgrade_to_revision(db_path, STABILIZATION_REVISION)
+    engine = create_engine(_database_url(db_path), future=True)
+
+    diagnostics = ensure_sqlite_schema_compatibility(engine)
+
+    inspector = inspect(engine)
+    sales_columns = {column["name"] for column in inspector.get_columns("sales")}
+    sale_line_columns = {column["name"] for column in inspector.get_columns("sale_lines")}
+    index_names = {index["name"] for index in inspector.get_indexes("sales")}
+    engine.dispose()
+
+    assert diagnostics == []
+    assert {
+        "source_type",
+        "idempotency_key",
+        "finalized_at",
+        "settlement_status",
+        "due_date",
+        "next_follow_up_at",
+        "reminder_count",
+        "cost_of_goods_sold_ex_vat",
+        "gross_profit_ex_vat",
+        "gross_margin_percent",
+        "business_date",
+    }.issubset(sales_columns)
+    assert {
+        "cost_of_goods_sold_ex_vat",
+        "gross_profit_ex_vat",
+        "gross_margin_percent",
+    }.issubset(sale_line_columns)
+    assert {
+        "ix_sales_source_type",
+        "ix_sales_due_date",
+        "ix_sales_next_follow_up_at",
+        "ix_sales_business_date",
+        "ux_sales_active_work_order",
+    }.issubset(index_names)
+
+
 def test_unstamped_unified_sales_database_is_stamped_and_upgraded(tmp_path):
     db_path = tmp_path / "unified-sales.sqlite"
     _upgrade_to_revision(db_path, UNIFIED_SALES_REVISION)
@@ -256,7 +309,7 @@ def test_unstamped_invoice_followup_database_is_stamped_and_upgraded(tmp_path):
     assert _current_revision(db_path) == HEAD_REVISION
 
 
-def test_unstamped_sale_document_database_is_stamped_without_upgrade(tmp_path):
+def test_unstamped_sale_document_database_is_stamped_and_upgraded(tmp_path):
     db_path = tmp_path / "sale-documents.sqlite"
     _upgrade_to_revision(db_path, SALE_DOCUMENT_REVISION)
     _drop_alembic_version(db_path)
@@ -265,12 +318,25 @@ def test_unstamped_sale_document_database_is_stamped_without_upgrade(tmp_path):
 
     assert plan.classification.classification == CLASS_SALE_DOCUMENTS
     assert plan.stamp_revision == SALE_DOCUMENT_REVISION
+    assert plan.upgrade_target == "head"
+    assert _current_revision(db_path) == HEAD_REVISION
+
+
+def test_unstamped_optional_shifts_database_is_stamped_without_upgrade(tmp_path):
+    db_path = tmp_path / "optional-shifts.sqlite"
+    _upgrade_to_revision(db_path, OPTIONAL_SHIFTS_REVISION)
+    _drop_alembic_version(db_path)
+
+    plan = run_bootstrap(_database_url(db_path), backup_dir=tmp_path / "backups")
+
+    assert plan.classification.classification == CLASS_OPTIONAL_SHIFTS
+    assert plan.stamp_revision == OPTIONAL_SHIFTS_REVISION
     assert plan.upgrade_target is None
     assert _current_revision(db_path) == HEAD_REVISION
 
 
 def test_stamped_pr19_revisions_upgrade_to_head(tmp_path):
-    for revision in [STABILIZATION_REVISION, UNIFIED_SALES_REVISION, INVOICE_FOLLOWUP_REVISION]:
+    for revision in [STABILIZATION_REVISION, UNIFIED_SALES_REVISION, INVOICE_FOLLOWUP_REVISION, SALE_DOCUMENT_REVISION]:
         db_path = tmp_path / f"stamped-{revision}.sqlite"
         _upgrade_to_revision(db_path, revision)
 
@@ -467,7 +533,7 @@ def test_extra_legacy_side_table_does_not_block_known_schema_classification(tmp_
     inspection = inspect_database(_database_url(db_path))
     classification = classify_schema(inspection)
 
-    assert classification.classification == CLASS_SALE_DOCUMENTS
+    assert classification.classification == CLASS_OPTIONAL_SHIFTS
     assert classification.matched_revision == HEAD_REVISION
 
 
@@ -514,5 +580,6 @@ def test_default_database_can_be_classified_in_dry_run_without_modification():
         CLASS_UNIFIED_SALES,
         CLASS_INVOICE_FOLLOWUP,
         CLASS_SALE_DOCUMENTS,
+        CLASS_OPTIONAL_SHIFTS,
         CLASS_UNKNOWN,
     }

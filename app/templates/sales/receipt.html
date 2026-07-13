@@ -16,8 +16,11 @@
         <dt class="col-sm-3">Customer</dt><dd class="col-sm-9">{{ sale.work_order.customer.name if sale.work_order and sale.work_order.customer else "-" }}</dd>
         <dt class="col-sm-3">Source Work Order</dt><dd class="col-sm-9">{% if sale.work_order %}{{ sale.work_order.receipt_number or sale.work_order.job_number or sale.work_order.id }} - {{ sale.work_order.title }}{% else %}-{% endif %}</dd>
         {% if sale.external_invoice_number %}<dt class="col-sm-3">External invoice number</dt><dd class="col-sm-9">{{ sale.external_invoice_number }}</dd>{% endif %}
-        <dt class="col-sm-3">Credited seller</dt><dd class="col-sm-9">{{ (sale.sold_by or sale.seller).name if (sale.sold_by or sale.seller) else "-" }}</dd>
+        <dt class="col-sm-3">Credited seller</dt><dd class="col-sm-9">{{ (sale.sold_by or sale.seller).name if (sale.sold_by or sale.seller) else "Not specified" }}</dd>
         <dt class="col-sm-3">Operator</dt><dd class="col-sm-9">{{ sale.created_by.name if sale.created_by else "-" }}</dd>
+        {% if sale.shift %}<dt class="col-sm-3">Cashier shift</dt><dd class="col-sm-9">#{{ sale.shift_id }}</dd>{% endif %}
+        {% if sale.cash_register %}<dt class="col-sm-3">Cash register</dt><dd class="col-sm-9">{{ sale.cash_register.name }}</dd>{% endif %}
+        <dt class="col-sm-3">Business date</dt><dd class="col-sm-9">{{ sale.business_date or (sale.shift.business_date if sale.shift else sale.sold_at.date()) }}</dd>
         <dt class="col-sm-3">Settlement</dt><dd class="col-sm-9">{{ sale.settlement_status }}</dd>
     </dl>
     <table class="table">

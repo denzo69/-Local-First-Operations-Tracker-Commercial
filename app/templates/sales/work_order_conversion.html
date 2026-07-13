@@ -34,22 +34,39 @@
     <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
     <div class="row g-3">
         <div class="col-md-4">
-            <label class="form-label" for="shift_id">Open shift</label>
-            <select class="form-select" id="shift_id" name="shift_id" required>
+            <label class="form-label" for="shift_id">Cashier shift (optional)</label>
+            <select class="form-select" id="shift_id" name="shift_id">
+                <option value="">No cashier shift</option>
                 {% for shift in shifts %}
                 <option value="{{ shift.id }}">#{{ shift.id }} {{ shift.seller.name }} / {{ shift.cash_register.name }}</option>
                 {% endfor %}
             </select>
-            {% if not shifts %}<div class="form-text text-danger">An open shift is required.</div>{% endif %}
+            <div class="form-text">Work Order sales can be completed without a cashier shift unless the installation requires shifts.</div>
         </div>
         <div class="col-md-4">
-            <label class="form-label" for="seller_id">Credited seller</label>
-            <select class="form-select" id="seller_id" name="seller_id" required>
+            <label class="form-label" for="seller_mode">Credited seller</label>
+            <select class="form-select mb-2" id="seller_mode" name="seller_mode">
+                <option value="default">Default</option>
+                <option value="selected">Select seller</option>
+                <option value="none">No seller on receipt</option>
+            </select>
+            <select class="form-select" id="seller_id" name="seller_id">
+                <option value="">Select seller when needed</option>
                 {% for seller in sellers %}
                 <option value="{{ seller.id }}">{{ seller.name }}</option>
                 {% endfor %}
             </select>
-            {% if not sellers %}<div class="form-text text-danger">No eligible credited seller. Enable sales credit for a seller or create a Seller user.</div>{% endif %}
+            <div class="form-text">Default uses the logged-in operator when eligible.</div>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label" for="cash_register_id">Cash register without shift</label>
+            <select class="form-select" id="cash_register_id" name="cash_register_id">
+                <option value="">No cash register / unassigned</option>
+                {% for register in cash_registers %}
+                <option value="{{ register.id }}">{{ register.name }}</option>
+                {% endfor %}
+            </select>
+            <div class="form-text">Ignored when a cashier shift is selected.</div>
         </div>
         <div class="col-md-4">
             <label class="form-label">Settlement</label>
@@ -67,6 +84,6 @@
     {% if not work_order.items %}
     <div class="alert alert-warning mt-3 mb-0">Add at least one billable row on the Work Order before creating a sale.</div>
     {% endif %}
-    <button class="btn btn-primary mt-3" type="submit" {% if existing_sale or not shifts or not sellers or not work_order.items %}disabled{% endif %}>Create sale</button>
+    <button class="btn btn-primary mt-3" type="submit" {% if existing_sale or not work_order.items %}disabled{% endif %}>Create sale</button>
 </form>
 {% endblock %}
