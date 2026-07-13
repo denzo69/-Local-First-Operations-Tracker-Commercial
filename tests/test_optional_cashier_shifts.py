@@ -46,6 +46,19 @@ def _service_product(db, name: str, price: str = "12.00") -> Product:
     return product
 
 
+def _stock_product_without_inventory(db, name: str, price: str = "12.00") -> Product:
+    product = Product(
+        name=name,
+        unit_price=Decimal(price),
+        vat_percent=Decimal("24"),
+        is_active=True,
+        is_stock_item=True,
+    )
+    db.add(product)
+    db.commit()
+    return product
+
+
 def _set_require_cashier_shift(db, value: bool) -> None:
     setting = db.query(Setting).filter(Setting.key == "require_cashier_shift").first()
     if setting is None:
@@ -92,6 +105,43 @@ def test_quick_sale_accepts_whitespace_optional_select_values():
         )
 
     assert response.status_code == 303
+
+
+def test_quick_sale_surfaces_out_of_stock_stock_products_on_form():
+    with SessionLocal() as db:
+        product = _stock_product_without_inventory(db, "Out Of Stock Cable")
+        product_id = product.id
+
+    with TestClient(app) as client:
+        form = client.get("/sales/quick")
+        response = client.post(
+            "/sales/quick",
+            data={
+                "shift_id": "",
+                "cash_register_id": "",
+                "seller_id": "",
+                "seller_mode": "none",
+                "product_id": [str(product_id)],
+                "description": ["Out Of Stock Cable"],
+                "quantity": ["1"],
+                "unit_price": ["12"],
+                "vat_percent": ["24"],
+                "discount_amount": ["0"],
+                "payment_method": ["card"],
+                "payment_amount": [""],
+                "idempotency_key": "out-of-stock-form",
+            },
+            follow_redirects=False,
+        )
+
+    assert form.status_code == 200
+    assert "Out Of Stock Cable" in form.text
+    assert "Out of stock" in form.text
+    assert "disabled" in form.text
+    assert response.status_code == 400
+    assert "Negative stock is not allowed." in response.text
+    assert "Receive stock first" in response.text
+    assert "Bad Request" not in response.text
 
 
 def test_shiftless_sale_succeeds_by_default_but_can_be_required_by_setting():

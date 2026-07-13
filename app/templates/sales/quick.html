@@ -9,6 +9,14 @@
 </div>
 <form method="post" action="/sales/quick" class="card p-3">
     <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
+    {% if error %}
+    <div class="alert alert-warning" role="alert">
+        {{ error }}
+        {% if "Negative stock" in error %}
+        <div class="small mt-1">This stock product has no available inventory. Receive stock first, or edit the product as a non-stock/service item if it should not reduce inventory.</div>
+        {% endif %}
+    </div>
+    {% endif %}
     <div class="row g-3 mb-3">
         <div class="col-md-4">
             <label class="form-label" for="shift_id">Cashier shift (optional)</label>
@@ -49,10 +57,20 @@
             <label class="form-label" for="product_picker">Add product/service</label>
             <select class="form-select" id="product_picker">
                 <option value="">Manual row</option>
-                {% for product in products %}
-                <option value="{{ product.id }}" data-name="{{ product.name }}" data-price="{{ product.unit_price }}" data-vat="{{ product.vat_percent }}">{{ product.name }} / {{ product.unit_price }}</option>
+                {% for item in product_options %}
+                {% set product = item.product %}
+                <option value="{{ product.id }}"
+                        data-name="{{ product.name }}"
+                        data-price="{{ product.unit_price }}"
+                        data-vat="{{ product.vat_percent }}"
+                        data-stock-item="{{ '1' if product.is_stock_item else '0' }}"
+                        data-stock-qty="{{ item.stock_quantity }}"
+                        {% if item.out_of_stock %}disabled{% endif %}>
+                    {{ product.name }} / {{ product.unit_price }}{% if product.is_stock_item %} / Stock: {{ item.stock_quantity }}{% if item.out_of_stock %} / Out of stock{% endif %}{% endif %}
+                </option>
                 {% endfor %}
             </select>
+            <div class="form-text">Stock products require available inventory. Services and manual rows do not reduce stock.</div>
         </div>
     </div>
     <div class="table-responsive responsive-card-table">
@@ -108,6 +126,9 @@ function fillRowFromProduct(row, option) {
     row.querySelector("[name='description']").value = option.dataset.name || "";
     row.querySelector("[name='unit_price']").value = option.dataset.price || "0";
     row.querySelector("[name='vat_percent']").value = option.dataset.vat || "24";
+    if (option.dataset.stockItem === "1") {
+      row.querySelector(".product-label").textContent = `${option.dataset.name || "Stock product"} · stock ${option.dataset.stockQty || "0"}`;
+    }
   }
 }
 document.getElementById("add-line").addEventListener("click", () => {

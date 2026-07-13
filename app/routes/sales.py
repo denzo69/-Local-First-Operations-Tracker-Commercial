@@ -49,6 +49,32 @@ def _eligible_sellers(db: Session) -> list[User]:
     )
 
 
+def _quick_sale_context(request: Request, db: Session, *, error: str | None = None, idempotency_key: str | None = None):
+    products = db.query(Product).filter(Product.is_active.is_(True)).order_by(Product.name.asc()).all()
+    product_options = []
+    for product in products:
+        stock_quantity = product.current_inventory_quantity or 0
+        product_options.append(
+            {
+                "product": product,
+                "stock_quantity": stock_quantity,
+                "out_of_stock": bool(product.is_stock_item and stock_quantity <= 0),
+            }
+        )
+    return {
+        "request": request,
+        "app_name": settings.app_name,
+        "active_page": "sales",
+        "shifts": db.query(Shift).filter(Shift.status == "open").order_by(Shift.opened_at.desc()).all(),
+        "product_options": product_options,
+        "sellers": _eligible_sellers(db),
+        "cash_registers": db.query(CashRegister).filter(CashRegister.is_active.is_(True)).order_by(CashRegister.name.asc()).all(),
+        "payment_methods": {key: value for key, value in PAYMENT_METHODS.items() if key != "invoice"},
+        "idempotency_key": idempotency_key or str(uuid4()),
+        "error": error,
+    }
+
+
 @router.get("", response_class=HTMLResponse)
 def list_sales(request: Request, db: Session = Depends(get_db)):
     sales = db.query(Sale).order_by(Sale.sold_at.desc()).all()
@@ -83,20 +109,7 @@ def new_sale(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/quick", response_class=HTMLResponse)
 def quick_sale(request: Request, db: Session = Depends(get_db)):
-    return templates.TemplateResponse(
-        "sales/quick.html",
-        {
-            "request": request,
-            "app_name": settings.app_name,
-            "active_page": "sales",
-            "shifts": db.query(Shift).filter(Shift.status == "open").order_by(Shift.opened_at.desc()).all(),
-            "products": db.query(Product).filter(Product.is_active.is_(True)).order_by(Product.name.asc()).all(),
-            "sellers": _eligible_sellers(db),
-            "cash_registers": db.query(CashRegister).filter(CashRegister.is_active.is_(True)).order_by(CashRegister.name.asc()).all(),
-            "payment_methods": {key: value for key, value in PAYMENT_METHODS.items() if key != "invoice"},
-            "idempotency_key": str(uuid4()),
-        },
-    )
+    return templates.TemplateResponse("sales/quick.html", _quick_sale_context(request, db))
 
 
 def _optional_int(raw: str | None) -> int | None:
@@ -170,7 +183,16 @@ async def create_quick_sale(request: Request, db: Session = Depends(get_db)):
             idempotency_key=(form.get("idempotency_key") or "").strip() or None,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return templates.TemplateResponse(
+            "sales/quick.html",
+            _quick_sale_context(
+                request,
+                db,
+                error=str(exc),
+                idempotency_key=(form.get("idempotency_key") or "").strip() or None,
+            ),
+            status_code=400,
+        )
     return RedirectResponse(url=f"/sales/{sale.id}", status_code=303)
 
 
