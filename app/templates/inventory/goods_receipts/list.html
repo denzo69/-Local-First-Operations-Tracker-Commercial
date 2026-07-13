@@ -5,7 +5,10 @@
         <h1>{{ t.goods_receipts }}</h1>
         <p class="text-muted">{{ t.goods_receipts_help }}</p>
     </div>
-    <a class="btn btn-primary" href="/inventory/goods-receipts/new">{{ t.new_goods_receipt }}</a>
+    <div class="d-flex gap-2 flex-wrap justify-content-end">
+        <a class="btn btn-outline-secondary" href="/products">{{ t.products }}</a>
+        <a class="btn btn-primary" href="/inventory/goods-receipts/new">{{ t.new_goods_receipt }}</a>
+    </div>
 </div>
 <div class="card">
     <div class="table-responsive responsive-card-table">

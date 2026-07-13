@@ -87,7 +87,7 @@ def require_inventory_operational_user(user: User | None) -> User:
     if user is None or not user.is_active:
         raise ValueError("Active user is required.")
     if not user.role or user.role.code not in INVENTORY_OPERATIONAL_ROLES:
-        raise ValueError("User role is not allowed to create inventory transactions.")
+        raise ValueError("Only Admin, Manager, or Seller can manage inventory operations.")
     return user
 
 
@@ -130,7 +130,7 @@ def create_goods_receipt(
     allocation_method: str = "by_value",
     notes: str = "",
 ) -> GoodsReceipt:
-    creator = require_inventory_manager(db.get(User, received_by_user_id))
+    creator = require_inventory_operational_user(db.get(User, received_by_user_id))
     supplier = db.get(Supplier, supplier_id)
     if supplier is None or not supplier.is_active:
         raise ValueError("Active supplier is required.")
@@ -637,7 +637,7 @@ def _sync_product_cache(product: Product, *, stock: Decimal, value: Decimal, ave
 
 
 def post_goods_receipt(db: Session, *, goods_receipt_id: int, posted_by_user_id: int) -> GoodsReceipt:
-    user = require_inventory_manager(db.get(User, posted_by_user_id))
+    user = require_inventory_operational_user(db.get(User, posted_by_user_id))
     receipt = db.get(GoodsReceipt, goods_receipt_id)
     if receipt is None:
         raise ValueError("Goods receipt not found.")
@@ -950,7 +950,7 @@ def transfer_stock(
     quantity_value,
     created_by_user_id: int,
 ) -> list[InventoryTransaction]:
-    user = require_inventory_manager(db.get(User, created_by_user_id))
+    user = require_inventory_operational_user(db.get(User, created_by_user_id))
     product = db.get(Product, product_id)
     if product is None or not product.is_stock_item:
         raise ValueError("Stock product is required.")
