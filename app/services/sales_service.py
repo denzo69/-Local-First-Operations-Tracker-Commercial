@@ -809,6 +809,25 @@ def ensure_default_roles(db: Session) -> list[Role]:
     return db.query(Role).order_by(Role.id.asc()).all()
 
 
+def ensure_default_cash_register(db: Session) -> CashRegister:
+    register = db.query(CashRegister).order_by(CashRegister.id.asc()).first()
+    if register is not None:
+        return register
+    register = CashRegister(name="Main register", location="Default", is_active=True)
+    db.add(register)
+    db.flush()
+    log_audit_event(
+        db,
+        event_type="cash_register.created",
+        entity_type="cash_register",
+        entity_id=register.id,
+        description="Default cash register created for first local setup.",
+    )
+    db.commit()
+    db.refresh(register)
+    return register
+
+
 def user_can_manage_closing(user: User | None) -> bool:
     return bool(user and user.role and user.role.code in {"admin", "manager"})
 

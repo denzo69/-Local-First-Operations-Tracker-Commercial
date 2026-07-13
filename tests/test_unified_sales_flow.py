@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import Customer, InventoryTransaction, Job, JobItem, Payment, Product, Role, Sale, Setting, Supplier, User
+from app.models import CashRegister, Customer, InventoryTransaction, Job, JobItem, Payment, Product, Role, Sale, Setting, Supplier, User
 from app.services.inventory_service import (
     add_goods_receipt_line,
     create_default_warehouse,
@@ -54,8 +54,6 @@ def user(db, name: str, role_code: str = "seller", *, credit: bool = True) -> Us
 
 
 def open_test_shift(db, seller: User):
-    from app.models import CashRegister
-
     register = CashRegister(name=f"Register {seller.name}", is_active=True)
     db.add(register)
     db.commit()
@@ -66,6 +64,37 @@ def open_test_shift(db, seller: User):
         business_date=date(2026, 7, 12),
         starting_cash="0",
     )
+
+
+def test_local_setup_has_default_cash_register_for_first_shift():
+    with SessionLocal() as db:
+        register = db.query(CashRegister).order_by(CashRegister.id.asc()).first()
+
+    assert register is not None
+    assert register.name == "Main register"
+    assert register.is_active is True
+
+
+def test_quick_sale_form_blocks_submit_when_no_eligible_credited_seller():
+    with SessionLocal() as db:
+        admin = user(db, "Setup Admin", "admin", credit=False)
+        register = db.query(CashRegister).order_by(CashRegister.id.asc()).first()
+        assert register is not None
+        open_shift(
+            db,
+            seller_id=admin.id,
+            cash_register_id=register.id,
+            business_date=date(2026, 7, 12),
+            starting_cash="0",
+        )
+
+    with TestClient(app) as client:
+        response = client.get("/sales/quick")
+
+    assert response.status_code == 200
+    assert "No eligible credited seller" in response.text
+    assert "Complete sale" in response.text
+    assert "disabled" in response.text
 
 
 def service_product(db, name="Service", price="50", vat="24") -> Product:

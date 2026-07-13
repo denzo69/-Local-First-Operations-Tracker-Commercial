@@ -36,6 +36,19 @@ router = APIRouter(prefix="/sales", tags=["sales"])
 settings = get_settings()
 
 
+def _eligible_sellers(db: Session) -> list[User]:
+    return (
+        db.query(User)
+        .join(User.role)
+        .filter(
+            User.is_active.is_(True),
+            or_(User.can_receive_sales_credit.is_(True), User.role.has(code="seller")),
+        )
+        .order_by(User.name.asc())
+        .all()
+    )
+
+
 @router.get("", response_class=HTMLResponse)
 def list_sales(request: Request, db: Session = Depends(get_db)):
     sales = db.query(Sale).order_by(Sale.sold_at.desc()).all()
@@ -77,7 +90,7 @@ def quick_sale(request: Request, db: Session = Depends(get_db)):
             "active_page": "sales",
             "shifts": db.query(Shift).filter(Shift.status == "open").order_by(Shift.opened_at.desc()).all(),
             "products": db.query(Product).filter(Product.is_active.is_(True)).order_by(Product.name.asc()).all(),
-            "sellers": db.query(User).filter(User.is_active.is_(True)).order_by(User.name.asc()).all(),
+            "sellers": _eligible_sellers(db),
             "payment_methods": {key: value for key, value in PAYMENT_METHODS.items() if key != "invoice"},
             "idempotency_key": str(uuid4()),
         },
@@ -193,7 +206,7 @@ def work_order_sale_form(work_order_id: int, request: Request, db: Session = Dep
             "active_page": "sales",
             "work_order": work_order,
             "shifts": db.query(Shift).filter(Shift.status == "open").order_by(Shift.opened_at.desc()).all(),
-            "sellers": db.query(User).filter(User.is_active.is_(True)).order_by(User.name.asc()).all(),
+            "sellers": _eligible_sellers(db),
             "payment_methods": {key: value for key, value in PAYMENT_METHODS.items() if key != "invoice"},
             "existing_sale": next((sale for sale in work_order.sales if sale.status != "cancelled"), None),
             "idempotency_key": f"work-order:{work_order.id}",

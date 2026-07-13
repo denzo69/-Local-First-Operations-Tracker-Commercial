@@ -46,17 +46,16 @@
             <label class="form-label" for="seller_id">Credited seller</label>
             <select class="form-select" id="seller_id" name="seller_id" required>
                 {% for seller in sellers %}
-                {% if seller.can_receive_sales_credit or (seller.role and seller.role.code == "seller") %}
                 <option value="{{ seller.id }}">{{ seller.name }}</option>
-                {% endif %}
                 {% endfor %}
             </select>
+            {% if not sellers %}<div class="form-text text-danger">No eligible credited seller. Enable sales credit for a seller or create a Seller user.</div>{% endif %}
         </div>
         <div class="col-md-4">
             <label class="form-label">Settlement</label>
             <select class="form-select mb-2" name="payment_method">
-                <option value="invoice">Send to invoicing</option>
                 {% for code, label in payment_methods.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+                <option value="invoice">Send to invoicing</option>
             </select>
             <input class="form-control" name="payment_amount" placeholder="Amount, blank = full balance">
             <div class="form-check mt-2">
@@ -65,6 +64,9 @@
             </div>
         </div>
     </div>
-    <button class="btn btn-primary mt-3" type="submit" {% if existing_sale or not shifts or not work_order.items %}disabled{% endif %}>Create sale</button>
+    {% if not work_order.items %}
+    <div class="alert alert-warning mt-3 mb-0">Add at least one billable row on the Work Order before creating a sale.</div>
+    {% endif %}
+    <button class="btn btn-primary mt-3" type="submit" {% if existing_sale or not shifts or not sellers or not work_order.items %}disabled{% endif %}>Create sale</button>
 </form>
 {% endblock %}
