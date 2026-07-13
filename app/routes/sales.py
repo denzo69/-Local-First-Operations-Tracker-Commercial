@@ -100,9 +100,12 @@ def quick_sale(request: Request, db: Session = Depends(get_db)):
 
 
 def _optional_int(raw: str | None) -> int | None:
-    if raw is None or raw == "":
+    if raw is None:
         return None
-    return int(raw)
+    text = str(raw).strip()
+    if text == "":
+        return None
+    return int(text)
 
 
 def _parse_sale_lines(form) -> list[SaleLineInput]:

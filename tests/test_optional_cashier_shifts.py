@@ -65,6 +65,35 @@ def test_optional_shift_quick_sale_ui_is_not_blocking():
     assert "No seller on receipt" in response.text
 
 
+def test_quick_sale_accepts_whitespace_optional_select_values():
+    with SessionLocal() as db:
+        product = _service_product(db, "Whitespace Optional Select Service")
+        product_id = product.id
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/sales/quick",
+            data={
+                "shift_id": " ",
+                "cash_register_id": " ",
+                "seller_id": " ",
+                "seller_mode": "none",
+                "product_id": [str(product_id)],
+                "description": ["Whitespace optional select"],
+                "quantity": ["1"],
+                "unit_price": ["12"],
+                "vat_percent": ["24"],
+                "discount_amount": ["0"],
+                "payment_method": ["card"],
+                "payment_amount": [""],
+                "idempotency_key": "whitespace-optional-select",
+            },
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 303
+
+
 def test_shiftless_sale_succeeds_by_default_but_can_be_required_by_setting():
     with SessionLocal() as db:
         seller = _user(db, "Optional Rule Seller")
