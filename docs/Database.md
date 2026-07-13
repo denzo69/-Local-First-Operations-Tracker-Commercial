@@ -214,14 +214,16 @@ Important accounting rules:
 
 - Work Orders, Sales, Payments, and Refunds are separate records.
 - A Sale may reference a Work Order, but payments are stored in `payments`.
+- Cashier shifts are optional. `sales.shift_id`, `sales.seller_id`, `payments.shift_id`, and `payments.seller_id` are nullable so a sale can be completed without a linked cashier shift or explicit credited seller.
+- Shiftless sales remain normal Sales and Payments. They appear in sales, turnover, inventory, and seller reports when a seller exists, but shift closing only reconciles payments linked to that shift.
 - Refunds are stored in `refunds` and include `vat_breakdown_json`.
 - Refunds reference the original sale through `sale_id`, but `shift_id`, `seller_id`, and `refunded_at` describe the actual refund event.
 - A later refund is attributed to the refund shift business date and refunding seller. It does not move the original sale away from the original sale shift or seller.
 - Daily closing stores immutable rows in `daily_closing_snapshots`.
 - `daily_closings.current_version` points to the latest closing snapshot version.
 - Reopening a Daily Closing must preserve older snapshots and store `reopened_at`, `reopened_by_user_id`, and `reopen_reason`.
-- Closed business dates block financial writes until reopened.
-- Daily closing reports use actual event dates: sales from sale shifts, refunds from refund shifts.
+- Closed business dates block shift-linked financial writes until reopened.
+- Daily closing reports use actual event dates: sales from sale shifts, refunds from refund shifts. Shiftless sales are outside cashier-shift closing and remain visible in sales reports.
 - SQLite compatibility creates partial unique indexes to prevent more than one open shift per seller and more than one open shift per cash register.
 
 Current limitations:
@@ -230,6 +232,7 @@ Current limitations:
 - Role checks protect routes and business operations, but the app is still not hardened for public internet exposure.
 - Sale documents, payment transaction numbers, refund numbers, shift numbers, and closing numbers are not official stable document numbers yet.
 - Sales UI creates one line and one payment. Future versions should finalize sales from multiple validated lines and separate payment balancing.
+- `require_cashier_shift` exists as a future service-level setting, defaulting to `false`; there is no Settings UI for it yet.
 - Multi-VAT refunds are rejected until line-level refund allocation is added.
 - Financial refunds do not yet create customer-return inventory transactions.
 

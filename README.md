@@ -46,7 +46,7 @@ The app is not intended to be exposed directly to the public internet.
 - Settings for company details, VAT default, receipt prefix, and language
 - Finnish and English UI text baseline
 - Local login with signed session cookie, first-admin setup, password hashes, and operational roles for Admin, Manager, Seller, and Read only
-- Cash registers and seller shifts with starting cash, cash movements, closing count, expected cash, and over/short calculation
+- Optional cash registers and seller shifts with starting cash, cash movements, closing count, expected cash, and over/short calculation
 - Sales, payments, and refunds stored separately from Work Orders
 - Daily closing with immutable versioned snapshots, closed-day write lock, VAT/payment/seller summaries, and authorized reopen flow
 - Read-only browsing for historical daily closing snapshot versions
@@ -78,6 +78,7 @@ The app is not intended to be exposed directly to the public internet.
 - Money columns now use SQLAlchemy `Numeric`; existing SQLite columns may still have older storage affinity until a future migration rebuilds the tables
 - Bootstrap CSS and JavaScript are bundled locally under `app/static/vendor/bootstrap`; the app does not require a CDN for the normal UI
 - Sales UI creates one sale line and one payment today. The data model is prepared for more rows, but split/partial payments and multi-line sale finalization are not yet implemented.
+- Cashier shifts are optional by default. A future `require_cashier_shift` setting exists at the service level, but there is no Settings UI for it yet.
 - Multi-VAT refunds are rejected until line-level refund allocation is implemented.
 - Refunds do not yet create customer-return stock movements. A financial refund leaves inventory unchanged until a dedicated return workflow is implemented.
 
@@ -85,11 +86,17 @@ The app is not intended to be exposed directly to the public internet.
 
 Work Orders, Sales, Payments, and Refunds are separate business objects. A Sale may link to a Work Order, but a Work Order is not treated as the payment record.
 
+Cashier shifts are optional operational tools. They are useful for businesses that need cashier balancing, starting cash, cash movements, and over/short checks. Small businesses, sole traders, mobile workers, and service businesses may complete sales without opening a cashier shift. Shiftless sales still create receipts, payments, audit events, inventory movements for stock products, and sales/seller report entries.
+
+If an open cashier shift is selected for a sale, the sale and payment are linked to that shift and included in shift closing. If no shift is selected, the sale is completed normally and has no linked shift. Shift reports ignore shiftless sales.
+
+Seller attribution is optional for a sale. When no seller is selected, the logged-in user is used as the default seller. If no seller can be resolved, the sale may still be completed; reports display the seller as `Unknown` and receipts may omit the seller.
+
 Daily closing rules:
 
 - All shifts for the business date must be closed before the day can be closed.
 - Closing creates a stored immutable snapshot with a version number.
-- A closed business date blocks new shifts, sales, refunds, cash movements, and shift closing for that date.
+- A closed business date blocks new shifts, shift-linked sales, refunds, cash movements, and shift closing for that date.
 - Only reopening the Daily Closing unlocks that date.
 - Re-closing after reopen creates a new snapshot version and preserves older snapshot rows.
 - Refunds cannot exceed the original sale total cumulatively.

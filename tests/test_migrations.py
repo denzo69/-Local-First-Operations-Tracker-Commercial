@@ -9,6 +9,7 @@ from app.migration_bootstrap import (
     CLASS_BASELINE,
     CLASS_EMPTY,
     CLASS_INVENTORY,
+    CLASS_OPTIONAL_CASHIER_SHIFTS,
     CLASS_STABILIZATION,
     CLASS_UNKNOWN,
     HEAD_REVISION,
@@ -107,6 +108,12 @@ def test_alembic_upgrade_head_creates_current_schema(tmp_path):
     assert "cash_register_id" in sale_columns
     payment_columns = {column["name"] for column in inspector.get_columns("payments")}
     assert "received_by_user_id" in payment_columns
+    sales_nullable = {column["name"]: column["nullable"] for column in inspector.get_columns("sales")}
+    payments_nullable = {column["name"]: column["nullable"] for column in inspector.get_columns("payments")}
+    assert sales_nullable["seller_id"] is True
+    assert sales_nullable["shift_id"] is True
+    assert payments_nullable["seller_id"] is True
+    assert payments_nullable["shift_id"] is True
     receipt_columns = {column["name"] for column in inspector.get_columns("goods_receipts")}
     assert "freight_vat_rate" in receipt_columns
     assert "freight_vat_amount" in receipt_columns
@@ -135,7 +142,7 @@ def test_alembic_upgrade_head_creates_current_schema(tmp_path):
 
     assert "trg_inventory_transactions_no_update" in triggers
     assert "trg_inventory_transactions_no_delete" in triggers
-    assert version == "9e4c3b2a1f08"
+    assert version == HEAD_REVISION
 
 
 def test_empty_database_bootstrap_upgrades_to_head(tmp_path):
@@ -198,7 +205,7 @@ def test_unstamped_stabilization_database_is_stamped_without_rebuild(tmp_path):
 
     assert plan.classification.classification == CLASS_STABILIZATION
     assert plan.stamp_revision == STABILIZATION_REVISION
-    assert plan.upgrade_target is None
+    assert plan.upgrade_target == "head"
     assert before_tables | {"alembic_version"} == after_tables
     assert _current_revision(db_path) == HEAD_REVISION
 
@@ -322,7 +329,7 @@ def test_extra_legacy_side_table_does_not_block_known_schema_classification(tmp_
     inspection = inspect_database(_database_url(db_path))
     classification = classify_schema(inspection)
 
-    assert classification.classification == CLASS_STABILIZATION
+    assert classification.classification == CLASS_OPTIONAL_CASHIER_SHIFTS
     assert classification.matched_revision == HEAD_REVISION
 
 

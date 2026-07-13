@@ -21,6 +21,12 @@ router = APIRouter(prefix="/sales", tags=["sales"])
 settings = get_settings()
 
 
+def _optional_int(raw: str | None) -> int | None:
+    if raw is None or raw == "":
+        return None
+    return int(raw)
+
+
 @router.get("", response_class=HTMLResponse)
 def list_sales(request: Request, db: Session = Depends(get_db)):
     sales = db.query(Sale).order_by(Sale.sold_at.desc()).all()
@@ -55,32 +61,32 @@ def new_sale(request: Request, db: Session = Depends(get_db)):
 @router.post("")
 def create_sale(
     request: Request,
-    shift_id: int = Form(...),
-    seller_id: int = Form(...),
+    shift_id: str = Form(""),
+    seller_id: str = Form(""),
     payment_method: str = Form(...),
     description: str = Form(...),
     quantity: str = Form("1"),
     unit_price: str = Form("0"),
     vat_percent: str = Form("24"),
     discount_amount: str = Form("0"),
-    work_order_id: int | None = Form(None),
-    product_id: int | None = Form(None),
+    work_order_id: str = Form(""),
+    product_id: str = Form(""),
     db: Session = Depends(get_db),
 ):
     current_user = request_current_user(request)
     try:
         sale = create_sale_with_payment(
             db,
-            seller_id=seller_id,
-            shift_id=shift_id,
+            seller_id=_optional_int(seller_id),
+            shift_id=_optional_int(shift_id),
             payment_method=payment_method,
             description=description,
             quantity=quantity,
             unit_price=unit_price,
             vat_percent=vat_percent,
             discount_amount=discount_amount,
-            work_order_id=work_order_id,
-            product_id=product_id,
+            work_order_id=_optional_int(work_order_id),
+            product_id=_optional_int(product_id),
             created_by_user_id=current_user.id if current_user is not None else None,
             seller_selection_mode="selectable_active_seller",
         )

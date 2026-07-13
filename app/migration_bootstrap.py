@@ -26,13 +26,15 @@ BASELINE_REVISION = "162323fcac91"
 AUTH_REVISION = "3f0d1c9a8b22"
 INVENTORY_REVISION = "7c2a91f4d8e3"
 STABILIZATION_REVISION = "9e4c3b2a1f08"
-HEAD_REVISION = STABILIZATION_REVISION
+OPTIONAL_CASHIER_SHIFTS_REVISION = "d4f7a2c9b8e1"
+HEAD_REVISION = OPTIONAL_CASHIER_SHIFTS_REVISION
 
 CLASS_EMPTY = "empty database"
 CLASS_BASELINE = "matches baseline"
 CLASS_AUTH = "matches auth revision"
 CLASS_INVENTORY = "matches inventory revision"
 CLASS_STABILIZATION = "matches stabilization revision"
+CLASS_OPTIONAL_CASHIER_SHIFTS = "matches optional cashier shifts revision"
 CLASS_UNKNOWN = "inconsistent / partially migrated / unknown"
 
 
@@ -440,9 +442,25 @@ REVISION_LABELS = {
     AUTH_REVISION: CLASS_AUTH,
     INVENTORY_REVISION: CLASS_INVENTORY,
     STABILIZATION_REVISION: CLASS_STABILIZATION,
+    OPTIONAL_CASHIER_SHIFTS_REVISION: CLASS_OPTIONAL_CASHIER_SHIFTS,
 }
 
-REVISION_ORDER = [BASELINE_REVISION, AUTH_REVISION, INVENTORY_REVISION, STABILIZATION_REVISION]
+REVISION_ORDER = [
+    BASELINE_REVISION,
+    AUTH_REVISION,
+    INVENTORY_REVISION,
+    STABILIZATION_REVISION,
+    OPTIONAL_CASHIER_SHIFTS_REVISION,
+]
+
+REQUIRED_NULLABILITY_BY_REVISION = {
+    OPTIONAL_CASHIER_SHIFTS_REVISION: {
+        ("sales", "seller_id"): True,
+        ("sales", "shift_id"): True,
+        ("payments", "seller_id"): True,
+        ("payments", "shift_id"): True,
+    }
+}
 
 
 class MigrationBootstrapError(RuntimeError):
@@ -456,6 +474,7 @@ class SchemaInspection:
     sqlite: bool
     tables: set[str]
     columns_by_table: dict[str, set[str]]
+    column_nullable_by_table: dict[str, dict[str, bool]]
     indexes: set[str]
     foreign_keys: set[tuple[str, str, str]]
     triggers: set[str]
@@ -514,6 +533,7 @@ def inspect_database(database_url: str) -> SchemaInspection:
             sqlite=False,
             tables=set(),
             columns_by_table={},
+            column_nullable_by_table={},
             indexes=set(),
             foreign_keys=set(),
             triggers=set(),
@@ -527,6 +547,7 @@ def inspect_database(database_url: str) -> SchemaInspection:
             sqlite=True,
             tables=set(),
             columns_by_table={},
+            column_nullable_by_table={},
             indexes=set(),
             foreign_keys=set(),
             triggers=set(),
@@ -540,10 +561,13 @@ def inspect_database(database_url: str) -> SchemaInspection:
         tables = {row[0] for row in rows}
 
         columns_by_table: dict[str, set[str]] = {}
+        column_nullable_by_table: dict[str, dict[str, bool]] = {}
         foreign_keys: set[tuple[str, str, str]] = set()
         indexes: set[str] = set()
         for table in tables:
-            columns_by_table[table] = {row[1] for row in connection.execute(f'PRAGMA table_info("{table}")')}
+            table_info = connection.execute(f'PRAGMA table_info("{table}")').fetchall()
+            columns_by_table[table] = {row[1] for row in table_info}
+            column_nullable_by_table[table] = {row[1]: not bool(row[3]) for row in table_info}
             for row in connection.execute(f'PRAGMA foreign_key_list("{table}")'):
                 foreign_keys.add((table, row[3], row[2]))
             for row in connection.execute(f'PRAGMA index_list("{table}")'):
@@ -566,6 +590,7 @@ def inspect_database(database_url: str) -> SchemaInspection:
         sqlite=True,
         tables=tables,
         columns_by_table=columns_by_table,
+        column_nullable_by_table=column_nullable_by_table,
         indexes=indexes,
         foreign_keys=foreign_keys,
         triggers=triggers,
@@ -585,7 +610,8 @@ BASELINE_SCHEMA = merge_columns(BASELINE_TABLE_COLUMNS)
 AUTH_SCHEMA = merge_columns(BASELINE_SCHEMA, AUTH_COLUMNS)
 INVENTORY_SCHEMA = merge_columns(AUTH_SCHEMA, INVENTORY_COLUMNS, INVENTORY_TABLE_COLUMNS)
 STABILIZATION_SCHEMA = merge_columns(INVENTORY_SCHEMA, STABILIZATION_COLUMNS)
-HEAD_KNOWN_SCHEMA = STABILIZATION_SCHEMA
+OPTIONAL_CASHIER_SHIFTS_SCHEMA = STABILIZATION_SCHEMA
+HEAD_KNOWN_SCHEMA = OPTIONAL_CASHIER_SHIFTS_SCHEMA
 
 
 def _missing_schema(schema: dict[str, set[str]], inspection: SchemaInspection) -> list[str]:
@@ -612,20 +638,36 @@ def _unexpected_schema(inspection: SchemaInspection) -> list[str]:
 
 def _missing_indexes(revision: str, inspection: SchemaInspection) -> list[str]:
     required: set[str] = set()
-    if revision in {BASELINE_REVISION, AUTH_REVISION, INVENTORY_REVISION, STABILIZATION_REVISION}:
+    if revision in {BASELINE_REVISION, AUTH_REVISION, INVENTORY_REVISION, STABILIZATION_REVISION, OPTIONAL_CASHIER_SHIFTS_REVISION}:
         required.update(REQUIRED_INDEXES_BY_REVISION[BASELINE_REVISION])
-    if revision in {INVENTORY_REVISION, STABILIZATION_REVISION}:
+    if revision in {INVENTORY_REVISION, STABILIZATION_REVISION, OPTIONAL_CASHIER_SHIFTS_REVISION}:
         required.update(REQUIRED_INDEXES_BY_REVISION[INVENTORY_REVISION])
-    if revision == STABILIZATION_REVISION:
+    if revision in {STABILIZATION_REVISION, OPTIONAL_CASHIER_SHIFTS_REVISION}:
         required.update(REQUIRED_INDEXES_BY_REVISION[STABILIZATION_REVISION])
     return [f"missing index {index}" for index in sorted(required - inspection.indexes)]
 
 
 def _missing_triggers(revision: str, inspection: SchemaInspection) -> list[str]:
     required: set[str] = set()
-    if revision == STABILIZATION_REVISION:
+    if revision in {STABILIZATION_REVISION, OPTIONAL_CASHIER_SHIFTS_REVISION}:
         required.update(REQUIRED_TRIGGERS_BY_REVISION[STABILIZATION_REVISION])
     return [f"missing trigger {trigger}" for trigger in sorted(required - inspection.triggers)]
+
+
+def _missing_nullability(revision: str, inspection: SchemaInspection) -> list[str]:
+    required: dict[tuple[str, str], bool] = {}
+    if revision == OPTIONAL_CASHIER_SHIFTS_REVISION:
+        required.update(REQUIRED_NULLABILITY_BY_REVISION[OPTIONAL_CASHIER_SHIFTS_REVISION])
+    missing: list[str] = []
+    for (table, column), expected_nullable in sorted(required.items()):
+        actual_nullable = inspection.column_nullable_by_table.get(table, {}).get(column)
+        if actual_nullable is None:
+            missing.append(f"missing nullability evidence {table}.{column}")
+        elif actual_nullable != expected_nullable:
+            expected = "nullable" if expected_nullable else "not nullable"
+            actual = "nullable" if actual_nullable else "not nullable"
+            missing.append(f"column {table}.{column} is {actual}, expected {expected}")
+    return missing
 
 
 def _future_revision_evidence(revision: str, inspection: SchemaInspection) -> list[str]:
@@ -656,6 +698,14 @@ def _future_revision_evidence(revision: str, inspection: SchemaInspection) -> li
         present_triggers = REQUIRED_TRIGGERS_BY_REVISION[STABILIZATION_REVISION] & inspection.triggers
         evidence.extend(f"future trigger {trigger}" for trigger in sorted(present_triggers))
 
+    if OPTIONAL_CASHIER_SHIFTS_REVISION in later_revisions:
+        for (table, column), expected_nullable in REQUIRED_NULLABILITY_BY_REVISION[
+            OPTIONAL_CASHIER_SHIFTS_REVISION
+        ].items():
+            actual_nullable = inspection.column_nullable_by_table.get(table, {}).get(column)
+            if actual_nullable == expected_nullable:
+                evidence.append(f"future nullability {table}.{column}")
+
     return evidence
 
 
@@ -677,6 +727,7 @@ def classify_schema(inspection: SchemaInspection) -> SchemaClassification:
         )
 
     candidates = [
+        (OPTIONAL_CASHIER_SHIFTS_REVISION, OPTIONAL_CASHIER_SHIFTS_SCHEMA),
         (STABILIZATION_REVISION, STABILIZATION_SCHEMA),
         (INVENTORY_REVISION, INVENTORY_SCHEMA),
         (AUTH_REVISION, AUTH_SCHEMA),
@@ -687,6 +738,7 @@ def classify_schema(inspection: SchemaInspection) -> SchemaClassification:
         missing = _missing_schema(schema, inspection)
         missing.extend(_missing_indexes(revision, inspection))
         missing.extend(_missing_triggers(revision, inspection))
+        missing.extend(_missing_nullability(revision, inspection))
         if not missing:
             future_evidence = _future_revision_evidence(revision, inspection)
             if future_evidence:
@@ -781,10 +833,10 @@ def plan_bootstrap(database_url: str, *, backup_dir: str | Path | None = None, d
     if classification.classification == CLASS_EMPTY:
         upgrade_target = "head"
         actions.append("run alembic upgrade head")
-    elif classification.matched_revision == STABILIZATION_REVISION:
-        stamp_revision = STABILIZATION_REVISION
-        actions.append(f"stamp {STABILIZATION_REVISION}")
-    elif classification.matched_revision in {BASELINE_REVISION, AUTH_REVISION, INVENTORY_REVISION}:
+    elif classification.matched_revision == HEAD_REVISION:
+        stamp_revision = HEAD_REVISION
+        actions.append(f"stamp {HEAD_REVISION}")
+    elif classification.matched_revision in {BASELINE_REVISION, AUTH_REVISION, INVENTORY_REVISION, STABILIZATION_REVISION}:
         stamp_revision = classification.matched_revision
         upgrade_target = "head"
         actions.append(f"stamp {classification.matched_revision}")

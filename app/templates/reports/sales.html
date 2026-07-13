@@ -4,7 +4,7 @@
 <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
     <div>
         <h1 class="h3 mb-1">Reports</h1>
-        <p class="text-muted mb-0">Daily and monthly sales totals from work order rows.</p>
+        <p class="text-muted mb-0">Daily and monthly totals from finalized sales and work order rows.</p>
     </div>
 </div>
 
@@ -55,6 +55,31 @@
 </div>
 
 <div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white fw-semibold">Day sales register</div>
+    <div class="card-body p-0">
+        {% if day_sales %}
+        <div class="list-group list-group-flush">
+            {% for sale in day_sales %}
+            <a class="list-group-item list-group-item-action py-3" href="/sales/{{ sale.id }}">
+                <div class="d-flex justify-content-between gap-3">
+                    <div>
+                        <div class="fw-semibold">{{ sale.lines[0].description_snapshot if sale.lines else "Sale" }}</div>
+                        <div class="text-muted small">
+                            {{ sale.payment_method }} · {{ (sale.sold_by or sale.seller).name if (sale.sold_by or sale.seller) else t.unknown }}
+                        </div>
+                    </div>
+                    <div class="fw-semibold">{{ "%.2f"|format(sale.total) }}</div>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="p-4 text-muted">No finalized sales for this day.</div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card shadow-sm border-0 mb-4">
     <div class="card-header bg-white fw-semibold">Day work orders</div>
     <div class="card-body p-0">
         {% if day_jobs %}
@@ -73,6 +98,31 @@
         </div>
         {% else %}
         <div class="p-4 text-muted">No sales rows for this day.</div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card shadow-sm border-0 mb-4">
+    <div class="card-header bg-white fw-semibold">Month sales register</div>
+    <div class="card-body p-0">
+        {% if month_sales %}
+        <div class="list-group list-group-flush">
+            {% for sale in month_sales %}
+            <a class="list-group-item list-group-item-action py-3" href="/sales/{{ sale.id }}">
+                <div class="d-flex justify-content-between gap-3">
+                    <div>
+                        <div class="fw-semibold">{{ sale.lines[0].description_snapshot if sale.lines else "Sale" }}</div>
+                        <div class="text-muted small">
+                            {{ sale.payment_method }} · {{ (sale.sold_by or sale.seller).name if (sale.sold_by or sale.seller) else t.unknown }}
+                        </div>
+                    </div>
+                    <div class="fw-semibold">{{ "%.2f"|format(sale.total) }}</div>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="p-4 text-muted">No finalized sales for this month.</div>
         {% endif %}
     </div>
 </div>

@@ -15,6 +15,7 @@ DEFAULT_SETTINGS = {
     "next_receipt_sequence": "1",
     "receipt_sequence_year": "",
     "language": "en",
+    "require_cashier_shift": "false",
 }
 
 SUPPORTED_LANGUAGES = {

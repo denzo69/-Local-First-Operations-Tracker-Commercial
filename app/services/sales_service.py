@@ -24,6 +24,7 @@ from app.models import (
 )
 from app.services.audit_service import log_audit_event
 from app.services.money_service import money, parse_decimal, sum_money, vat_included_breakdown
+from app.services.settings_service import get_app_settings
 
 
 ROLE_DEFINITIONS = {
@@ -126,6 +127,15 @@ def require_sales_credit_user(user: User | None) -> User:
     raise ValueError("User is not eligible to receive sales credit.")
 
 
+def cashier_shift_required(db: Session) -> bool:
+    return str(get_app_settings(db).get("require_cashier_shift", "false")).lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 def user_can_override_sale_seller(user: User | None) -> bool:
     return bool(user and user.is_active and user.role and user.role.code in {"admin", "manager"})
 
@@ -139,27 +149,25 @@ def require_sale_seller_override_user(user: User | None) -> User:
 def resolve_sale_seller(
     db: Session,
     *,
-    shift: Shift,
+    shift: Shift | None,
     selected_seller_id: int | None,
     created_by_user_id: int | None,
     seller_selection_mode: str,
-) -> tuple[User, User | None]:
-    mode = seller_selection_mode if seller_selection_mode in SALE_SELLER_SELECTION_MODES else "shift_owner"
+) -> tuple[User | None, User | None]:
+    mode = seller_selection_mode if seller_selection_mode in SALE_SELLER_SELECTION_MODES else "selectable_active_seller"
     operator = db.get(User, created_by_user_id) if created_by_user_id else None
     if operator is not None:
         require_operational_user(operator)
 
     if mode == "authenticated_user" and operator is not None:
-        sold_by_id = operator.id
-    elif mode == "selectable_active_seller":
-        sold_by_id = selected_seller_id or shift.seller_id
-    elif operator is not None and user_can_override_sale_seller(operator) and selected_seller_id:
-        sold_by_id = selected_seller_id
-    else:
-        sold_by_id = shift.seller_id
-
-    sold_by = require_sales_credit_user(db.get(User, sold_by_id))
-    return sold_by, operator
+        return operator, operator
+    if selected_seller_id:
+        return require_sales_credit_user(db.get(User, selected_seller_id)), operator
+    if operator is not None:
+        return operator, operator
+    if shift is not None:
+        return require_sales_credit_user(shift.seller), operator
+    return None, operator
 
 
 def require_closing_manager(user: User | None) -> User:
@@ -249,8 +257,8 @@ def open_shift(
 def create_sale_with_payment(
     db: Session,
     *,
-    seller_id: int,
-    shift_id: int,
+    seller_id: int | None = None,
+    shift_id: int | None = None,
     payment_method: str,
     description: str,
     quantity,
@@ -263,10 +271,13 @@ def create_sale_with_payment(
     created_by_user_id: int | None = None,
     seller_selection_mode: str = "shift_owner",
 ) -> Sale:
-    shift = db.get(Shift, shift_id)
-    if shift is None or shift.status != "open":
-        raise ValueError("Sale requires an open shift.")
-    assert_business_date_open(db, shift.business_date)
+    shift = db.get(Shift, shift_id) if shift_id else None
+    if shift_id and (shift is None or shift.status != "open"):
+        raise ValueError("Selected cashier shift must be open.")
+    if shift is not None:
+        assert_business_date_open(db, shift.business_date)
+    elif cashier_shift_required(db):
+        raise ValueError("An active cashier shift is required by configuration.")
     sold_by, operator = resolve_sale_seller(
         db,
         shift=shift,
@@ -274,7 +285,7 @@ def create_sale_with_payment(
         created_by_user_id=created_by_user_id,
         seller_selection_mode=seller_selection_mode,
     )
-    operator_id = operator.id if operator is not None else sold_by.id
+    operator_id = operator.id if operator is not None else (sold_by.id if sold_by is not None else None)
     require_payment_method(payment_method)
 
     work_order = db.get(Job, work_order_id) if work_order_id else None
@@ -312,11 +323,11 @@ def create_sale_with_payment(
     }
     try:
         sale = Sale(
-            seller_id=sold_by.id,
-            sold_by_user_id=sold_by.id,
+            seller_id=sold_by.id if sold_by is not None else None,
+            sold_by_user_id=sold_by.id if sold_by is not None else None,
             created_by_user_id=operator_id,
-            shift_id=shift_id,
-            cash_register_id=shift.cash_register_id,
+            shift_id=shift.id if shift is not None else None,
+            cash_register_id=shift.cash_register_id if shift is not None else None,
             work_order_id=work_order_id,
             payment_method=payment_method,
             subtotal=subtotal,
@@ -370,8 +381,8 @@ def create_sale_with_payment(
         db.add(
             Payment(
                 sale_id=sale.id,
-                shift_id=shift_id,
-                seller_id=sold_by.id,
+                shift_id=shift.id if shift is not None else None,
+                seller_id=sold_by.id if sold_by is not None else None,
                 received_by_user_id=operator_id,
                 payment_method=payment_method,
                 amount=line_total,
@@ -383,8 +394,10 @@ def create_sale_with_payment(
             entity_type="sale",
             entity_id=sale.id,
             description=(
-                f"Sale created for {line_total}; sold by {sold_by.id}/{sold_by.name}; "
-                f"operator {operator_id}; shift {shift.id}; cash register {shift.cash_register_id}."
+                f"Sale created for {line_total}; "
+                f"sold by {sold_by.id if sold_by else 'unknown'}/{sold_by.name if sold_by else 'Unknown'}; "
+                f"operator {operator_id if operator_id is not None else 'unknown'}; "
+                f"shift {shift.id if shift else 'none'}; cash register {shift.cash_register_id if shift else 'none'}."
             ),
         )
         db.commit()
@@ -406,9 +419,8 @@ def correct_sale_seller(
     sale = db.get(Sale, sale_id)
     if sale is None:
         raise ValueError("Sale not found.")
-    if sale.shift is None:
-        raise ValueError("Sale has no shift for business date validation.")
-    assert_business_date_open(db, sale.shift.business_date)
+    if sale.shift is not None:
+        assert_business_date_open(db, sale.shift.business_date)
     corrected_by = require_sale_seller_override_user(db.get(User, corrected_by_user_id))
     correction_reason = reason.strip()
     if not correction_reason:
@@ -655,7 +667,7 @@ def build_daily_closing_snapshot(db: Session, business_date: date) -> dict:
         sale_seller = sale.sold_by or sale.seller
         seller_bucket = seller_totals[sale_seller_id]
         seller_bucket["seller_id"] = sale_seller_id
-        seller_bucket["seller_name"] = sale_seller.name if sale_seller else f"User {sale_seller_id}"
+        seller_bucket["seller_name"] = sale_seller.name if sale_seller else "Unknown"
         seller_bucket["gross_sales"] += parse_decimal(sale.total)
         seller_bucket["discounts"] += parse_decimal(sale.discount_total)
         seller_bucket["transaction_count"] += 1
