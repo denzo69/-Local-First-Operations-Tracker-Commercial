@@ -7,7 +7,14 @@ from fastapi.testclient import TestClient
 from app.database import SessionLocal
 from app.main import app
 from app.models import CashRegister, Product, Role, Setting, User
-from app.services.sales_service import PaymentInput, SaleLineInput, create_sale_from_lines, open_shift
+from app.services.sales_service import (
+    PaymentInput,
+    SaleLineInput,
+    add_refund,
+    build_daily_closing_snapshot,
+    create_sale_from_lines,
+    open_shift,
+)
 
 
 def _role(db, code: str) -> Role:
@@ -73,9 +80,10 @@ def test_optional_shift_quick_sale_ui_is_not_blocking():
         response = client.get("/sales/quick")
 
     assert response.status_code == 200
-    assert "Cashier shift (optional)" in response.text
-    assert "No cashier shift" in response.text
+    assert "Cashier shift (optional)" not in response.text
+    assert "No cashier shift" not in response.text
     assert "No seller on receipt" in response.text
+    assert 'name="shift_id" value=""' in response.text
 
 
 def test_quick_sale_accepts_whitespace_optional_select_values():
@@ -231,3 +239,43 @@ def test_selected_shift_still_controls_shift_and_cash_register():
     assert observed["sale_shift_id"] == observed["shift_id"]
     assert observed["sale_cash_register_id"] == observed["register_id"]
     assert observed["business_date"] == date(2026, 7, 12)
+
+
+def test_shiftless_sale_can_be_refunded_without_open_shift_and_counts_in_daily_snapshot():
+    with SessionLocal() as db:
+        seller = _user(db, "Shiftless Refund Seller")
+        product = _service_product(db, "Shiftless Refund Service", "20.00")
+        sale = create_sale_from_lines(
+            db,
+            seller_id=seller.id,
+            created_by_user_id=seller.id,
+            lines=[
+                SaleLineInput(
+                    product_id=product.id,
+                    description="Shiftless refund sale",
+                    quantity="1",
+                    unit_price="20",
+                    vat_percent="24",
+                )
+            ],
+            payments=[PaymentInput("card")],
+            idempotency_key="shiftless-refund-sale",
+        )
+
+        refund = add_refund(
+            db,
+            sale_id=sale.id,
+            refund_shift_id=None,
+            seller_id=seller.id,
+            amount="5",
+            payment_method="card",
+            reason="No shift refund",
+        )
+        snapshot = build_daily_closing_snapshot(db, date.today())
+
+        assert refund.shift_id is None
+        assert refund.business_date == date.today()
+        assert snapshot["gross_sales"] == "20.00"
+        assert snapshot["total_refunds"] == "5.00"
+        assert snapshot["payment_totals"][0]["payment_method"] == "card"
+        assert snapshot["payment_totals"][0]["refunds"] == "5.00"

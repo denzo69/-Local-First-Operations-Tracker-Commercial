@@ -97,6 +97,7 @@ def test_quick_sale_form_allows_submit_when_no_eligible_credited_seller():
     assert response.status_code == 200
     assert "No seller on receipt" in response.text
     assert "Complete sale" in response.text
+    assert "Cashier shift" not in response.text
     assert "disabled" not in response.text
 
 

@@ -39,9 +39,13 @@ async def authentication_middleware(request: Request, call_next):
         if request.state.current_user is None:
             return _unauthenticated_response(request)
 
-        if request.method not in {"GET", "HEAD", "OPTIONS"} and user_has_role(
+        if (
+            request.method not in {"GET", "HEAD", "OPTIONS"}
+            and path != "/settings/language"
+            and user_has_role(
             request.state.current_user,
             {"read_only"},
+            )
         ):
             return _forbidden_response(request, "Read only users cannot modify data.")
 

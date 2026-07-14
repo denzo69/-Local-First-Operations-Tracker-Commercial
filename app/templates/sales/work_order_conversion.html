@@ -2,29 +2,29 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
-        <h1>Create sale / take payment</h1>
+        <h1>{{ t.create_sale_take_payment }}</h1>
         <p class="text-muted">{{ work_order.title }}{% if work_order.customer %} / {{ work_order.customer.name }}{% endif %}</p>
     </div>
-    <a class="btn btn-outline-secondary" href="/work-orders/{{ work_order.id }}">Back</a>
+    <a class="btn btn-outline-secondary" href="/work-orders/{{ work_order.id }}">{{ t.back }}</a>
 </div>
 {% if existing_sale %}
-<div class="alert alert-info">This work order already has sale <a href="/sales/{{ existing_sale.id }}">#{{ existing_sale.id }}</a>. Duplicate conversion is blocked.</div>
+<div class="alert alert-info">{{ t.work_order_already_has_sale }} <a href="/sales/{{ existing_sale.id }}">#{{ existing_sale.id }}</a>.</div>
 {% endif %}
 <div class="card mb-3">
     <div class="table-responsive responsive-card-table">
         <table class="table mb-0">
-            <thead><tr><th>Description</th><th>Qty</th><th>Unit price</th><th>VAT %</th><th>Total</th></tr></thead>
+            <thead><tr><th>{{ t.description }}</th><th>{{ t.quantity }}</th><th>{{ t.unit_price }}</th><th>{{ t.vat }} %</th><th>{{ t.total }}</th></tr></thead>
             <tbody>
             {% for item in work_order.items %}
             <tr>
-                <td data-label="Description">{{ item.description }}</td>
-                <td data-label="Qty">{{ item.quantity }}</td>
-                <td data-label="Unit price">{{ item.unit_price }}</td>
-                <td data-label="VAT %">{{ item.vat_percent }}</td>
-                <td data-label="Total">{{ item.line_total }}</td>
+                <td data-label="{{ t.description }}">{{ item.description }}</td>
+                <td data-label="{{ t.quantity }}">{{ item.quantity }}</td>
+                <td data-label="{{ t.unit_price }}">{{ item.unit_price }}</td>
+                <td data-label="{{ t.vat }} %">{{ item.vat_percent }}</td>
+                <td data-label="{{ t.total }}">{{ item.line_total }}</td>
             </tr>
             {% else %}
-            <tr><td colspan="5" class="text-muted">No billable rows.</td></tr>
+            <tr><td colspan="5" class="text-muted">{{ t.no_billable_rows }}</td></tr>
             {% endfor %}
             </tbody>
         </table>
@@ -32,58 +32,40 @@
 </div>
 <form class="card p-3" method="post" action="/sales/work-orders/{{ work_order.id }}">
     <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
+    <input type="hidden" name="shift_id" value="">
+    <input type="hidden" name="cash_register_id" value="">
     <div class="row g-3">
         <div class="col-md-4">
-            <label class="form-label" for="shift_id">Cashier shift (optional)</label>
-            <select class="form-select" id="shift_id" name="shift_id">
-                <option value="">No cashier shift</option>
-                {% for shift in shifts %}
-                <option value="{{ shift.id }}">#{{ shift.id }} {{ shift.seller.name }} / {{ shift.cash_register.name }}</option>
-                {% endfor %}
-            </select>
-            <div class="form-text">Work Order sales can be completed without a cashier shift unless the installation requires shifts.</div>
-        </div>
-        <div class="col-md-4">
-            <label class="form-label" for="seller_mode">Credited seller</label>
+            <label class="form-label" for="seller_mode">{{ t.credited_seller }}</label>
             <select class="form-select mb-2" id="seller_mode" name="seller_mode">
-                <option value="default">Default</option>
-                <option value="selected">Select seller</option>
-                <option value="none">No seller on receipt</option>
+                <option value="default">{{ t.default }}</option>
+                <option value="selected">{{ t.select_seller }}</option>
+                <option value="none">{{ t.no_seller_on_receipt }}</option>
             </select>
             <select class="form-select" id="seller_id" name="seller_id">
-                <option value="">Select seller when needed</option>
+                <option value="">{{ t.select_seller_when_needed }}</option>
                 {% for seller in sellers %}
                 <option value="{{ seller.id }}">{{ seller.name }}</option>
                 {% endfor %}
             </select>
-            <div class="form-text">Default uses the logged-in operator when eligible.</div>
+            <div class="form-text">{{ t.default_seller_help }}</div>
         </div>
         <div class="col-md-4">
-            <label class="form-label" for="cash_register_id">Cash register without shift</label>
-            <select class="form-select" id="cash_register_id" name="cash_register_id">
-                <option value="">No cash register / unassigned</option>
-                {% for register in cash_registers %}
-                <option value="{{ register.id }}">{{ register.name }}</option>
-                {% endfor %}
-            </select>
-            <div class="form-text">Ignored when a cashier shift is selected.</div>
-        </div>
-        <div class="col-md-4">
-            <label class="form-label">Settlement</label>
+            <label class="form-label">{{ t.settlement }}</label>
             <select class="form-select mb-2" name="payment_method">
-                {% for code, label in payment_methods.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
-                <option value="invoice">Send to invoicing</option>
+                {% for code, label in payment_methods.items() %}<option value="{{ code }}">{{ t[code] }}</option>{% endfor %}
+                <option value="invoice">{{ t.send_to_invoicing }}</option>
             </select>
-            <input class="form-control" name="payment_amount" placeholder="Amount, blank = full balance">
+            <input class="form-control" name="payment_amount" placeholder="{{ t.amount_blank_full_balance }}">
             <div class="form-check mt-2">
                 <input class="form-check-input" type="checkbox" name="send_to_invoice" value="true" id="send_to_invoice">
-                <label class="form-check-label" for="send_to_invoice">Send remaining balance to invoicing</label>
+                <label class="form-check-label" for="send_to_invoice">{{ t.send_remaining_balance_to_invoicing }}</label>
             </div>
         </div>
     </div>
     {% if not work_order.items %}
-    <div class="alert alert-warning mt-3 mb-0">Add at least one billable row on the Work Order before creating a sale.</div>
+    <div class="alert alert-warning mt-3 mb-0">{{ t.add_billable_row_before_sale }}</div>
     {% endif %}
-    <button class="btn btn-primary mt-3" type="submit" {% if existing_sale or not work_order.items %}disabled{% endif %}>Create sale</button>
+    <button class="btn btn-primary mt-3" type="submit" {% if existing_sale or not work_order.items %}disabled{% endif %}>{{ t.create_sale }}</button>
 </form>
 {% endblock %}

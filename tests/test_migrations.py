@@ -12,6 +12,7 @@ from app.migration_bootstrap import (
     CLASS_INVOICE_FOLLOWUP,
     CLASS_OPTIONAL_SHIFTS,
     CLASS_SALE_DOCUMENTS,
+    CLASS_SHIFTLESS_REFUNDS,
     CLASS_STABILIZATION,
     CLASS_UNKNOWN,
     CLASS_UNIFIED_SALES,
@@ -20,6 +21,7 @@ from app.migration_bootstrap import (
     INVENTORY_REVISION,
     OPTIONAL_SHIFTS_REVISION,
     SALE_DOCUMENT_REVISION,
+    SHIFTLESS_REFUNDS_REVISION,
     STABILIZATION_REVISION,
     UNIFIED_SALES_REVISION,
     MigrationBootstrapError,
@@ -322,7 +324,7 @@ def test_unstamped_sale_document_database_is_stamped_and_upgraded(tmp_path):
     assert _current_revision(db_path) == HEAD_REVISION
 
 
-def test_unstamped_optional_shifts_database_is_stamped_without_upgrade(tmp_path):
+def test_unstamped_optional_shifts_database_is_stamped_and_upgraded(tmp_path):
     db_path = tmp_path / "optional-shifts.sqlite"
     _upgrade_to_revision(db_path, OPTIONAL_SHIFTS_REVISION)
     _drop_alembic_version(db_path)
@@ -331,12 +333,31 @@ def test_unstamped_optional_shifts_database_is_stamped_without_upgrade(tmp_path)
 
     assert plan.classification.classification == CLASS_OPTIONAL_SHIFTS
     assert plan.stamp_revision == OPTIONAL_SHIFTS_REVISION
+    assert plan.upgrade_target == "head"
+    assert _current_revision(db_path) == HEAD_REVISION
+
+
+def test_unstamped_shiftless_refunds_database_is_stamped_without_upgrade(tmp_path):
+    db_path = tmp_path / "shiftless-refunds.sqlite"
+    _upgrade_to_revision(db_path, SHIFTLESS_REFUNDS_REVISION)
+    _drop_alembic_version(db_path)
+
+    plan = run_bootstrap(_database_url(db_path), backup_dir=tmp_path / "backups")
+
+    assert plan.classification.classification == CLASS_SHIFTLESS_REFUNDS
+    assert plan.stamp_revision == SHIFTLESS_REFUNDS_REVISION
     assert plan.upgrade_target is None
     assert _current_revision(db_path) == HEAD_REVISION
 
 
 def test_stamped_pr19_revisions_upgrade_to_head(tmp_path):
-    for revision in [STABILIZATION_REVISION, UNIFIED_SALES_REVISION, INVOICE_FOLLOWUP_REVISION, SALE_DOCUMENT_REVISION]:
+    for revision in [
+        STABILIZATION_REVISION,
+        UNIFIED_SALES_REVISION,
+        INVOICE_FOLLOWUP_REVISION,
+        SALE_DOCUMENT_REVISION,
+        OPTIONAL_SHIFTS_REVISION,
+    ]:
         db_path = tmp_path / f"stamped-{revision}.sqlite"
         _upgrade_to_revision(db_path, revision)
 
@@ -533,7 +554,7 @@ def test_extra_legacy_side_table_does_not_block_known_schema_classification(tmp_
     inspection = inspect_database(_database_url(db_path))
     classification = classify_schema(inspection)
 
-    assert classification.classification == CLASS_OPTIONAL_SHIFTS
+    assert classification.classification == CLASS_SHIFTLESS_REFUNDS
     assert classification.matched_revision == HEAD_REVISION
 
 

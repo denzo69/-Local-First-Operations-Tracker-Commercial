@@ -9,11 +9,7 @@
     <div class="quick-actions" aria-label="{{ t.quick_actions }}">
         <a class="btn btn-primary" href="/work-orders/new">{{ t.create_work_order }}</a>
         <a class="btn btn-outline-secondary" href="/customers/new">{{ t.new_customer }}</a>
-        {% if open_shifts %}
-        <a class="btn btn-outline-secondary" href="/sales/new">{{ t.new_sale }}</a>
-        {% else %}
-        <a class="btn btn-outline-secondary" href="/shifts/open">{{ t.open_shift }}</a>
-        {% endif %}
+        <a class="btn btn-outline-secondary" href="/sales/quick">{{ t.quick_sale }}</a>
         <a class="btn btn-outline-secondary" href="/daily-closings">{{ t.daily_closing }}</a>
     </div>
 </section>

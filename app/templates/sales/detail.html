@@ -4,8 +4,8 @@
     <div>
         <h1>{{ t.sales }} #{{ sale.document_number or sale.id }}</h1>
         <p class="text-muted">
-            {{ t.original_seller }}: {{ (sale.sold_by or sale.seller).name if (sale.sold_by or sale.seller) else "Not specified" }} -
-            Cashier shift: {% if sale.shift %}#{{ sale.shift_id }}{% else %}No cashier shift{% endif %} -
+            {{ t.original_seller }}: {{ (sale.sold_by or sale.seller).name if (sale.sold_by or sale.seller) else t.not_specified }} -
+            {% if sale.shift %}{{ t.cashier_shift }}: #{{ sale.shift_id }} -{% endif %}
             {{ t.business_date }} {{ sale.business_date or (sale.shift.business_date if sale.shift else "-") }}
         </p>
         {% if sale.created_by %}
@@ -13,7 +13,7 @@
         {% endif %}
     </div>
     <a class="btn btn-outline-secondary" href="/sales">{{ t.back }}</a>
-    <a class="btn btn-outline-primary" href="/sales/{{ sale.id }}/receipt">Receipt / summary</a>
+    <a class="btn btn-outline-primary" href="/sales/{{ sale.id }}/receipt">{{ t.receipt_summary }}</a>
 </div>
 <div class="row g-3 mb-3">
     <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.net }}</div><strong>{{ sale.subtotal }}</strong></div></div>
@@ -27,12 +27,12 @@
     <div class="col-md-4"><div class="card p-3"><div class="text-muted">{{ t.gross_margin }}</div><strong>{{ sale.gross_margin_percent or "-" }}</strong></div></div>
 </div>
 <div class="row g-3 mb-3">
-    <div class="col-md-4"><div class="card p-3"><div class="text-muted">Document</div><strong>{{ sale.document_number or "-" }}</strong></div></div>
-    <div class="col-md-4"><div class="card p-3"><div class="text-muted">Paid</div><strong>{{ paid_amount }}</strong></div></div>
-    <div class="col-md-4"><div class="card p-3"><div class="text-muted">Balance due</div><strong>{{ balance_due }}</strong></div></div>
+    <div class="col-md-4"><div class="card p-3"><div class="text-muted">{{ t.document }}</div><strong>{{ sale.document_number or "-" }}</strong></div></div>
+    <div class="col-md-4"><div class="card p-3"><div class="text-muted">{{ t.paid }}</div><strong>{{ paid_amount }}</strong></div></div>
+    <div class="col-md-4"><div class="card p-3"><div class="text-muted">{{ t.balance_due }}</div><strong>{{ balance_due }}</strong></div></div>
 </div>
 {% if sale.work_order %}
-<p>Work Order: <a href="/work-orders/{{ sale.work_order.id }}">{{ sale.work_order.title }}</a></p>
+<p>{{ t.work_orders }}: <a href="/work-orders/{{ sale.work_order.id }}">{{ sale.work_order.title }}</a></p>
 {% endif %}
 {% if sale.payment_method == "invoice" or sale.settlement_status in ["awaiting_invoice", "partially_paid_awaiting_invoice", "transferred_to_invoicing", "payment_check_due", "unpaid", "reminder_due", "reminder_sent"] %}
 <section class="card p-3 mb-3">
@@ -150,8 +150,8 @@
                 <div>{{ refund.amount }} - {{ refund.payment_method }} - {{ refund.refunded_at }}</div>
                 <div class="text-muted">
                     {{ t.refunding_seller }}: {{ refund.seller.name if refund.seller else "-" }} -
-                    {{ t.refund_shift }} #{{ refund.shift_id }} -
-                    {{ t.business_date }} {{ refund.shift.business_date if refund.shift else "-" }}
+                    {{ t.refund_shift }} {% if refund.shift_id %}#{{ refund.shift_id }}{% else %}{{ t.no_refund_shift }}{% endif %} -
+                    {{ t.business_date }} {{ refund.business_date or (refund.shift.business_date if refund.shift else "-") }}
                 </div>
                 {% if refund.reason %}<div>{{ refund.reason }}</div>{% endif %}
                 {% if refund.vat_breakdown_json %}<code>{{ refund.vat_breakdown_json }}</code>{% endif %}
@@ -165,20 +165,21 @@
 <form class="card p-3 mt-3" method="post" action="/sales/{{ sale.id }}/refunds">
     <h2 class="h5">{{ t.refund }}</h2>
     <p class="text-muted">{{ t.remaining_refundable }}: {{ remaining_refundable }}</p>
-    <label class="form-label" for="refund_shift_id">{{ t.refund_shift }}</label>
-    <select class="form-select mb-2" id="refund_shift_id" name="refund_shift_id" required {% if not open_shifts %}disabled{% endif %}>
+    <label class="form-label" for="refund_shift_id">{{ t.refund_shift_optional }}</label>
+    <select class="form-select mb-2" id="refund_shift_id" name="refund_shift_id">
+        <option value="">{{ t.no_refund_shift }}</option>
         {% for shift in open_shifts %}
         <option value="{{ shift.id }}">#{{ shift.id }} - {{ shift.seller.name }} - {{ shift.cash_register.name }} - {{ shift.business_date }}</option>
         {% endfor %}
     </select>
-    {% if not open_shifts %}<div class="alert alert-warning">{{ t.open_shift_required_for_refund }}</div>{% endif %}
-    <input class="form-control mb-2" name="amount" placeholder="{{ t.refund }}" required {% if not open_shifts %}disabled{% endif %}>
-    <select class="form-select mb-2" name="payment_method" {% if not open_shifts %}disabled{% endif %}>
+    {% if not open_shifts %}<div class="alert alert-info">{{ t.refund_without_shift_hint }}</div>{% endif %}
+    <input class="form-control mb-2" name="amount" placeholder="{{ t.refund }}" required>
+    <select class="form-select mb-2" name="payment_method">
         {% for code, label in payment_methods.items() %}
-        <option value="{{ code }}">{{ label }}</option>
+        <option value="{{ code }}">{{ t[code] }}</option>
         {% endfor %}
     </select>
-    <input class="form-control mb-2" name="reason" placeholder="{{ t.reopen_reason }}" {% if not open_shifts %}disabled{% endif %}>
-    <button class="btn btn-outline-danger" type="submit" {% if not open_shifts %}disabled{% endif %}>{{ t.refund }}</button>
+    <input class="form-control mb-2" name="reason" placeholder="{{ t.refund_reason }}">
+    <button class="btn btn-outline-danger" type="submit">{{ t.refund }}</button>
 </form>
 {% endblock %}

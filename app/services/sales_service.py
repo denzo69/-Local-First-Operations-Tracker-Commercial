@@ -1073,7 +1073,7 @@ def add_refund(
     db: Session,
     *,
     sale_id: int,
-    refund_shift_id: int,
+    refund_shift_id: int | None,
     seller_id: int,
     amount,
     payment_method: str,
@@ -1082,12 +1082,16 @@ def add_refund(
     sale = db.get(Sale, sale_id)
     if sale is None:
         raise ValueError("Sale not found.")
-    refund_shift = db.get(Shift, refund_shift_id)
-    if refund_shift is None or refund_shift.status != "open":
+
+    refund_shift = db.get(Shift, refund_shift_id) if refund_shift_id else None
+    if refund_shift_id and (refund_shift is None or refund_shift.status != "open"):
         raise ValueError("Refund requires an open shift.")
-    assert_business_date_open(db, refund_shift.business_date)
+
+    refund_business_date = refund_shift.business_date if refund_shift is not None else date.today()
+    assert_business_date_open(db, refund_business_date)
+
     seller = require_operational_user(db.get(User, seller_id))
-    if refund_shift.seller_id != seller_id:
+    if refund_shift is not None and refund_shift.seller_id != seller_id:
         raise ValueError("Refund seller must match refund shift seller.")
     require_payment_method(payment_method)
     parsed_amount = require_positive_money(amount, "Refund amount")
@@ -1111,8 +1115,9 @@ def add_refund(
     }
     refund = Refund(
         sale_id=sale.id,
-        shift_id=refund_shift.id,
+        shift_id=refund_shift.id if refund_shift is not None else None,
         seller_id=seller_id,
+        business_date=refund_business_date,
         amount=parsed_amount,
         vat_amount=vat_amount,
         vat_breakdown_json=json.dumps(vat_breakdown, sort_keys=True),
@@ -1136,8 +1141,9 @@ def add_refund(
         description=(
             f"Refund recorded for sale {sale.id}: original seller "
             f"{sale.seller_id}/{sale.seller.name if sale.seller else 'Unknown'}, "
-            f"refunding seller {seller.id}/{seller.name}, shift {refund_shift.id}, "
-            f"business date {refund_shift.business_date}, amount {parsed_amount}."
+            f"refunding seller {seller.id}/{seller.name}, "
+            f"shift {refund_shift.id if refund_shift else 'none'}, "
+            f"business date {refund_business_date}, amount {parsed_amount}."
         ),
     )
     db.commit()
@@ -1253,7 +1259,13 @@ def build_daily_closing_snapshot(db: Session, business_date: date) -> dict:
     if shift_ids:
         sales_filter = or_(sales_filter, (Sale.business_date.is_(None)) & Sale.shift_id.in_(shift_ids))
     sales = db.query(Sale).filter(sales_filter).all()
-    refunds = db.query(Refund).filter(Refund.shift_id.in_(shift_ids)).all() if shift_ids else []
+    refund_filter = Refund.business_date == business_date
+    if shift_ids:
+        refund_filter = or_(
+            refund_filter,
+            (Refund.business_date.is_(None)) & Refund.shift_id.in_(shift_ids),
+        )
+    refunds = db.query(Refund).filter(refund_filter).all()
     sale_ids = [sale.id for sale in sales]
     payments = db.query(Payment).filter(Payment.sale_id.in_(sale_ids)).all() if sale_ids else []
 
