@@ -372,7 +372,7 @@ def test_new_sales_shift_closing_and_report_routes_load():
     assert client.get("/seller-reports").status_code == 200
 
 
-def test_daily_closing_requires_closed_shifts_and_closed_date_blocks_writes_until_reopened():
+def test_daily_closing_allows_optional_open_shifts_and_closed_date_blocks_writes_until_reopened():
     with SessionLocal() as db:
         admin = create_user(db, "Lock Admin", "admin")
         seller = create_user(db, "Lock Seller")
@@ -385,9 +385,6 @@ def test_daily_closing_requires_closed_shifts_and_closed_date_blocks_writes_unti
             starting_cash="10",
         )
 
-        with pytest.raises(ValueError, match="shift.*open"):
-            create_daily_closing(db, business_date=date.today(), created_by_user_id=admin.id)
-
         sale = create_sale_with_payment(
             db,
             seller_id=seller.id,
@@ -398,7 +395,6 @@ def test_daily_closing_requires_closed_shifts_and_closed_date_blocks_writes_unti
             unit_price="10",
             vat_percent="24",
         )
-        close_shift(db, shift_id=shift.id, counted_cash="20")
         closing = create_daily_closing(db, business_date=date.today(), created_by_user_id=admin.id)
 
         with pytest.raises(ValueError, match="Business date is closed"):
@@ -430,14 +426,8 @@ def test_daily_closing_requires_closed_shifts_and_closed_date_blocks_writes_unti
             )
 
         reopen_daily_closing(db, closing_id=closing.id, user_id=admin.id, reason="Add correction")
-        unlocked_shift = open_shift(
-            db,
-            seller_id=seller.id,
-            cash_register_id=register.id,
-            business_date=date.today(),
-            starting_cash="0",
-        )
-        assert unlocked_shift.status == "open"
+        assert_business_date_open(db, date.today())
+        assert shift.status == "open"
 
 
 def test_daily_closing_snapshot_is_immutable_and_reclose_creates_new_version():

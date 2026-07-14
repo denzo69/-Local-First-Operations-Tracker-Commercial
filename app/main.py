@@ -189,7 +189,6 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
                 {"label": t["due_today"], "value": len(due_today_jobs), "tone": "warning", "icon": "TD", "href": "/work-orders?view=active"},
                 {"label": t["ready_for_pickup"], "value": len(ready_jobs), "tone": "success", "icon": "RP", "href": "/work-orders?view=ready"},
                 {"label": t["todays_sales"], "value": today_sales_total, "tone": "neutral", "icon": "SA", "href": "/sales"},
-                {"label": t["open_shift_status"], "value": len(open_shifts), "tone": "info", "icon": "SH", "href": "/shifts"},
                 {"label": t["daily_closing_status"], "value": t["closed"] if daily_closing and daily_closing.status == "closed" else t["not_closed"], "tone": "success" if daily_closing and daily_closing.status == "closed" else "warning", "icon": "DC", "href": "/daily-closings"},
             ],
             "attention_jobs": attention_jobs,

@@ -13,7 +13,7 @@
     {% endif %}
     <dl class="row">
         <dt class="col-sm-3">{{ t.sale_document_number }}</dt><dd class="col-sm-9">{{ sale.document_number or "-" }}</dd>
-        <dt class="col-sm-3">{{ t.customer }}</dt><dd class="col-sm-9">{{ sale.work_order.customer.name if sale.work_order and sale.work_order.customer else "-" }}</dd>
+        <dt class="col-sm-3">{{ t.customer }}</dt><dd class="col-sm-9">{{ sale.customer.name if sale.customer else (sale.customer_name_snapshot or (sale.work_order.customer.name if sale.work_order and sale.work_order.customer else "-")) }}</dd>
         <dt class="col-sm-3">{{ t.source_work_order }}</dt><dd class="col-sm-9">{% if sale.work_order %}{{ sale.work_order.receipt_number or sale.work_order.job_number or sale.work_order.id }} - {{ sale.work_order.title }}{% else %}-{% endif %}</dd>
         {% if sale.external_invoice_number %}<dt class="col-sm-3">{{ t.external_invoice_number }}</dt><dd class="col-sm-9">{{ sale.external_invoice_number }}</dd>{% endif %}
         <dt class="col-sm-3">{{ t.credited_seller }}</dt><dd class="col-sm-9">{{ (sale.sold_by or sale.seller).name if (sale.sold_by or sale.seller) else t.not_specified }}</dd>

@@ -31,7 +31,8 @@ INVOICE_FOLLOWUP_REVISION = "b5c8d2e4f6a1"
 SALE_DOCUMENT_REVISION = "c9d1e7a4b2f6"
 OPTIONAL_SHIFTS_REVISION = "e2f4a6b8c0d1"
 SHIFTLESS_REFUNDS_REVISION = "f3a9b7c1d2e4"
-HEAD_REVISION = SHIFTLESS_REFUNDS_REVISION
+QUICK_SALE_CUSTOMER_REVISION = "a8c1e3f5b7d9"
+HEAD_REVISION = QUICK_SALE_CUSTOMER_REVISION
 
 CLASS_EMPTY = "empty database"
 CLASS_BASELINE = "matches baseline"
@@ -43,6 +44,7 @@ CLASS_INVOICE_FOLLOWUP = "matches invoice follow-up revision"
 CLASS_SALE_DOCUMENTS = "matches sale document numbering revision"
 CLASS_OPTIONAL_SHIFTS = "matches optional cashier shifts revision"
 CLASS_SHIFTLESS_REFUNDS = "matches shiftless refunds revision"
+CLASS_QUICK_SALE_CUSTOMER = "matches quick sale customer revision"
 CLASS_UNKNOWN = "inconsistent / partially migrated / unknown"
 
 
@@ -407,6 +409,10 @@ SHIFTLESS_REFUNDS_COLUMNS = {
     "refunds": {"business_date"},
 }
 
+QUICK_SALE_CUSTOMER_COLUMNS = {
+    "sales": {"customer_id", "customer_name_snapshot"},
+}
+
 OPTIONAL_SHIFTS_SETTING_KEYS = {"require_cashier_shift"}
 
 NULLABLE_COLUMNS_BY_REVISION = {
@@ -417,6 +423,7 @@ NULLABLE_COLUMNS_BY_REVISION = {
     SHIFTLESS_REFUNDS_REVISION: {
         "refunds": {"shift_id", "business_date"},
     },
+    QUICK_SALE_CUSTOMER_REVISION: {},
 }
 
 REQUIRED_INDEXES_BY_REVISION = {
@@ -509,6 +516,9 @@ REQUIRED_INDEXES_BY_REVISION = {
     SHIFTLESS_REFUNDS_REVISION: {
         "ix_refunds_business_date",
     },
+    QUICK_SALE_CUSTOMER_REVISION: {
+        "ix_sales_customer_id",
+    },
 }
 
 REQUIRED_TRIGGERS_BY_REVISION = {
@@ -528,6 +538,7 @@ REVISION_LABELS = {
     SALE_DOCUMENT_REVISION: CLASS_SALE_DOCUMENTS,
     OPTIONAL_SHIFTS_REVISION: CLASS_OPTIONAL_SHIFTS,
     SHIFTLESS_REFUNDS_REVISION: CLASS_SHIFTLESS_REFUNDS,
+    QUICK_SALE_CUSTOMER_REVISION: CLASS_QUICK_SALE_CUSTOMER,
 }
 
 REVISION_ORDER = [
@@ -540,6 +551,7 @@ REVISION_ORDER = [
     SALE_DOCUMENT_REVISION,
     OPTIONAL_SHIFTS_REVISION,
     SHIFTLESS_REFUNDS_REVISION,
+    QUICK_SALE_CUSTOMER_REVISION,
 ]
 
 
@@ -724,7 +736,8 @@ INVOICE_FOLLOWUP_SCHEMA = merge_columns(UNIFIED_SALES_SCHEMA, INVOICE_FOLLOWUP_C
 SALE_DOCUMENT_SCHEMA = INVOICE_FOLLOWUP_SCHEMA
 OPTIONAL_SHIFTS_SCHEMA = merge_columns(SALE_DOCUMENT_SCHEMA, OPTIONAL_SHIFTS_COLUMNS)
 SHIFTLESS_REFUNDS_SCHEMA = merge_columns(OPTIONAL_SHIFTS_SCHEMA, SHIFTLESS_REFUNDS_COLUMNS)
-HEAD_KNOWN_SCHEMA = SHIFTLESS_REFUNDS_SCHEMA
+QUICK_SALE_CUSTOMER_SCHEMA = merge_columns(SHIFTLESS_REFUNDS_SCHEMA, QUICK_SALE_CUSTOMER_COLUMNS)
+HEAD_KNOWN_SCHEMA = QUICK_SALE_CUSTOMER_SCHEMA
 
 
 def _missing_schema(schema: dict[str, set[str]], inspection: SchemaInspection) -> list[str]:
@@ -766,6 +779,8 @@ def _missing_indexes(revision: str, inspection: SchemaInspection) -> list[str]:
         required.update(REQUIRED_INDEXES_BY_REVISION[OPTIONAL_SHIFTS_REVISION])
     if revision_index >= REVISION_ORDER.index(SHIFTLESS_REFUNDS_REVISION):
         required.update(REQUIRED_INDEXES_BY_REVISION[SHIFTLESS_REFUNDS_REVISION])
+    if revision_index >= REVISION_ORDER.index(QUICK_SALE_CUSTOMER_REVISION):
+        required.update(REQUIRED_INDEXES_BY_REVISION[QUICK_SALE_CUSTOMER_REVISION])
     return [f"missing index {index}" for index in sorted(required - inspection.indexes)]
 
 
@@ -883,6 +898,13 @@ def _future_revision_evidence(revision: str, inspection: SchemaInspection) -> li
             nullable = inspection.nullable_columns_by_table.get(table, set()) & columns
             evidence.extend(f"future nullable column {table}.{column}" for column in sorted(nullable))
 
+    if QUICK_SALE_CUSTOMER_REVISION in later_revisions:
+        for table, columns in QUICK_SALE_CUSTOMER_COLUMNS.items():
+            present = inspection.columns_by_table.get(table, set()) & columns
+            evidence.extend(f"future column {table}.{column}" for column in sorted(present))
+        present_indexes = REQUIRED_INDEXES_BY_REVISION[QUICK_SALE_CUSTOMER_REVISION] & inspection.indexes
+        evidence.extend(f"future index {index}" for index in sorted(present_indexes))
+
     return evidence
 
 
@@ -904,6 +926,7 @@ def classify_schema(inspection: SchemaInspection) -> SchemaClassification:
         )
 
     candidates = [
+        (QUICK_SALE_CUSTOMER_REVISION, QUICK_SALE_CUSTOMER_SCHEMA),
         (SHIFTLESS_REFUNDS_REVISION, SHIFTLESS_REFUNDS_SCHEMA),
         (OPTIONAL_SHIFTS_REVISION, OPTIONAL_SHIFTS_SCHEMA),
         (SALE_DOCUMENT_REVISION, SALE_DOCUMENT_SCHEMA),

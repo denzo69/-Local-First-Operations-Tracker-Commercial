@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import get_db
 from app.models import DailyClosing, DailyClosingSnapshot, Role, Shift, User
+from app.services.auth_service import request_current_user
 from app.services.sales_service import (
     create_daily_closing,
     get_daily_closing_snapshot_by_version,
@@ -54,15 +55,23 @@ def list_daily_closings(request: Request, db: Session = Depends(get_db)):
 
 @router.post("")
 def close_business_day(
+    request: Request,
     business_date: str = Form(...),
-    created_by_user_id: int = Form(...),
+    created_by_user_id: int | None = Form(None),
     db: Session = Depends(get_db),
 ):
+    current_user = request_current_user(request)
+    actor_id = current_user.id if current_user is not None else created_by_user_id
+    if actor_id is None:
+        fallback_user = db.query(User).filter(User.is_active.is_(True)).order_by(User.id.asc()).first()
+        actor_id = fallback_user.id if fallback_user is not None else None
+    if actor_id is None:
+        raise HTTPException(status_code=400, detail="Active user is required.")
     try:
         closing = create_daily_closing(
             db,
             business_date=date.fromisoformat(business_date),
-            created_by_user_id=created_by_user_id,
+            created_by_user_id=actor_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

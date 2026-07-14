@@ -16,6 +16,7 @@ from app.models import (
     JobItem,
     Payment,
     Product,
+    Customer,
     Refund,
     Role,
     Sale,
@@ -421,6 +422,8 @@ def create_sale_from_lines(
     source_type: str = "pos",
     send_to_invoice: bool = False,
     idempotency_key: str | None = None,
+    customer_id: int | None = None,
+    customer_name: str | None = None,
 ) -> Sale:
     if idempotency_key:
         existing = db.query(Sale).filter(Sale.idempotency_key == idempotency_key).first()
@@ -457,6 +460,14 @@ def create_sale_from_lines(
             return existing_work_order_sale
     if send_to_invoice and (work_order is None or work_order.customer is None):
         raise ValueError("Customer is required when sending a sale to invoicing.")
+    customer = db.get(Customer, customer_id) if customer_id else None
+    if customer_id and customer is None:
+        raise ValueError("Customer not found.")
+    customer_name_snapshot = (customer_name or "").strip() or None
+    if customer is None and work_order is not None and work_order.customer is not None:
+        customer = work_order.customer
+    if customer is not None:
+        customer_name_snapshot = customer.name
 
     normalized_lines = [_normalize_line_input(line) for line in lines]
     if not normalized_lines:
@@ -543,6 +554,8 @@ def create_sale_from_lines(
             created_by_user_id=operator_id,
             shift_id=shift.id if shift is not None else None,
             cash_register_id=context.cash_register_id,
+            customer_id=customer.id if customer is not None else None,
+            customer_name_snapshot=customer_name_snapshot,
             work_order_id=work_order_id,
             source_type=source,
             idempotency_key=idempotency_key.strip() if idempotency_key else None,
@@ -885,6 +898,12 @@ def require_closing_manager(user: User | None) -> User:
         raise ValueError("Only Admin or Manager can manage daily closings.")
     if user is None or not user.is_active:
         raise ValueError("Active Admin or Manager is required.")
+    return user
+
+
+def require_daily_closing_creator(user: User | None) -> User:
+    if user is None or not user.is_active:
+        raise ValueError("Active user is required.")
     return user
 
 
@@ -1448,14 +1467,14 @@ def build_daily_closing_snapshot(db: Session, business_date: date) -> dict:
 
 
 def create_daily_closing(db: Session, *, business_date: date, created_by_user_id: int) -> DailyClosing:
-    creator = require_closing_manager(db.get(User, created_by_user_id))
+    creator = require_daily_closing_creator(db.get(User, created_by_user_id))
     open_shifts = (
         db.query(Shift)
         .filter(Shift.business_date == business_date, Shift.status == "open")
         .order_by(Shift.id.asc())
         .all()
     )
-    if open_shifts:
+    if open_shifts and cashier_shift_required(db):
         shift_list = ", ".join(str(shift.id) for shift in open_shifts)
         raise ValueError(f"Cannot close day while {len(open_shifts)} shift(s) are open: {shift_list}.")
     existing = db.query(DailyClosing).filter(DailyClosing.business_date == business_date).first()

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.models import CashRegister, Job, Product, Sale, Shift, User
+from app.models import CashRegister, Customer, Job, Product, Sale, Shift, User
 from app.services.auth_service import request_current_user
 from app.services.sales_service import (
     AuthorizationError,
@@ -67,6 +67,7 @@ def _quick_sale_context(request: Request, db: Session, *, error: str | None = No
         "active_page": "sales",
         "shifts": db.query(Shift).filter(Shift.status == "open").order_by(Shift.opened_at.desc()).all(),
         "product_options": product_options,
+        "customers": db.query(Customer).order_by(Customer.name.asc()).all(),
         "sellers": _eligible_sellers(db),
         "cash_registers": db.query(CashRegister).filter(CashRegister.is_active.is_(True)).order_by(CashRegister.name.asc()).all(),
         "payment_methods": {key: value for key, value in PAYMENT_METHODS.items() if key != "invoice"},
@@ -168,6 +169,8 @@ async def create_quick_sale(request: Request, db: Session = Depends(get_db)):
             source_type="pos",
             send_to_invoice=_parse_payments(form)[1],
             idempotency_key=(form.get("idempotency_key") or "").strip() or None,
+            customer_id=_optional_int(form.get("customer_id")),
+            customer_name=str(form.get("customer_name") or ""),
         )
     except ValueError as exc:
         return templates.TemplateResponse(

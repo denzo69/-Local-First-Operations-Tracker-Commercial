@@ -63,6 +63,7 @@ def test_products_is_the_visible_inventory_workspace_navigation():
     assert 'href="/products/warehouses"' in response.text
     assert 'href="/products/inventory"' in response.text
     assert 'href="/products/inventory/transactions"' in response.text
+    assert 'href="/shifts"' not in response.text
     assert 'href="/inventory/goods-receipts"' not in response.text
     assert 'href="/inventory/warehouses"' not in response.text
     assert 'href="/inventory/ledger"' not in response.text
@@ -93,10 +94,10 @@ def test_new_navigation_labels_render_in_finnish_and_english():
         )
         english = client.get("/")
 
-    assert "Myynti" in finnish.text
+    assert "Myyntihistoria" in finnish.text
     assert "Hallinta" in finnish.text
     assert "Audit-loki" in finnish.text
-    assert "Sales" in english.text
+    assert "Sales history" in english.text
     assert "Administration" in english.text
     assert "Audit log" in english.text
 
@@ -104,12 +105,12 @@ def test_new_navigation_labels_render_in_finnish_and_english():
 def test_every_main_navigation_label_renders_in_both_languages():
     english_labels = [
         "Dashboard", "Operations", "Customers", "Work Orders", "Sales",
-        "Quick sale", "Shifts", "Daily closing", "Catalog", "Products",
+        "Quick sale", "Sales history", "Daily closing", "Catalog", "Products",
         "Reports", "Seller reports", "Administration", "Users",
         "Cash registers", "Audit log", "Backups", "Settings",
     ]
     finnish_labels = [
-        "Myynti", "Hallinta", "Asiakkaat", "Tuotteet", "Kassat",
+        "Myyntihistoria", "Hallinta", "Asiakkaat", "Tuotteet", "Kassat",
         "Audit-loki", "Asetukset",
     ]
     with TestClient(app) as client:
@@ -131,8 +132,11 @@ def test_every_main_navigation_label_renders_in_both_languages():
     for label in finnish_labels:
         assert label in finnish.text
     assert "New sale" not in english.text
+    assert "Shifts" not in english.text
     assert "Uusi myynti" not in finnish.text
+    assert "Kassavuorot" not in finnish.text
     assert 'href="/sales/new"' not in english.text
+    assert 'href="/shifts"' not in english.text
     assert 'dropdown-toggle"></a>' not in english.text
     assert 'sidebar-group-label"></div>' not in english.text
 
@@ -154,6 +158,7 @@ def test_quick_sale_page_uses_finnish_labels_without_cashier_shift_noise():
     assert response.status_code == 200
     assert "Kassamyynti" in response.text
     assert "Viimeistele myynti" in response.text
+    assert "Asiakkaan nimi kuitille" in response.text
     assert "Hyvitettävä myyjä" in response.text
     assert "Cashier shift" not in response.text
     assert "Quick sale" not in response.text
@@ -285,13 +290,13 @@ def test_dashboard_compact_empty_and_operational_panels_render():
         response = client.get("/")
 
     assert response.status_code == 200
-    assert "Current shift" in response.text
-    assert "No open shift." in response.text
+    assert "Current shift" not in response.text
+    assert "No open shift." not in response.text
     assert "Daily closing not completed" in response.text
     assert "empty-state compact" in response.text
 
 
-def test_dashboard_current_shift_panel_when_shift_is_open():
+def test_dashboard_does_not_surface_cashier_shift_panel_when_shift_is_open():
     with SessionLocal() as db:
         ensure_default_roles(db)
         role = db.query(Role).filter(Role.code == "seller").one()
@@ -311,8 +316,9 @@ def test_dashboard_current_shift_panel_when_shift_is_open():
         response = client.get("/")
 
     assert response.status_code == 200
-    assert "Dashboard Shift Seller" in response.text
-    assert "Dashboard Register" in response.text
+    assert "Dashboard Shift Seller" not in response.text
+    assert "Dashboard Register" not in response.text
+    assert 'href="/shifts"' not in response.text
 
 
 def test_inventory_routes_support_virtual_goods_receipt_workflow():

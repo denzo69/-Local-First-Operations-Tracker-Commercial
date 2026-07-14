@@ -327,6 +327,59 @@ def test_quick_sale_route_creates_multiline_sale_and_receipt_loads():
     assert "Sale summary" in receipt.text
 
 
+def test_quick_sale_accepts_registered_or_manual_customer_name():
+    with SessionLocal() as db:
+        registered = Customer(name="Cash Buyer")
+        db.add(registered)
+        db.commit()
+        customer_id = registered.id
+
+    with TestClient(app) as client:
+        registered_response = client.post(
+            "/sales/quick",
+            data={
+                "customer_id": str(customer_id),
+                "customer_name": "",
+                "product_id": [""],
+                "description": ["Customer route service"],
+                "quantity": ["1"],
+                "unit_price": ["12"],
+                "vat_percent": ["24"],
+                "discount_amount": ["0"],
+                "payment_method": ["cash"],
+                "payment_amount": [""],
+                "idempotency_key": "route-quick-sale-customer",
+            },
+            follow_redirects=False,
+        )
+        manual_response = client.post(
+            "/sales/quick",
+            data={
+                "customer_id": "",
+                "customer_name": "Walk-in Customer",
+                "product_id": [""],
+                "description": ["Manual customer service"],
+                "quantity": ["1"],
+                "unit_price": ["8"],
+                "vat_percent": ["24"],
+                "discount_amount": ["0"],
+                "payment_method": ["cash"],
+                "payment_amount": [""],
+                "idempotency_key": "route-quick-sale-manual-customer",
+            },
+            follow_redirects=False,
+        )
+        registered_detail = client.get(registered_response.headers["location"])
+        manual_detail = client.get(manual_response.headers["location"])
+        manual_receipt = client.get(f"{manual_response.headers['location']}/receipt")
+
+    assert registered_response.status_code == 303
+    assert manual_response.status_code == 303
+    assert "Cash Buyer" in registered_detail.text
+    assert "Walk-in Customer" in manual_detail.text
+    assert "Walk-in Customer" in manual_receipt.text
+
+
 def test_work_order_invoice_post_route_and_invoice_queue_render():
     with SessionLocal() as db:
         seller = user(db, "Queue Seller")

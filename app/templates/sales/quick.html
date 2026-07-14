@@ -21,6 +21,17 @@
     {% endif %}
     <div class="row g-3 mb-3">
         <div class="col-md-6">
+            <label class="form-label" for="customer_id">{{ t.customer }}</label>
+            <select class="form-select mb-2" id="customer_id" name="customer_id">
+                <option value="">{{ t.no_customer }}</option>
+                {% for customer in customers %}
+                <option value="{{ customer.id }}">{{ customer.name }}</option>
+                {% endfor %}
+            </select>
+            <input class="form-control" id="customer_name" name="customer_name" placeholder="{{ t.manual_customer_name }}">
+            <div class="form-text">{{ t.customer_for_quick_sale_help }}</div>
+        </div>
+        <div class="col-md-6">
             <label class="form-label" for="seller_mode">{{ t.credited_seller }}</label>
             <select class="form-select mb-2" id="seller_mode" name="seller_mode">
                 <option value="default">{{ t.default }}</option>
