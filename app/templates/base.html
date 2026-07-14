@@ -56,8 +56,10 @@
             <a class="sidebar-link {% if active_page == 'cash_registers' %}active{% endif %}" href="/cash-registers"><span class="nav-icon" aria-hidden="true">CR</span><span>{{ t.cash_registers }}</span></a>
             <a class="sidebar-link {% if active_page == 'audit_log' %}active{% endif %}" href="/audit-log"><span class="nav-icon" aria-hidden="true">AL</span><span>{{ t.audit_log }}</span></a>
             <a class="sidebar-link {% if active_page == 'backups' %}active{% endif %}" href="/backups"><span class="nav-icon" aria-hidden="true">BU</span><span>{{ t.backups }}</span></a>
-            {% endif %}
             <a class="sidebar-link {% if active_page == 'settings' %}active{% endif %}" href="/settings"><span class="nav-icon" aria-hidden="true">ST</span><span>{{ t.settings }}</span></a>
+            {% else %}
+            <a class="sidebar-link {% if active_page == 'language' %}active{% endif %}" href="/settings/language"><span class="nav-icon" aria-hidden="true">LA</span><span>{{ t.language }}</span></a>
+            {% endif %}
         </div>
     </nav>
 </aside>
@@ -97,7 +99,11 @@
             <a class="sidebar-link" href="/audit-log">{{ t.audit_log }}</a>
             <a class="sidebar-link" href="/backups">{{ t.backups }}</a>
             {% endif %}
+            {% if can_manage_administration %}
             <a class="sidebar-link" href="/settings">{{ t.settings }}</a>
+            {% else %}
+            <a class="sidebar-link" href="/settings/language">{{ t.language }}</a>
+            {% endif %}
         </nav>
     </div>
 </div>
@@ -113,7 +119,16 @@
         </div>
         <div class="topbar-status">
             <span>{{ t.open_shift_status }}: <strong>{{ open_shift_count }}</strong></span>
-            <span>{{ t.language_status }}: <strong>{{ language|upper }}</strong></span>
+            <form method="post" action="/settings/language" class="topbar-language-form">
+                <label class="visually-hidden" for="topbar_language">{{ t.language }}</label>
+                <span>{{ t.language_status }}:</span>
+                <select class="form-select form-select-sm" id="topbar_language" name="language">
+                    <option value="en" {% if language == "en" %}selected{% endif %}>EN</option>
+                    <option value="fi" {% if language == "fi" %}selected{% endif %}>FI</option>
+                </select>
+                <input type="hidden" name="next_url" value="{{ request.url.path }}">
+                <button class="btn btn-outline-secondary btn-sm" type="submit">{{ t.save }}</button>
+            </form>
             {% if is_authenticated %}
             <span>{{ current_user.role.name if current_user.role else "User" }}: <strong>{{ current_user.name }}</strong></span>
             <form method="post" action="/logout" class="m-0">

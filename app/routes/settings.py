@@ -73,6 +73,45 @@ def update_settings(
     return RedirectResponse(url="/settings", status_code=303)
 
 
+@router.get("/language", response_class=HTMLResponse)
+def edit_language(request: Request, db: Session = Depends(get_db)):
+    return templates.TemplateResponse(
+        "settings/language.html",
+        {
+            "request": request,
+            "app_name": settings.app_name,
+            "active_page": "language",
+            "settings_values": get_app_settings(db),
+            "supported_languages": SUPPORTED_LANGUAGES,
+        },
+    )
+
+
+@router.post("/language")
+def update_language(
+    request: Request,
+    language: str = Form(...),
+    next_url: str = Form("/"),
+    db: Session = Depends(get_db),
+):
+    if language not in SUPPORTED_LANGUAGES:
+        raise HTTPException(status_code=400, detail="Unsupported language")
+
+    current_settings = get_app_settings(db)
+    set_app_settings(db, {**current_settings, "language": language})
+    log_audit_event(
+        db,
+        event_type="language_changed",
+        entity_type="settings",
+        entity_id=0,
+        description=f"Language changed to {language}.",
+    )
+    db.commit()
+
+    redirect_url = next_url if next_url.startswith("/") and not next_url.startswith("//") else "/"
+    return RedirectResponse(url=redirect_url, status_code=303)
+
+
 @router.get("/statuses", response_class=HTMLResponse)
 def list_statuses(request: Request, db: Session = Depends(get_db)):
     ensure_default_job_statuses(db)

@@ -26,6 +26,9 @@ ADMIN_PATH_PREFIXES = (
     "/backups",
     "/audit-log",
 )
+NON_ADMIN_SETTINGS_PATHS = {
+    "/settings/language",
+}
 
 
 def hash_password(password: str) -> str:
@@ -136,6 +139,8 @@ def should_skip_auth(path: str) -> bool:
 
 
 def path_requires_admin(path: str) -> bool:
+    if path in NON_ADMIN_SETTINGS_PATHS:
+        return False
     return any(path == prefix or path.startswith(f"{prefix}/") for prefix in ADMIN_PATH_PREFIXES)
 
 

@@ -118,7 +118,7 @@ def test_read_only_user_cannot_modify_data_when_auth_is_enabled():
     assert "Read only users cannot modify data." in response.text
 
 
-def test_seller_navigation_shows_settings_but_hides_restricted_admin_links_when_auth_is_enabled():
+def test_seller_navigation_shows_language_but_hides_restricted_admin_links_when_auth_is_enabled():
     create_login_user("Nav Seller", "seller", password="secret123")
 
     with TestClient(app) as client:
@@ -137,5 +137,36 @@ def test_seller_navigation_shows_settings_but_hides_restricted_admin_links_when_
     assert '<span class="nav-icon" aria-hidden="true">CR</span>' not in response.text
     assert '<span class="nav-icon" aria-hidden="true">AL</span>' not in response.text
     assert '<span class="nav-icon" aria-hidden="true">BU</span>' not in response.text
-    assert '<span class="nav-icon" aria-hidden="true">ST</span>' in response.text
+    assert '<span class="nav-icon" aria-hidden="true">ST</span>' not in response.text
+    assert '<span class="nav-icon" aria-hidden="true">LA</span>' in response.text
+    assert 'href="/settings/language"' in response.text
     assert "Administration" in response.text
+
+
+def test_seller_can_change_language_without_admin_settings_access():
+    create_login_user("Language Seller", "seller", password="secret123")
+
+    with TestClient(app) as client:
+        client.post(
+            "/login",
+            data={
+                "login_name": "language.seller",
+                "password": "secret123",
+                "next_url": "/",
+            },
+        )
+        admin_settings = client.get("/settings", follow_redirects=False)
+        language_page = client.get("/settings/language")
+        language_update = client.post(
+            "/settings/language",
+            data={"language": "fi", "next_url": "/"},
+            follow_redirects=False,
+        )
+        dashboard = client.get("/")
+
+    assert admin_settings.status_code == 403
+    assert language_page.status_code == 200
+    assert "Language" in language_page.text
+    assert language_update.status_code == 303
+    assert dashboard.status_code == 200
+    assert "FI" in dashboard.text
