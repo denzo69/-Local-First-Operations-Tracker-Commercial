@@ -21,6 +21,8 @@ def test_main_navigation_targets_load():
         for path in [
             "/customers",
             "/work-orders",
+            "/delivery-notes",
+            "/quotes",
             "/jobs",
             "/products",
             "/products/goods-receipts",
@@ -104,7 +106,7 @@ def test_new_navigation_labels_render_in_finnish_and_english():
 
 def test_every_main_navigation_label_renders_in_both_languages():
     english_labels = [
-        "Dashboard", "Operations", "Customers", "Work Orders", "Sales",
+        "Dashboard", "Operations", "Customers", "Work orders", "Sales",
         "Quick sale", "Sales history", "Daily closing", "Catalog", "Products",
         "Reports", "Seller reports", "Administration", "Users",
         "Cash registers", "Audit log", "Backups", "Settings",

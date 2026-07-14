@@ -6,13 +6,15 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.models import AuditLog, Customer, Job, JobItem, JobStatus, Product
+from app.models import AuditLog, Customer, Job, JobItem, JobStatus, Product, utc_now
+from app.services.auth_service import request_current_user
 from app.services.audit_service import log_audit_event
 from app.services.money_service import line_total as calculate_line_total
 from app.services.money_service import parse_decimal
 from app.services.money_service import sum_money
 from app.services.print_service import build_print_context
 from app.services.receipt_number_service import allocate_receipt_number
+from app.services.sales_service import PaymentInput, create_sale_from_work_order
 from app.template_context import templates
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -94,8 +96,41 @@ def parse_optional_date(value: str) -> date | None:
     return date.fromisoformat(value)
 
 
+DOCUMENT_TYPES = {"work_order", "delivery_note", "quote"}
+
+
+def document_type_for(request: Request) -> str:
+    path = request.url.path
+    if path.startswith("/delivery-notes"):
+        return "delivery_note"
+    if path.startswith("/quotes"):
+        return "quote"
+    return "work_order"
+
+
 def route_base_for(request: Request) -> str:
-    return "/work-orders" if request.url.path.startswith("/work-orders") else "/jobs"
+    path = request.url.path
+    if path.startswith("/delivery-notes"):
+        return "/delivery-notes"
+    if path.startswith("/quotes"):
+        return "/quotes"
+    return "/work-orders" if path.startswith("/work-orders") else "/jobs"
+
+
+def active_page_for(document_type: str) -> str:
+    return {
+        "work_order": "jobs",
+        "delivery_note": "delivery_notes",
+        "quote": "quotes",
+    }.get(document_type, "jobs")
+
+
+def document_label_key(document_type: str) -> str:
+    return {
+        "work_order": "work_order",
+        "delivery_note": "delivery_note",
+        "quote": "quote",
+    }.get(document_type, "work_order")
 
 
 def optional_form_int(value: str | int | None, field_name: str) -> int | None:
@@ -119,7 +154,9 @@ def list_jobs(
         view = "active"
 
     ensure_default_job_statuses(db)
+    document_type = document_type_for(request)
     query = db.query(Job).join(Job.status, isouter=True)
+    query = query.filter(Job.document_type == document_type)
 
     if view == "active":
         query = query.filter(Job.status_id.is_(None) | Job.status.has(is_final=False))
@@ -145,7 +182,9 @@ def list_jobs(
         {
             "request": request,
             "app_name": settings.app_name,
-            "active_page": "jobs",
+            "active_page": active_page_for(document_type),
+            "document_type": document_type,
+            "document_label_key": document_label_key(document_type),
             "view": view,
             "q": q,
             "jobs": jobs,
@@ -159,17 +198,20 @@ def new_job(request: Request, db: Session = Depends(get_db)):
     customers = db.query(Customer).order_by(Customer.name.asc()).all()
     statuses = ensure_default_job_statuses(db)
     route_base = route_base_for(request)
+    document_type = document_type_for(request)
     return templates.TemplateResponse(
         "jobs/form.html",
         {
             "request": request,
             "app_name": settings.app_name,
-            "active_page": "jobs",
+            "active_page": active_page_for(document_type),
             "customers": customers,
             "statuses": statuses,
             "job": None,
             "form_action": route_base,
-            "page_title": "New work order",
+            "document_type": document_type,
+            "document_label_key": document_label_key(document_type),
+            "page_title": "New document",
             "route_base": route_base,
         },
     )
@@ -206,8 +248,10 @@ def create_job(
     if status_id and status is None:
         raise HTTPException(status_code=400, detail="Selected status was not found")
 
+    document_type = document_type_for(request)
     job = Job(
         title=title.strip(),
+        document_type=document_type,
         customer=customer,
         description=description.strip() or None,
         arrival_date=parsed_arrival_date,
@@ -222,10 +266,10 @@ def create_job(
     ensure_receipt_number(db, job)
     log_audit_event(
         db,
-        event_type="job_created",
+        event_type=f"{document_type}.created",
         entity_type="job",
         entity_id=job.id,
-        description=f"Work order created with status {job.status.name if job.status else 'Received'}.",
+        description=f"{document_type} created with status {job.status.name if job.status else 'Received'}.",
     )
     db.commit()
 
@@ -241,17 +285,20 @@ def edit_job(job_id: int, request: Request, db: Session = Depends(get_db)):
     customers = db.query(Customer).order_by(Customer.name.asc()).all()
     statuses = ensure_default_job_statuses(db)
     route_base = route_base_for(request)
+    document_type = job.document_type or document_type_for(request)
     return templates.TemplateResponse(
         "jobs/form.html",
         {
             "request": request,
             "app_name": settings.app_name,
-            "active_page": "jobs",
+            "active_page": active_page_for(document_type),
             "customers": customers,
             "statuses": statuses,
             "job": job,
             "form_action": f"{route_base}/{job.id}",
-            "page_title": "Edit work order",
+            "document_type": document_type,
+            "document_label_key": document_label_key(document_type),
+            "page_title": "Edit document",
             "route_base": route_base,
         },
     )
@@ -317,6 +364,7 @@ def job_detail(job_id: int, request: Request, db: Session = Depends(get_db)):
     if job is None:
         raise HTTPException(status_code=404, detail="Work order not found")
     statuses = ensure_default_job_statuses(db)
+    document_type = job.document_type or document_type_for(request)
     products = (
         db.query(Product)
         .filter(Product.is_active.is_(True))
@@ -335,8 +383,10 @@ def job_detail(job_id: int, request: Request, db: Session = Depends(get_db)):
         {
             "request": request,
             "app_name": settings.app_name,
-            "active_page": "jobs",
+            "active_page": active_page_for(document_type),
             "job": job,
+            "document_type": document_type,
+            "document_label_key": document_label_key(document_type),
             "statuses": statuses,
             "products": products,
             "audit_events": audit_events,
@@ -359,7 +409,7 @@ def job_receipt(job_id: int, request: Request, db: Session = Depends(get_db)):
         {
             "request": request,
             "app_name": settings.app_name,
-            "active_page": "jobs",
+            "active_page": active_page_for(job.document_type or document_type_for(request)),
             "job": job,
             **print_context,
             "route_base": route_base_for(request),
@@ -491,3 +541,89 @@ def delete_job(request: Request, job_id: int, db: Session = Depends(get_db)):
     db.delete(job)
     db.commit()
     return RedirectResponse(url=route_base_for(request), status_code=303)
+
+
+def clone_job_as_type(db: Session, *, source_job: Job, target_type: str) -> Job:
+    if target_type not in DOCUMENT_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid target document type")
+    existing = (
+        db.query(Job)
+        .filter(Job.source_job_id == source_job.id, Job.document_type == target_type)
+        .order_by(Job.id.asc())
+        .first()
+    )
+    if existing is not None:
+        return existing
+    cloned = Job(
+        document_type=target_type,
+        source_job_id=source_job.id,
+        title=source_job.title,
+        customer=source_job.customer,
+        description=source_job.description,
+        arrival_date=date.today(),
+        requested_pickup_date=source_job.requested_pickup_date,
+        status=get_received_status(db),
+        priority=source_job.priority,
+        notes=source_job.notes,
+    )
+    db.add(cloned)
+    db.flush()
+    for item in source_job.items:
+        db.add(
+            JobItem(
+                job=cloned,
+                product=item.product,
+                description=item.description,
+                quantity=item.quantity,
+                unit_price=item.unit_price,
+                vat_percent=item.vat_percent,
+                line_total=item.line_total,
+            )
+        )
+    source_job.converted_at = utc_now()
+    db.flush()
+    ensure_receipt_number(db, cloned)
+    log_audit_event(
+        db,
+        event_type=f"{source_job.document_type}.converted",
+        entity_type="job",
+        entity_id=source_job.id,
+        description=f"{source_job.document_type} converted to {target_type} #{cloned.id}.",
+    )
+    db.commit()
+    db.refresh(cloned)
+    return cloned
+
+
+@router.post("/{job_id}/convert/{target_type}")
+def convert_job_document(
+    request: Request,
+    job_id: int,
+    target_type: str,
+    payment_method: str = Form("cash"),
+    db: Session = Depends(get_db),
+):
+    job = db.get(Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if target_type in {"work_order", "delivery_note", "quote"}:
+        converted = clone_job_as_type(db, source_job=job, target_type=target_type)
+        return RedirectResponse(url=f"/{target_type.replace('_', '-') + 's' if target_type != 'work_order' else 'work-orders'}/{converted.id}", status_code=303)
+    if target_type in {"sale", "invoice"}:
+        current_user = request_current_user(request)
+        try:
+            sale = create_sale_from_work_order(
+                db,
+                work_order_id=job.id,
+                shift_id=None,
+                seller_id=None,
+                seller_mode="default",
+                payments=[PaymentInput("invoice" if target_type == "invoice" else payment_method)],
+                send_to_invoice=target_type == "invoice",
+                created_by_user_id=current_user.id if current_user is not None else None,
+                idempotency_key=f"{job.document_type}-{job.id}-{target_type}",
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return RedirectResponse(url=f"/sales/{sale.id}", status_code=303)
+    raise HTTPException(status_code=400, detail="Invalid conversion target")

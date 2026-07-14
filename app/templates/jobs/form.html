@@ -2,14 +2,14 @@
 
 {% block content %}
 <div class="mb-4">
-    <h1 class="h3 mb-1">{{ page_title }}</h1>
-    <p class="text-muted mb-0">Create a work order and connect it to a customer.</p>
+    <h1 class="h3 mb-1">{{ t["new_" ~ document_label_key] if not job else t["edit_" ~ document_label_key] }}</h1>
+    <p class="text-muted mb-0">{{ t[document_label_key ~ "_form_help"] }}</p>
 </div>
 
 {% if not customers %}
 <div class="alert alert-warning">
-    Add a customer before creating a work order.
-    <a class="alert-link" href="/customers/new">Create customer</a>
+    {{ t.create_customer_before_document }}
+    <a class="alert-link" href="/customers/new">{{ t.new_customer }}</a>
 </div>
 {% endif %}
 
@@ -17,36 +17,36 @@
     <div class="card-body">
         <div class="row g-3">
             <div class="col-12">
-                <label class="form-label" for="title">Work order title</label>
-                <input class="form-control" id="title" name="title" required placeholder="Repair, service task, delivery, maintenance" value="{{ job.title if job else '' }}">
+                <label class="form-label" for="title">{{ t.title }}</label>
+                <input class="form-control" id="title" name="title" required placeholder="{{ t.document_title_placeholder }}" value="{{ job.title if job else '' }}">
             </div>
             <div class="col-12">
-                <label class="form-label" for="customer_id">Customer</label>
+                <label class="form-label" for="customer_id">{{ t.customer }}</label>
                 <select class="form-select" id="customer_id" name="customer_id">
-                    <option value="">No customer selected</option>
+                    <option value="">{{ t.no_customer }}</option>
                     {% for customer in customers %}
                     <option value="{{ customer.id }}" {% if job and job.customer_id == customer.id %}selected{% endif %}>{{ customer.name }}{% if customer.company_name %} - {{ customer.company_name }}{% endif %}</option>
                     {% endfor %}
                 </select>
             </div>
             <div class="col-md-6">
-                <label class="form-label" for="arrival_date">Received date</label>
+                <label class="form-label" for="arrival_date">{{ t.received_date }}</label>
                 <input class="form-control" id="arrival_date" name="arrival_date" type="date" value="{{ job.arrival_date if job and job.arrival_date else '' }}">
             </div>
             <div class="col-md-6">
-                <label class="form-label" for="requested_pickup_date">Requested pickup / delivery date</label>
+                <label class="form-label" for="requested_pickup_date">{{ t.pickup_date }}</label>
                 <input class="form-control" id="requested_pickup_date" name="requested_pickup_date" type="date" value="{{ job.requested_pickup_date if job and job.requested_pickup_date else '' }}">
             </div>
             <div class="col-md-6">
-                <label class="form-label" for="priority">Priority</label>
+                <label class="form-label" for="priority">{{ t.priority }}</label>
                 <select class="form-select" id="priority" name="priority">
-                    <option value="normal" {% if not job or job.priority == "normal" %}selected{% endif %}>Normal</option>
-                    <option value="high" {% if job and job.priority == "high" %}selected{% endif %}>High</option>
-                    <option value="low" {% if job and job.priority == "low" %}selected{% endif %}>Low</option>
+                    <option value="normal" {% if not job or job.priority == "normal" %}selected{% endif %}>{{ t.normal }}</option>
+                    <option value="high" {% if job and job.priority == "high" %}selected{% endif %}>{{ t.high }}</option>
+                    <option value="low" {% if job and job.priority == "low" %}selected{% endif %}>{{ t.low }}</option>
                 </select>
             </div>
             <div class="col-md-6">
-                <label class="form-label" for="status_id">Status</label>
+                <label class="form-label" for="status_id">{{ t.status }}</label>
                 <select class="form-select" id="status_id" name="status_id">
                     {% for status in statuses %}
                     <option value="{{ status.id }}" {% if (job and job.status_id == status.id) or (not job and status.name == "Received") %}selected{% endif %}>{{ status.name }}</option>
@@ -54,18 +54,18 @@
                 </select>
             </div>
             <div class="col-12">
-                <label class="form-label" for="description">Description</label>
+                <label class="form-label" for="description">{{ t.description }}</label>
                 <textarea class="form-control" id="description" name="description" rows="3">{{ job.description if job and job.description else '' }}</textarea>
             </div>
             <div class="col-12">
-                <label class="form-label" for="notes">Notes</label>
+                <label class="form-label" for="notes">{{ t.notes }}</label>
                 <textarea class="form-control" id="notes" name="notes" rows="3">{{ job.notes if job and job.notes else '' }}</textarea>
             </div>
         </div>
     </div>
     <div class="card-footer bg-white d-flex gap-2 justify-content-end">
-        <a class="btn btn-outline-secondary" href="{{ route_base or '/work-orders' }}">Cancel</a>
-        <button class="btn btn-primary" type="submit" {% if not customers and not job %}disabled{% endif %}>Save work order</button>
+        <a class="btn btn-outline-secondary" href="{{ route_base or '/work-orders' }}">{{ t.back }}</a>
+        <button class="btn btn-primary" type="submit" {% if not customers and not job %}disabled{% endif %}>{{ t.save }}</button>
     </div>
 </form>
 {% endblock %}

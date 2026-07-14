@@ -23,6 +23,8 @@
             <div class="sidebar-group-label">{{ t.operations }}</div>
             <a class="sidebar-link {% if active_page == 'customers' %}active{% endif %}" href="/customers"><span class="nav-icon" aria-hidden="true">CU</span><span>{{ t.customers }}</span></a>
             <a class="sidebar-link {% if active_page == 'jobs' %}active{% endif %}" href="/work-orders"><span class="nav-icon" aria-hidden="true">WO</span><span>{{ t.work_orders }}</span></a>
+            <a class="sidebar-link {% if active_page == 'delivery_notes' %}active{% endif %}" href="/delivery-notes"><span class="nav-icon" aria-hidden="true">DN</span><span>{{ t.delivery_notes }}</span></a>
+            <a class="sidebar-link {% if active_page == 'quotes' %}active{% endif %}" href="/quotes"><span class="nav-icon" aria-hidden="true">QT</span><span>{{ t.quotes }}</span></a>
         </div>
         <div class="sidebar-group">
             <div class="sidebar-group-label">{{ t.sales_nav }}</div>
@@ -73,6 +75,8 @@
             <div class="sidebar-group-label">{{ t.operations }}</div>
             <a class="sidebar-link" href="/customers">{{ t.customers }}</a>
             <a class="sidebar-link" href="/work-orders">{{ t.work_orders }}</a>
+            <a class="sidebar-link" href="/delivery-notes">{{ t.delivery_notes }}</a>
+            <a class="sidebar-link" href="/quotes">{{ t.quotes }}</a>
             <div class="sidebar-group-label">{{ t.sales_nav }}</div>
             <a class="sidebar-link" href="/sales/quick">{{ t.quick_sale }}</a>
             <a class="sidebar-link" href="/sales">{{ t.sales_history }}</a>

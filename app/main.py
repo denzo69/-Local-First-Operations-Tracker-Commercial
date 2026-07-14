@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.auth_middleware import authentication_middleware
@@ -20,9 +20,11 @@ from app.routes import (
     cash_registers,
     customers,
     daily_closings,
+    delivery_notes,
     inventory,
     jobs,
     products,
+    quotes,
     reports,
     sales,
     seller_reports,
@@ -61,6 +63,8 @@ app.include_router(auth.router)
 app.include_router(backups.router)
 app.include_router(customers.router)
 app.include_router(work_orders.router)
+app.include_router(delivery_notes.router)
+app.include_router(quotes.router)
 app.include_router(jobs.router)
 app.include_router(audit_log.router)
 app.include_router(products.router)
@@ -98,7 +102,10 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     t = get_translations(get_app_settings(db).get("language", "en"))
     today_start = datetime.combine(today, time.min, tzinfo=UTC)
     tomorrow_start = datetime.combine(tomorrow, time.min, tzinfo=UTC)
-    active_job_filter = or_(Job.status_id.is_(None), ~Job.status.has(is_final=True))
+    active_job_filter = and_(
+        Job.document_type == "work_order",
+        or_(Job.status_id.is_(None), ~Job.status.has(is_final=True)),
+    )
 
     overdue_jobs = (
         db.query(Job)

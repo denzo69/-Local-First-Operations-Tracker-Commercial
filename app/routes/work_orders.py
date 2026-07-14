@@ -150,3 +150,20 @@ def update_work_order_status(
 @router.post("/{job_id}/delete")
 def delete_work_order(request: Request, job_id: int, db: Session = Depends(get_db)):
     return jobs.delete_job(request=request, job_id=job_id, db=db)
+
+
+@router.post("/{job_id}/convert/{target_type}")
+def convert_work_order(
+    request: Request,
+    job_id: int,
+    target_type: str,
+    payment_method: str = Form("cash"),
+    db: Session = Depends(get_db),
+):
+    return jobs.convert_job_document(
+        request=request,
+        job_id=job_id,
+        target_type=target_type,
+        payment_method=payment_method,
+        db=db,
+    )

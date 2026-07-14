@@ -48,6 +48,9 @@ class Job(Base):
     id = Column(Integer, primary_key=True, index=True)
     job_number = Column(String(100), nullable=True, index=True)
     receipt_number = Column(String(100), nullable=True, unique=True, index=True)
+    document_type = Column(String(50), default="work_order", index=True)
+    source_job_id = Column(Integer, ForeignKey("jobs.id"), nullable=True, index=True)
+    converted_at = Column(DateTime, nullable=True)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True)
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
@@ -60,6 +63,7 @@ class Job(Base):
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
     customer = relationship("Customer", back_populates="jobs")
+    source_job = relationship("Job", remote_side=[id])
     status = relationship("JobStatus", back_populates="jobs")
     items = relationship("JobItem", back_populates="job")
     sales = relationship("Sale", back_populates="work_order")
