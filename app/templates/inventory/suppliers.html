@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
+<nav class="small text-muted mb-3"><a href="/products">{{ t.products }}</a> &gt; {{ t.suppliers }}</nav>
 <h1>{{ t.suppliers }}</h1>
-<form method="post" action="/inventory/suppliers" class="card p-3 mb-3">
+<form method="post" action="{{ supplier_action|default('/inventory/suppliers') }}" class="card p-3 mb-3">
     <label class="form-label" for="name">{{ t.supplier }}</label>
     <input class="form-control" id="name" name="name" required>
     <button class="btn btn-primary mt-3" type="submit">{{ t.save }}</button>

@@ -43,7 +43,7 @@ def list_goods_receipts(request: Request, db: Session = Depends(get_db)):
         {
             "request": request,
             "app_name": settings.app_name,
-            "active_page": "inventory",
+            "active_page": "products",
             "page_title": "Goods receipts",
             "receipts": receipts,
         },
@@ -59,7 +59,7 @@ def new_goods_receipt(request: Request, db: Session = Depends(get_db)):
         {
             "request": request,
             "app_name": settings.app_name,
-            "active_page": "inventory",
+            "active_page": "products",
             "page_title": "New goods receipt",
             "suppliers": db.query(Supplier).filter(Supplier.is_active.is_(True)).order_by(Supplier.name.asc()).all(),
             "users": db.query(User).filter(User.is_active.is_(True)).order_by(User.name.asc()).all(),
@@ -120,7 +120,7 @@ def goods_receipt_detail(receipt_id: int, request: Request, db: Session = Depend
         {
             "request": request,
             "app_name": settings.app_name,
-            "active_page": "inventory",
+            "active_page": "products",
             "page_title": "Goods receipt",
             "receipt": receipt,
             "preview": preview,
@@ -201,7 +201,7 @@ def inventory_valuation_report(request: Request, db: Session = Depends(get_db)):
         {
             "request": request,
             "app_name": settings.app_name,
-            "active_page": "inventory_valuation",
+            "active_page": "products",
             "page_title": "Inventory valuation",
             "valuation": inventory_valuation(db),
         },
@@ -215,7 +215,7 @@ def inventory_reconciliation_report(request: Request, db: Session = Depends(get_
         {
             "request": request,
             "app_name": settings.app_name,
-            "active_page": "inventory_reconciliation",
+            "active_page": "products",
             "page_title": "Inventory reconciliation",
             "report": inventory_reconciliation(db),
             "users": db.query(User).filter(User.is_active.is_(True)).order_by(User.name.asc()).all(),
@@ -283,7 +283,7 @@ def inventory_ledger_report(
         {
             "request": request,
             "app_name": settings.app_name,
-            "active_page": "inventory_ledger",
+            "active_page": "products",
             "page_title": "Inventory ledger",
             "transactions": transactions,
             "products": db.query(Product).order_by(Product.name.asc()).all(),
@@ -311,7 +311,7 @@ def suppliers(request: Request, db: Session = Depends(get_db)):
         {
             "request": request,
             "app_name": settings.app_name,
-            "active_page": "inventory",
+            "active_page": "products",
             "page_title": "Suppliers",
             "suppliers": db.query(Supplier).order_by(Supplier.name.asc()).all(),
         },
@@ -336,7 +336,7 @@ def warehouses(request: Request, db: Session = Depends(get_db)):
         {
             "request": request,
             "app_name": settings.app_name,
-            "active_page": "inventory",
+            "active_page": "products",
             "page_title": "Warehouses",
             "warehouses": db.query(Warehouse).order_by(Warehouse.name.asc()).all(),
         },

@@ -40,6 +40,7 @@ The app is not intended to be exposed directly to the public internet.
 - Legacy `/jobs` routes kept for backwards compatibility
 - Configurable work order statuses in Settings
 - Products and services with CSV price list import
+- Products workspace for product master data, warehouses, shelf locations, goods receipts, stock balances, inventory transactions, valuation, and reconciliation
 - Work order item rows with VAT-inclusive pricing
 - Sequential receipt numbers independent from database IDs
 - Printable receipt / work order preview with stored print snapshot
@@ -138,6 +139,8 @@ Security notes:
 - The app is still not intended to be exposed directly to the public internet.
 
 ## Inventory Costing
+
+The visible inventory workflow is organized under `Products / Tuotteet`. Product master data, warehouses, shelf locations, goods receipts, stock balances, inventory transaction history, valuation, and reconciliation are presented as one product and inventory workspace. The internal services and tables remain separated for correctness: product data, goods receipts, inventory transactions, balance caches, and valuation calculations still have distinct responsibilities.
 
 Inventory valuation is based on ex-VAT cost. VAT is stored and shown, but deductible VAT is not included in inventory value by default.
 

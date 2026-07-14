@@ -2,9 +2,9 @@
 {% block content %}
 <h1>{{ t.new_goods_receipt }}</h1>
 {% if not suppliers %}
-<div class="alert alert-warning">{{ t.create_supplier_first }} <a href="/inventory/suppliers">{{ t.suppliers }}</a></div>
+<div class="alert alert-warning">{{ t.create_supplier_first }} <a href="{{ products_inventory_base|default('/inventory') }}/suppliers">{{ t.suppliers }}</a></div>
 {% endif %}
-<form method="post" action="/inventory/goods-receipts" class="card p-3">
+<form method="post" action="{{ products_inventory_base|default('/inventory') }}/goods-receipts" class="card p-3">
     <div class="row g-3">
         <div class="col-md-4">
             <label class="form-label" for="supplier_id">{{ t.supplier }}</label>

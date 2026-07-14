@@ -117,6 +117,23 @@ button:focus-visible,
     color: #fff;
 }
 
+.sidebar-subnav {
+    display: grid;
+    gap: .2rem;
+    margin: .15rem 0 .35rem 2.65rem;
+}
+
+.sidebar-subnav a {
+    color: #b8c3d4;
+    font-size: .86rem;
+    text-decoration: none;
+    padding: .18rem 0;
+}
+
+.sidebar-subnav a:hover {
+    color: #fff;
+}
+
 .nav-icon {
     display: inline-flex;
     justify-content: center;
@@ -182,6 +199,29 @@ button:focus-visible,
     max-width: 1480px;
     margin: 0 auto;
     padding: 1.25rem;
+}
+
+.workspace-card {
+    display: grid;
+    gap: .25rem;
+    min-height: 104px;
+    height: 100%;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    text-decoration: none;
+    box-shadow: var(--shadow);
+}
+
+.workspace-card span {
+    color: var(--muted);
+    font-size: .9rem;
+}
+
+.workspace-card:hover {
+    border-color: #9db8ca;
 }
 
 .dashboard-hero {

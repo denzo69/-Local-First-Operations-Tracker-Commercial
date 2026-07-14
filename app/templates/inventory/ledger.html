@@ -5,10 +5,10 @@
         <h1 class="h3 mb-1">{{ t.inventory_ledger }}</h1>
         <p class="text-muted mb-0">{{ t.inventory_ledger_help }}</p>
     </div>
-    <a class="btn btn-outline-secondary" href="/inventory/valuation">{{ t.inventory_valuation }}</a>
+    <a class="btn btn-outline-secondary" href="{{ valuation_url|default('/inventory/valuation') }}">{{ t.inventory_valuation }}</a>
 </div>
 
-<form class="card shadow-sm border-0 mb-3" method="get" action="/inventory/ledger">
+<form class="card shadow-sm border-0 mb-3" method="get" action="{{ ledger_action|default('/inventory/ledger') }}">
     <div class="card-body">
         <div class="row g-3">
             <div class="col-md-3">
