@@ -40,14 +40,18 @@ The app is not intended to be exposed directly to the public internet.
 - Legacy `/jobs` routes kept for backwards compatibility
 - Configurable work order statuses in Settings
 - Products and services with CSV price list import
+- Products workspace for product master data, warehouses, shelf locations, goods receipts, stock balances, inventory transactions, valuation, and reconciliation
 - Work order item rows with VAT-inclusive pricing
 - Sequential receipt numbers independent from database IDs
 - Printable receipt / work order preview with stored print snapshot
 - Settings for company details, VAT default, receipt prefix, and language
 - Finnish and English UI text baseline
 - Local login with signed session cookie, first-admin setup, password hashes, and operational roles for Admin, Manager, Seller, and Read only
-- Cash registers and seller shifts with starting cash, cash movements, closing count, expected cash, and over/short calculation
+- Optional cash registers and seller shifts with starting cash, cash movements, closing count, expected cash, and over/short calculation for businesses that need cashier balancing
 - Sales, payments, and refunds stored separately from Work Orders
+- Unified sales flow for direct POS sales and Work Order billing
+- Work Orders can be converted into Sales and settled by cash, card, split payment, or invoice handoff
+- Invoice queue for external invoicing handoff, payment-status checks, unpaid follow-up, and reminder tracking; this is not statutory invoicing
 - Daily closing with immutable versioned snapshots, closed-day write lock, VAT/payment/seller summaries, and authorized reopen flow
 - Read-only browsing for historical daily closing snapshot versions
 - Seller reports for daily, weekly, and monthly sales metrics
@@ -77,13 +81,39 @@ The app is not intended to be exposed directly to the public internet.
 - Receipt numbering is local-MVP safe, but not designed for high-concurrency multi-server use
 - Money columns now use SQLAlchemy `Numeric`; existing SQLite columns may still have older storage affinity until a future migration rebuilds the tables
 - Bootstrap CSS and JavaScript are bundled locally under `app/static/vendor/bootstrap`; the app does not require a CDN for the normal UI
-- Sales UI creates one sale line and one payment today. The data model is prepared for more rows, but split/partial payments and multi-line sale finalization are not yet implemented.
+- Sales now support multiple lines and multiple immediate payments. Full accounting invoicing, payment gateways, fiscal cash register certification, and statutory e-invoicing are not implemented.
+- External invoice/e-invoice integration is not implemented. The invoice queue is only a manual handoff and follow-up workflow.
 - Multi-VAT refunds are rejected until line-level refund allocation is implemented.
 - Refunds do not yet create customer-return stock movements. A financial refund leaves inventory unchanged until a dedicated return workflow is implemented.
 
 ## Sales, Shifts, Refunds, And Daily Closing
 
 Work Orders, Sales, Payments, and Refunds are separate business objects. A Sale may link to a Work Order, but a Work Order is not treated as the payment record.
+
+A Work Order is operational, not financial. When it becomes billable, it is converted into a Sale. That Sale stores immutable line snapshots, credited seller, operator, shift, cash register, VAT totals, inventory COGS snapshots, and settlement status.
+
+Cashier shifts are optional by default. Small businesses, sole traders, and mobile workers can complete Sales without opening a shift. When a shift is selected, the Sale uses the shift business date and cash register and is included in shift closing. When no shift is selected, the Sale stores its own business date, may optionally reference a cash register, and remains visible in sales reports, daily totals, inventory reports, and seller reports without appearing in a shift closing. A future configuration flag, `require_cashier_shift`, can make active shifts mandatory for installations that need stricter cashier control.
+
+Credited seller attribution is also optional. By default, the logged-in operator is used as seller when eligible. The operator may explicitly select an eligible credited seller or choose no seller on the receipt. Operator identity remains stored separately from credited seller, payment receiver, and inventory actor.
+
+Direct POS sales and Work Order billing use the same sales service. The UI has separate entry points for speed and clarity:
+
+- `/sales/quick` for direct retail / POS sale
+- `/sales/work-orders/{id}` for Work Order review and payment/invoice handoff
+- `/sales/invoice-queue` for Sales awaiting external invoicing
+
+Settlement and invoice follow-up states include paid, partially paid, awaiting invoice, transferred to invoicing, payment check due, unpaid, reminder due, reminder sent, and cancelled. Cash, card, bank transfer, mobile, and other immediate payments create `Payment` rows. Sending a Sale to invoicing does not create a fake cash/card payment. Partial and split payments are supported as multiple `Payment` rows, and overpayment is rejected in this MVP.
+
+External invoicing handoff can store the external invoicing service, external invoice number, invoice date, due date, optional external reference or URL, and notes. The app never assumes an external invoice has been paid without explicit user confirmation. If the due date or next follow-up date has passed, the dashboard shows an alert telling the user to check the external invoicing service or send a reminder. Confirming paid, confirming unpaid, and recording a sent reminder are explicit audited actions.
+
+Every finalized Sale receives one unique sequential Sale document number. Direct POS sales and Work Order-originated sales use the same Sale document-number sequence. A Work Order number remains only a source reference on the receipt or sale detail, and an external invoice number remains a separate handoff field; neither replaces the Sale document number.
+
+Seller and operator identity remain separate:
+
+- `Sale.sold_by_user_id` credits the seller for reports and receipts
+- `Sale.created_by_user_id` records the authenticated operator who created the sale
+- `Payment.received_by_user_id` records who received or recorded each payment
+- `InventoryTransaction.created_by_user_id` records who caused the stock issue
 
 Daily closing rules:
 
@@ -98,6 +128,8 @@ Daily closing rules:
 - Refund VAT is stored with the refund. Single-VAT sales are supported; multi-VAT refunds require future line allocation.
 - Snapshot version history is available from the Daily Closing detail page.
 
+Daily closing counts Sales by `Sale.business_date`. Shift-linked Sales use the shift business date; shiftless Sales use the local business date at finalization. Payment method totals come from actual `Payment` rows. Awaiting-invoice and external-invoice follow-up Sales are visible as sales revenue handoff items and are not counted as cash/card received. Cash reporting distinguishes shift-linked cash, shiftless cash assigned to a register, and shiftless unassigned cash.
+
 Security notes:
 
 - Create the first admin at `/setup`, then use `/login`.
@@ -107,6 +139,8 @@ Security notes:
 - The app is still not intended to be exposed directly to the public internet.
 
 ## Inventory Costing
+
+The visible inventory workflow is organized under `Products / Tuotteet`. Product master data, warehouses, shelf locations, goods receipts, stock balances, inventory transaction history, valuation, and reconciliation are presented as one product and inventory workspace. The internal services and tables remain separated for correctness: product data, goods receipts, inventory transactions, balance caches, and valuation calculations still have distinct responsibilities.
 
 Inventory valuation is based on ex-VAT cost. VAT is stored and shown, but deductible VAT is not included in inventory value by default.
 
@@ -137,7 +171,7 @@ new average cost = (old value + new receipt value) / (old quantity + received qu
 
 The inventory transaction ledger is the accounting source of truth. Current balance caches and product-level cost fields must be reproducible from ledger rows. Inventory value is stored as the actual ex-VAT transaction value rounded to 2 decimals. Negative stock is rejected by default because it would make weighted average cost ambiguous. Cache/ledger reconciliation can detect mismatches and repair caches from ledger rows without rewriting transaction history. Posted receipts are immutable through application-level guards and SQLite triggers; cancellation creates reversal transactions instead of deleting history.
 
-Sales of stock products create a `sale` inventory transaction and store cost of goods sold, gross profit, and gross margin snapshots on the sale line and sale header. These snapshots use the weighted average cost that existed at the moment of sale; later purchases do not rewrite historical profit. Non-stock products and services have zero inventory COGS in the current MVP cost model, so gross profit is revenue excluding VAT.
+Sales of stock products create a `sale` inventory transaction and store cost of goods sold, gross profit, and gross margin snapshots on the sale line and sale header. These snapshots use the weighted average cost that existed at the moment of sale; later purchases do not rewrite historical profit. Non-stock products and services have zero inventory COGS in the current MVP cost model, so gross profit is revenue excluding VAT. Stock is issued when the Sale is finalized, even if the settlement path is awaiting invoice, because the goods have been delivered.
 
 ## Technology Stack
 

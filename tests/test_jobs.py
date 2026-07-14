@@ -63,6 +63,22 @@ def test_work_order_routes_create_and_redirect_to_work_order_detail():
     assert response.headers["location"].startswith("/work-orders/")
 
 
+def test_work_order_can_be_created_with_empty_customer_selection():
+    with TestClient(app) as client:
+        response = client.post(
+            "/work-orders",
+            data={
+                "title": "Test job no customer",
+                "customer_id": "",
+                "priority": "normal",
+            },
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/work-orders/")
+
+
 def test_job_can_be_edited_and_printed():
     with TestClient(app) as client:
         customer_response = client.post(
@@ -138,6 +154,56 @@ def test_job_receipt_number_and_sales_items_work():
     assert "20.00" in detail_response.text
     assert "Receipt" in receipt_response.text
     assert "Test product" in receipt_response.text
+
+
+def test_work_order_manual_item_empty_product_id_is_accepted():
+    with TestClient(app) as client:
+        job_response = client.post(
+            "/work-orders",
+            data={"title": "Test job manual item"},
+            follow_redirects=False,
+        )
+        job_url = job_response.headers["location"]
+        item_response = client.post(
+            f"{job_url}/items",
+            data={
+                "product_id": "",
+                "description": "Manual wash",
+                "quantity": "2",
+                "unit_price": "12.50",
+                "vat_percent": "24",
+            },
+            follow_redirects=False,
+        )
+        detail_response = client.get(job_url)
+
+    assert item_response.status_code == 303
+    assert "Manual wash" in detail_response.text
+    assert "25.00" in detail_response.text
+
+
+def test_work_order_blank_manual_item_returns_clear_validation_error_not_422():
+    with TestClient(app) as client:
+        job_response = client.post(
+            "/work-orders",
+            data={"title": "Test job blank manual item"},
+            follow_redirects=False,
+        )
+        job_url = job_response.headers["location"]
+        item_response = client.post(
+            f"{job_url}/items",
+            data={
+                "product_id": "",
+                "description": "",
+                "quantity": "1",
+                "unit_price": "0",
+                "vat_percent": "24",
+            },
+            follow_redirects=False,
+        )
+
+    assert item_response.status_code == 400
+    assert "Item description is required" in item_response.text
 
 
 def test_work_order_status_can_be_marked_ready():

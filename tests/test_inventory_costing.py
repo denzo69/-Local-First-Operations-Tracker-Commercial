@@ -381,6 +381,7 @@ def test_negative_stock_zero_quantity_negative_cost_and_transaction_rollback():
     with SessionLocal() as db:
         user = create_user(db)
         seller = create_user(db, "Inventory Seller", "seller")
+        viewer = create_user(db, "Inventory Viewer", "read_only")
         supplier = create_supplier(db)
         location = create_location(db)
         product = create_product(db, "Test Validation")
@@ -389,16 +390,26 @@ def test_negative_stock_zero_quantity_negative_cost_and_transaction_rollback():
             add_goods_receipt_line(db, goods_receipt_id=receipt.id, product_id=product.id, destination_location_id=location.id, quantity_value="0", purchase_unit_price_ex_vat="1")
         with pytest.raises(ValueError, match="Purchase unit price"):
             add_goods_receipt_line(db, goods_receipt_id=receipt.id, product_id=product.id, destination_location_id=location.id, quantity_value="1", purchase_unit_price_ex_vat="-1")
-        with pytest.raises(ValueError, match="Only Admin or Manager"):
-            create_goods_receipt(db, supplier_id=supplier.id, receipt_date=date.today(), received_by_user_id=seller.id)
+        seller_receipt = create_goods_receipt(db, supplier_id=supplier.id, receipt_date=date.today(), received_by_user_id=seller.id)
+        add_goods_receipt_line(
+            db,
+            goods_receipt_id=seller_receipt.id,
+            product_id=product.id,
+            destination_location_id=location.id,
+            quantity_value="1",
+            purchase_unit_price_ex_vat="5",
+        )
+        post_goods_receipt(db, goods_receipt_id=seller_receipt.id, posted_by_user_id=seller.id)
+        with pytest.raises(ValueError, match="Only Admin, Manager, or Seller"):
+            create_goods_receipt(db, supplier_id=supplier.id, receipt_date=date.today(), received_by_user_id=viewer.id)
 
         valid = receipt_with_line(db, product=product, location=location, user=user, supplier=supplier, qty="1", unit_cost="10")
         post_goods_receipt(db, goods_receipt_id=valid.id, posted_by_user_id=user.id)
         with pytest.raises(ValueError, match="Negative stock"):
-            issue_stock_for_sale(db, product_id=product.id, warehouse_location_id=location.id, quantity_value="2", sale_id=1, created_by_user_id=user.id)
+            issue_stock_for_sale(db, product_id=product.id, warehouse_location_id=location.id, quantity_value="3", sale_id=1, created_by_user_id=user.id)
         db.refresh(product)
-        assert product.current_inventory_quantity == Decimal("1.000")
-        assert product.current_inventory_value_ex_vat == Decimal("10.00")
+        assert product.current_inventory_quantity == Decimal("2.000")
+        assert product.current_inventory_value_ex_vat == Decimal("15.00")
 
 
 def test_multi_line_multiple_warehouse_report_reconciles_with_movement_ledger():

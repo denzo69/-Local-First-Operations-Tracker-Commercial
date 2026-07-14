@@ -12,6 +12,7 @@ from app.services.auth_service import (
     should_skip_auth,
     user_has_role,
 )
+from app.template_context import templates
 
 
 async def authentication_middleware(request: Request, call_next):
@@ -68,4 +69,14 @@ def _forbidden_response(request: Request, detail: str):
             status_code=403,
             content={"error": {"status_code": 403, "detail": detail}},
         )
-    return RedirectResponse(url="/", status_code=303)
+    return templates.TemplateResponse(
+        "error.html",
+        {
+            "request": request,
+            "page_title": "Forbidden",
+            "status_code": 403,
+            "error_title": "Forbidden",
+            "error_detail": detail,
+        },
+        status_code=403,
+    )

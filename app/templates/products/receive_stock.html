@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block content %}
+<nav class="small text-muted mb-3">
+    <a href="/products">{{ t.products }}</a> &gt;
+    <a href="/products/{{ product.id }}">{{ product.name }}</a> &gt;
+    {{ t.receive_stock }}
+</nav>
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+    <div>
+        <h1 class="h3 mb-1">{{ t.receive_stock }}</h1>
+        <p class="text-muted mb-0">{{ t.receive_stock_help }}</p>
+    </div>
+    <a class="btn btn-outline-secondary" href="/products/{{ product.id }}">{{ t.back }}</a>
+</div>
+
+<div class="card shadow-sm border-0 mb-3">
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <div class="text-muted">{{ t.product }}</div>
+                <strong>{{ product.name }}</strong>
+            </div>
+            <div class="col-md-4">
+                <div class="text-muted">{{ t.current_quantity }}</div>
+                <strong>{{ product.current_inventory_quantity or 0 }}</strong>
+            </div>
+            <div class="col-md-4">
+                <div class="text-muted">{{ t.weighted_average_cost }}</div>
+                <strong>{{ product.current_weighted_average_cost_ex_vat or "-" }}</strong>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if not suppliers %}
+<div class="alert alert-warning">
+    {{ t.create_supplier_first }}
+    <a href="/products/suppliers">{{ t.suppliers }}</a>
+</div>
+{% endif %}
+
+<form method="post" action="/products/{{ product.id }}/receive" class="card shadow-sm border-0">
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label" for="supplier_id">{{ t.supplier }}</label>
+                <select class="form-select" id="supplier_id" name="supplier_id" required {% if not suppliers %}disabled{% endif %}>
+                    {% for supplier in suppliers %}
+                    <option value="{{ supplier.id }}">{{ supplier.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="receipt_date">{{ t.received_date }}</label>
+                <input class="form-control" id="receipt_date" name="receipt_date" type="date" value="{{ today }}" required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="received_by_user_id">{{ t.received_by }}</label>
+                <select class="form-select" id="received_by_user_id" name="received_by_user_id">
+                    {% for user in users %}
+                    <option value="{{ user.id }}">{{ user.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label" for="delivery_number">{{ t.delivery_number }}</label>
+                <input class="form-control" id="delivery_number" name="delivery_number">
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="invoice_number">{{ t.invoice_number }}</label>
+                <input class="form-control" id="invoice_number" name="invoice_number">
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label" for="destination_location_id">{{ t.destination_location }}</label>
+                <select class="form-select" id="destination_location_id" name="destination_location_id" required>
+                    {% for location in locations %}
+                    <option value="{{ location.id }}">{{ location.warehouse.code }} / {{ location.code }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="quantity_value">{{ t.quantity }}</label>
+                <input class="form-control" id="quantity_value" name="quantity_value" value="1" inputmode="decimal" required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="purchase_unit_price_ex_vat">{{ t.purchase_price_ex_vat }}</label>
+                <input class="form-control" id="purchase_unit_price_ex_vat" name="purchase_unit_price_ex_vat" value="{{ product.current_purchase_price_ex_vat or 0 }}" inputmode="decimal" required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="vat_rate">{{ t.vat }} %</label>
+                <input class="form-control" id="vat_rate" name="vat_rate" value="{{ product.vat_percent or 24 }}" inputmode="decimal">
+            </div>
+
+            <div class="col-md-3">
+                <label class="form-label" for="freight_total_ex_vat">{{ t.freight_ex_vat }}</label>
+                <input class="form-control" id="freight_total_ex_vat" name="freight_total_ex_vat" value="0" inputmode="decimal">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="freight_vat_rate">{{ t.freight_vat_rate }}</label>
+                <input class="form-control" id="freight_vat_rate" name="freight_vat_rate" value="0" inputmode="decimal">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="other_costs_total_ex_vat">{{ t.other_costs_ex_vat }}</label>
+                <input class="form-control" id="other_costs_total_ex_vat" name="other_costs_total_ex_vat" value="0" inputmode="decimal">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" for="other_costs_vat_rate">{{ t.other_costs_vat_rate }}</label>
+                <input class="form-control" id="other_costs_vat_rate" name="other_costs_vat_rate" value="0" inputmode="decimal">
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label" for="allocation_method">{{ t.allocation_method }}</label>
+                <select class="form-select" id="allocation_method" name="allocation_method">
+                    <option value="by_value">{{ t.by_purchase_value }}</option>
+                    <option value="by_quantity">{{ t.by_quantity }}</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="alert alert-info mt-3 mb-0">
+            {{ t.review_and_post_receipt }}
+        </div>
+    </div>
+    <div class="card-footer bg-white">
+        <button class="btn btn-primary" type="submit" {% if not suppliers %}disabled{% endif %}>{{ t.create_receipt_draft }}</button>
+    </div>
+</form>
+{% endblock %}

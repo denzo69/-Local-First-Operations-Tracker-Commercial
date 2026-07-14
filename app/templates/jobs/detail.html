@@ -10,6 +10,7 @@
         <a class="btn btn-outline-secondary" href="{{ route_base }}">{{ t.back }}</a>
         <a class="btn btn-outline-primary" href="{{ route_base }}/{{ job.id }}/edit">{{ t.edit }}</a>
         <a class="btn btn-outline-dark" href="{{ route_base }}/{{ job.id }}/receipt">{{ t.print }}</a>
+        <a class="btn btn-primary" href="/sales/work-orders/{{ job.id }}">Create sale / take payment</a>
     </div>
 </div>
 
@@ -64,6 +65,17 @@
         </dl>
     </div>
 </div>
+
+{% if job.sales %}
+<div class="card shadow-sm border-0 mt-3">
+    <div class="card-header bg-white fw-semibold">Linked sale</div>
+    <div class="card-body">
+        {% for sale in job.sales %}
+        <a href="/sales/{{ sale.id }}">Sale #{{ sale.id }}</a> - {{ sale.total }} - {{ sale.settlement_status or sale.status }}
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
 
 <div class="card shadow-sm border-0 mt-3">
     <div class="card-header bg-white fw-semibold">{{ t.sales_items }}</div>

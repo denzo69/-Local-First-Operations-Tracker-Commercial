@@ -14,6 +14,12 @@ DEFAULT_SETTINGS = {
     "receipt_annual_reset": "false",
     "next_receipt_sequence": "1",
     "receipt_sequence_year": "",
+    "sale_document_prefix": "SALE-",
+    "sale_document_padding": "6",
+    "sale_document_annual_reset": "false",
+    "next_sale_document_sequence": "1",
+    "sale_document_sequence_year": "",
+    "require_cashier_shift": "false",
     "language": "en",
 }
 

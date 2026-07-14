@@ -4,9 +4,27 @@
 <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
     <div>
         <h1 class="h3 mb-1">{{ t.products }}</h1>
-        <p class="text-muted mb-0">Price list for work order item rows and sales totals.</p>
+        <p class="text-muted mb-0">{{ t.products_workspace_help }}</p>
     </div>
     <a class="btn btn-primary" href="/products/new">{{ t.new_product }}</a>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-6 col-lg-3"><div class="card p-3 h-100"><div class="text-muted">{{ t.active_products }}</div><strong>{{ summary.active_products }}</strong></div></div>
+    <div class="col-6 col-lg-3"><div class="card p-3 h-100"><div class="text-muted">{{ t.stock_products }}</div><strong>{{ summary.stock_products }}</strong></div></div>
+    <div class="col-6 col-lg-3"><div class="card p-3 h-100"><div class="text-muted">{{ t.service_products }}</div><strong>{{ summary.service_products }}</strong></div></div>
+    <div class="col-6 col-lg-3"><div class="card p-3 h-100"><div class="text-muted">{{ t.current_inventory_value }}</div><strong>{{ summary.inventory_value }}</strong></div></div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4 col-xl-3"><a class="workspace-card" href="/products/new"><strong>{{ t.new_product }}</strong><span>{{ t.product_master_data }}</span></a></div>
+    <div class="col-md-4 col-xl-3"><a class="workspace-card" href="/products/warehouses"><strong>{{ t.warehouses }}</strong><span>{{ t.shelf_locations }}</span></a></div>
+    <div class="col-md-4 col-xl-3"><a class="workspace-card" href="/products/goods-receipts"><strong>{{ t.goods_receipts }}</strong><span>{{ t.receive_ordered_stock }}</span></a></div>
+    <div class="col-md-4 col-xl-3"><a class="workspace-card" href="/products/inventory"><strong>{{ t.stock_balances }}</strong><span>{{ t.inventory_by_location }}</span></a></div>
+    <div class="col-md-4 col-xl-3"><a class="workspace-card" href="/products/inventory/transactions"><strong>{{ t.inventory_transactions }}</strong><span>{{ t.stock_history }}</span></a></div>
+    <div class="col-md-4 col-xl-3"><a class="workspace-card" href="/products/inventory/valuation"><strong>{{ t.inventory_valuation }}</strong><span>{{ t.operational_inventory_value }}</span></a></div>
+    <div class="col-md-4 col-xl-3"><a class="workspace-card" href="/products/inventory/reconciliation"><strong>{{ t.inventory_reconciliation }}</strong><span>{{ t.ledger_cache_check }}</span></a></div>
+    <div class="col-md-4 col-xl-3"><a class="workspace-card" href="/products/suppliers"><strong>{{ t.suppliers }}</strong><span>{{ t.receiving_partners }}</span></a></div>
 </div>
 
 {% if request.query_params.get("imported") %}
@@ -28,7 +46,11 @@
     </div>
 </form>
 
-<div class="card shadow-sm border-0">
+<div class="card shadow-sm border-0" id="product-list">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>{{ t.product_list }}</span>
+        <span class="text-muted small">{{ t.out_of_stock }}: {{ summary.out_of_stock_count }}</span>
+    </div>
     <div class="card-body p-0">
         {% if products %}
         <div class="list-group list-group-flush">

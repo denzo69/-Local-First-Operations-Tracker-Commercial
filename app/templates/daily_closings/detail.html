@@ -39,6 +39,25 @@
         </div>
     </div>
 </div>
+{% if snapshot.invoice_status_totals %}
+<div class="card p-3 mt-3">
+    <h2 class="h5">{{ t.invoice_follow_up }}</h2>
+    <div class="table-responsive responsive-card-table">
+        <table class="table mb-0">
+            <thead><tr><th>{{ t.status }}</th><th>{{ t.sales }}</th><th>{{ t.total }}</th></tr></thead>
+            <tbody>
+            {% for item in snapshot.invoice_status_totals %}
+            <tr>
+                <td data-label="{{ t.status }}">{{ t[item.status] }}</td>
+                <td data-label="{{ t.sales }}">{{ item.count }}</td>
+                <td data-label="{{ t.total }}">{{ item.total }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
 <div class="card p-3 mt-3">
     <h2 class="h5">{{ t.version }}</h2>
     {% for item in snapshots %}

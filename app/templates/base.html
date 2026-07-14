@@ -26,31 +26,37 @@
         </div>
         <div class="sidebar-group">
             <div class="sidebar-group-label">{{ t.sales_nav }}</div>
+            <a class="sidebar-link" href="/sales/quick"><span class="nav-icon" aria-hidden="true">QS</span><span>{{ t.quick_sale }}</span></a>
             <a class="sidebar-link" href="/sales/new"><span class="nav-icon" aria-hidden="true">NS</span><span>{{ t.new_sale }}</span></a>
             <a class="sidebar-link {% if active_page == 'sales' %}active{% endif %}" href="/sales"><span class="nav-icon" aria-hidden="true">SA</span><span>{{ t.sales }}</span></a>
+            <a class="sidebar-link" href="/sales/invoice-queue"><span class="nav-icon" aria-hidden="true">IQ</span><span>{{ t.invoice_queue }}</span></a>
             <a class="sidebar-link {% if active_page == 'shifts' %}active{% endif %}" href="/shifts"><span class="nav-icon" aria-hidden="true">SH</span><span>{{ t.shifts }}</span></a>
             <a class="sidebar-link {% if active_page == 'daily_closings' %}active{% endif %}" href="/daily-closings"><span class="nav-icon" aria-hidden="true">DC</span><span>{{ t.daily_closing }}</span></a>
         </div>
         <div class="sidebar-group">
             <div class="sidebar-group-label">{{ t.catalog }}</div>
             <a class="sidebar-link {% if active_page == 'products' %}active{% endif %}" href="/products"><span class="nav-icon" aria-hidden="true">PR</span><span>{{ t.products }}</span></a>
-            <a class="sidebar-link {% if active_page == 'inventory' %}active{% endif %}" href="/inventory/goods-receipts"><span class="nav-icon" aria-hidden="true">GR</span><span>{{ t.goods_receipts }}</span></a>
-            <a class="sidebar-link {% if active_page == 'inventory' %}active{% endif %}" href="/inventory/warehouses"><span class="nav-icon" aria-hidden="true">WH</span><span>{{ t.warehouses }}</span></a>
+            <div class="sidebar-subnav">
+                <a href="/products/goods-receipts">{{ t.goods_receipts }}</a>
+                <a href="/products/warehouses">{{ t.warehouses }}</a>
+                <a href="/products/inventory">{{ t.stock_balances }}</a>
+                <a href="/products/inventory/transactions">{{ t.inventory_transactions }}</a>
+                <a href="/products/inventory/valuation">{{ t.inventory_valuation }}</a>
+            </div>
         </div>
         <div class="sidebar-group">
             <div class="sidebar-group-label">{{ t.reports }}</div>
             <a class="sidebar-link {% if active_page == 'reports' %}active{% endif %}" href="/reports"><span class="nav-icon" aria-hidden="true">SR</span><span>{{ t.reports }}</span></a>
             <a class="sidebar-link {% if active_page == 'seller_reports' %}active{% endif %}" href="/seller-reports"><span class="nav-icon" aria-hidden="true">SE</span><span>{{ t.seller_reports }}</span></a>
-            <a class="sidebar-link {% if active_page == 'inventory_valuation' %}active{% endif %}" href="/inventory/valuation"><span class="nav-icon" aria-hidden="true">IV</span><span>{{ t.inventory_valuation }}</span></a>
-            <a class="sidebar-link {% if active_page == 'inventory_ledger' %}active{% endif %}" href="/inventory/ledger"><span class="nav-icon" aria-hidden="true">IL</span><span>{{ t.inventory_ledger }}</span></a>
-            <a class="sidebar-link {% if active_page == 'inventory_reconciliation' %}active{% endif %}" href="/inventory/reconciliation"><span class="nav-icon" aria-hidden="true">IR</span><span>{{ t.inventory_reconciliation }}</span></a>
         </div>
         <div class="sidebar-group">
             <div class="sidebar-group-label">{{ t.administration }}</div>
+            {% if can_manage_administration %}
             <a class="sidebar-link {% if active_page == 'users' %}active{% endif %}" href="/users"><span class="nav-icon" aria-hidden="true">US</span><span>{{ t.users }}</span></a>
             <a class="sidebar-link {% if active_page == 'cash_registers' %}active{% endif %}" href="/cash-registers"><span class="nav-icon" aria-hidden="true">CR</span><span>{{ t.cash_registers }}</span></a>
             <a class="sidebar-link {% if active_page == 'audit_log' %}active{% endif %}" href="/audit-log"><span class="nav-icon" aria-hidden="true">AL</span><span>{{ t.audit_log }}</span></a>
             <a class="sidebar-link {% if active_page == 'backups' %}active{% endif %}" href="/backups"><span class="nav-icon" aria-hidden="true">BU</span><span>{{ t.backups }}</span></a>
+            {% endif %}
             <a class="sidebar-link {% if active_page == 'settings' %}active{% endif %}" href="/settings"><span class="nav-icon" aria-hidden="true">ST</span><span>{{ t.settings }}</span></a>
         </div>
     </nav>
@@ -69,24 +75,28 @@
             <a class="sidebar-link" href="/work-orders">{{ t.work_orders }}</a>
             <div class="sidebar-group-label">{{ t.sales_nav }}</div>
             <a class="sidebar-link" href="/sales/new">{{ t.new_sale }}</a>
+            <a class="sidebar-link" href="/sales/quick">{{ t.quick_sale }}</a>
             <a class="sidebar-link" href="/sales">{{ t.sales }}</a>
+            <a class="sidebar-link" href="/sales/invoice-queue">{{ t.invoice_queue }}</a>
             <a class="sidebar-link" href="/shifts">{{ t.shifts }}</a>
             <a class="sidebar-link" href="/daily-closings">{{ t.daily_closing }}</a>
             <div class="sidebar-group-label">{{ t.catalog }}</div>
             <a class="sidebar-link" href="/products">{{ t.products }}</a>
-            <a class="sidebar-link" href="/inventory/goods-receipts">{{ t.goods_receipts }}</a>
-            <a class="sidebar-link" href="/inventory/warehouses">{{ t.warehouses }}</a>
+            <a class="sidebar-link" href="/products/goods-receipts">{{ t.goods_receipts }}</a>
+            <a class="sidebar-link" href="/products/warehouses">{{ t.warehouses }}</a>
+            <a class="sidebar-link" href="/products/inventory">{{ t.stock_balances }}</a>
+            <a class="sidebar-link" href="/products/inventory/transactions">{{ t.inventory_transactions }}</a>
+            <a class="sidebar-link" href="/products/inventory/valuation">{{ t.inventory_valuation }}</a>
             <div class="sidebar-group-label">{{ t.reports }}</div>
             <a class="sidebar-link" href="/reports">{{ t.reports }}</a>
             <a class="sidebar-link" href="/seller-reports">{{ t.seller_reports }}</a>
-            <a class="sidebar-link" href="/inventory/valuation">{{ t.inventory_valuation }}</a>
-            <a class="sidebar-link" href="/inventory/ledger">{{ t.inventory_ledger }}</a>
-            <a class="sidebar-link" href="/inventory/reconciliation">{{ t.inventory_reconciliation }}</a>
             <div class="sidebar-group-label">{{ t.administration }}</div>
+            {% if can_manage_administration %}
             <a class="sidebar-link" href="/users">{{ t.users }}</a>
             <a class="sidebar-link" href="/cash-registers">{{ t.cash_registers }}</a>
             <a class="sidebar-link" href="/audit-log">{{ t.audit_log }}</a>
             <a class="sidebar-link" href="/backups">{{ t.backups }}</a>
+            {% endif %}
             <a class="sidebar-link" href="/settings">{{ t.settings }}</a>
         </nav>
     </div>

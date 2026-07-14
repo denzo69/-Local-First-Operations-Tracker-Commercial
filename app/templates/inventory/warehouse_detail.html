@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block content %}
+<nav class="small text-muted mb-3">
+    <a href="/products">{{ t.products }}</a> &gt; <a href="/products/warehouses">{{ t.warehouses }}</a> &gt; {{ warehouse.name }}
+</nav>
+
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+    <div>
+        <h1 class="h3 mb-1">{{ warehouse.name }}</h1>
+        <p class="text-muted mb-0">{{ warehouse.code }}{% if warehouse.address %} / {{ warehouse.address }}{% endif %}</p>
+    </div>
+    <a class="btn btn-outline-primary" href="/products/inventory?warehouse_id={{ warehouse.id }}">{{ t.stock_balances }}</a>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-3"><div class="card p-3 h-100"><div class="text-muted">{{ t.locations }}</div><strong>{{ warehouse.locations|length }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3 h-100"><div class="text-muted">{{ t.product_list }}</div><strong>{{ balances|length }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3 h-100"><div class="text-muted">{{ t.quantity }}</div><strong>{{ total_quantity }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3 h-100"><div class="text-muted">{{ t.current_inventory_value }}</div><strong>{{ total_value }}</strong></div></div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">{{ t.shelf_locations }}</div>
+    <div class="table-responsive responsive-card-table">
+        <table class="table mb-0">
+            <thead><tr><th>{{ t.code }}</th><th>{{ t.location }}</th><th>{{ t.status }}</th></tr></thead>
+            <tbody>
+            {% for location in warehouse.locations %}
+            <tr>
+                <td data-label="{{ t.code }}">{{ location.code }}</td>
+                <td data-label="{{ t.location }}">{{ location.name }}</td>
+                <td data-label="{{ t.status }}">{{ t.active if location.is_active else "Inactive" }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="3" class="text-muted p-4">{{ t.no_results }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header">{{ t.stock_balances }}</div>
+    <div class="table-responsive responsive-card-table">
+        <table class="table mb-0">
+            <thead><tr><th>{{ t.product }}</th><th>{{ t.location }}</th><th>{{ t.quantity }}</th><th>{{ t.value }}</th></tr></thead>
+            <tbody>
+            {% for balance in balances %}
+            <tr>
+                <td data-label="{{ t.product }}"><a href="/products/{{ balance.product_id }}">{{ balance.product.name if balance.product else balance.product_id }}</a></td>
+                <td data-label="{{ t.location }}">{{ balance.warehouse_location.code if balance.warehouse_location else "-" }}</td>
+                <td data-label="{{ t.quantity }}">{{ balance.quantity_on_hand }}</td>
+                <td data-label="{{ t.value }}">{{ balance.inventory_value_ex_vat }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" class="text-muted p-4">{{ t.no_inventory }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">{{ t.goods_receipts }}</div>
+    <div class="table-responsive responsive-card-table">
+        <table class="table mb-0">
+            <thead><tr><th>{{ t.date }}</th><th>{{ t.supplier }}</th><th>{{ t.delivery_number }}</th><th>{{ t.status }}</th></tr></thead>
+            <tbody>
+            {% for receipt in receipts %}
+            <tr>
+                <td data-label="{{ t.date }}">{{ receipt.receipt_date }}</td>
+                <td data-label="{{ t.supplier }}">{{ receipt.supplier.name if receipt.supplier else "-" }}</td>
+                <td data-label="{{ t.delivery_number }}"><a href="/products/goods-receipts/{{ receipt.id }}">{{ receipt.delivery_number or receipt.id }}</a></td>
+                <td data-label="{{ t.status }}">{{ receipt.status }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" class="text-muted p-4">{{ t.no_goods_receipts }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

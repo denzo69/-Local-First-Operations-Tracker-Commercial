@@ -23,6 +23,13 @@ def test_main_navigation_targets_load():
             "/work-orders",
             "/jobs",
             "/products",
+            "/products/goods-receipts",
+            "/products/suppliers",
+            "/products/warehouses",
+            "/products/inventory",
+            "/products/inventory/valuation",
+            "/products/inventory/transactions",
+            "/products/inventory/reconciliation",
             "/inventory/goods-receipts",
             "/inventory/suppliers",
             "/inventory/warehouses",
@@ -30,6 +37,8 @@ def test_main_navigation_targets_load():
             "/inventory/ledger",
             "/inventory/reconciliation",
             "/sales",
+            "/sales/quick",
+            "/sales/invoice-queue",
             "/shifts",
             "/daily-closings",
             "/seller-reports",
@@ -42,6 +51,21 @@ def test_main_navigation_targets_load():
         ]:
             response = client.get(path)
             assert response.status_code == 200
+
+
+def test_products_is_the_visible_inventory_workspace_navigation():
+    with TestClient(app) as client:
+        response = client.get("/")
+
+    assert response.status_code == 200
+    assert 'href="/products"' in response.text
+    assert 'href="/products/goods-receipts"' in response.text
+    assert 'href="/products/warehouses"' in response.text
+    assert 'href="/products/inventory"' in response.text
+    assert 'href="/products/inventory/transactions"' in response.text
+    assert 'href="/inventory/goods-receipts"' not in response.text
+    assert 'href="/inventory/warehouses"' not in response.text
+    assert 'href="/inventory/ledger"' not in response.text
 
 
 def test_new_navigation_labels_render_in_finnish_and_english():
@@ -334,3 +358,186 @@ def test_inventory_routes_support_virtual_goods_receipt_workflow():
     assert ledger.status_code == 200
     assert "Route Inventory Product" in ledger.text
     assert "purchase" in ledger.text
+
+
+def test_products_workspace_routes_support_inventory_workflow_and_legacy_bookmarks():
+    with SessionLocal() as db:
+        ensure_default_roles(db)
+        role = db.query(Role).filter(Role.code == "seller").one()
+        seller = User(name="Products Workspace Seller", login_name="products.workspace.seller", role=role, is_active=True)
+        product = Product(
+            name="Products Workspace Stock",
+            is_active=True,
+            is_stock_item=True,
+            unit_price="30",
+            vat_percent="24",
+        )
+        db.add_all([seller, product])
+        db.commit()
+        seller_id = seller.id
+        product_id = product.id
+
+    with TestClient(app) as client:
+        workspace = client.get("/products")
+        assert workspace.status_code == 200
+        assert "Goods receipts" in workspace.text
+        assert "Stock balances" in workspace.text
+        assert "Inventory transactions" in workspace.text
+
+        assert client.get("/products/warehouses").status_code == 200
+        supplier_response = client.post(
+            "/products/suppliers",
+            data={"name": "Products Workspace Supplier"},
+            follow_redirects=False,
+        )
+        assert supplier_response.status_code == 303
+
+        with SessionLocal() as db:
+            supplier_id = db.query(Supplier).filter(Supplier.name == "Products Workspace Supplier").one().id
+            location_id = db.query(WarehouseLocation).filter(WarehouseLocation.code == "DEFAULT").one().id
+
+        receipt_response = client.post(
+            "/products/goods-receipts",
+            data={
+                "supplier_id": supplier_id,
+                "receipt_date": date.today().isoformat(),
+                "received_by_user_id": seller_id,
+                "delivery_number": "PRODUCTS-DN",
+                "invoice_number": "PRODUCTS-INV",
+                "freight_total_ex_vat": "0",
+                "other_costs_total_ex_vat": "0",
+                "allocation_method": "by_value",
+            },
+            follow_redirects=False,
+        )
+        assert receipt_response.status_code == 303
+        assert receipt_response.headers["location"].startswith("/products/goods-receipts/")
+        receipt_id = int(receipt_response.headers["location"].rsplit("/", 1)[-1])
+
+        assert client.post(
+            f"/products/goods-receipts/{receipt_id}/lines",
+            data={
+                "product_id": product_id,
+                "destination_location_id": location_id,
+                "quantity_value": "3",
+                "purchase_unit_price_ex_vat": "10",
+                "vat_rate": "24",
+            },
+            follow_redirects=False,
+        ).status_code == 303
+        assert client.post(
+            f"/products/goods-receipts/{receipt_id}/post",
+            data={"posted_by_user_id": seller_id},
+            follow_redirects=False,
+        ).status_code == 303
+
+        product_detail = client.get(f"/products/{product_id}")
+        balances = client.get("/products/inventory")
+        transactions = client.get(f"/products/inventory/transactions?product_id={product_id}")
+        valuation = client.get("/products/inventory/valuation")
+        reconciliation = client.get("/products/inventory/reconciliation")
+        legacy = client.get("/inventory/goods-receipts")
+
+    assert product_detail.status_code == 200
+    assert "Products Workspace Stock" in product_detail.text
+    assert "Products Workspace Supplier" in product_detail.text
+    assert "purchase" in product_detail.text
+    assert balances.status_code == 200
+    assert "Products Workspace Stock" in balances.text
+    assert transactions.status_code == 200
+    assert "purchase" in transactions.text
+    assert valuation.status_code == 200
+    assert reconciliation.status_code == 200
+    assert legacy.status_code == 200
+
+
+def test_product_detail_has_direct_stock_receiving_flow():
+    with SessionLocal() as db:
+        ensure_default_roles(db)
+        role = db.query(Role).filter(Role.code == "manager").one()
+        manager = User(name="Stock Receiver", login_name="stock.receiver", role=role, is_active=True)
+        supplier = Supplier(name="Direct Stock Supplier", is_active=True)
+        product = Product(
+            name="Direct Receive Product",
+            is_active=True,
+            is_stock_item=True,
+            unit_price="15",
+            vat_percent="24",
+        )
+        service = Product(
+            name="Direct Receive Service",
+            is_active=True,
+            is_stock_item=False,
+            unit_price="50",
+            vat_percent="24",
+        )
+        db.add_all([manager, supplier, product, service])
+        db.commit()
+        manager_id = manager.id
+        supplier_id = supplier.id
+        product_id = product.id
+        service_id = service.id
+
+    with TestClient(app) as client:
+        product_detail = client.get(f"/products/{product_id}")
+        assert product_detail.status_code == 200
+        assert f'href="/products/{product_id}/receive"' in product_detail.text
+        assert "Receive stock" in product_detail.text
+
+        receive_form = client.get(f"/products/{product_id}/receive")
+        assert receive_form.status_code == 200
+        assert "Direct Receive Product" in receive_form.text
+        assert "Create receipt draft" in receive_form.text
+
+        with SessionLocal() as db:
+            location_id = db.query(WarehouseLocation).filter(WarehouseLocation.code == "DEFAULT").one().id
+
+        draft_response = client.post(
+            f"/products/{product_id}/receive",
+            data={
+                "supplier_id": supplier_id,
+                "receipt_date": date.today().isoformat(),
+                "destination_location_id": location_id,
+                "quantity_value": "4",
+                "purchase_unit_price_ex_vat": "12.50",
+                "vat_rate": "24",
+                "delivery_number": "DIRECT-STOCK",
+                "invoice_number": "DIRECT-INV",
+                "freight_total_ex_vat": "0",
+                "freight_vat_rate": "0",
+                "other_costs_total_ex_vat": "0",
+                "other_costs_vat_rate": "0",
+                "allocation_method": "by_value",
+                "received_by_user_id": manager_id,
+            },
+            follow_redirects=False,
+        )
+        assert draft_response.status_code == 303
+        assert draft_response.headers["location"].startswith("/products/goods-receipts/")
+        receipt_id = int(draft_response.headers["location"].rsplit("/", 1)[-1])
+
+        with SessionLocal() as db:
+            draft_product = db.get(Product, product_id)
+            assert draft_product.current_inventory_quantity == 0
+
+        receipt_detail = client.get(f"/products/goods-receipts/{receipt_id}")
+        assert receipt_detail.status_code == 200
+        assert "Direct Receive Product" in receipt_detail.text
+        assert "Post goods receipt" in receipt_detail.text
+
+        post_response = client.post(
+            f"/products/goods-receipts/{receipt_id}/post",
+            data={"posted_by_user_id": manager_id},
+            follow_redirects=False,
+        )
+        assert post_response.status_code == 303
+
+        with SessionLocal() as db:
+            posted_product = db.get(Product, product_id)
+            assert str(posted_product.current_inventory_quantity) == "4.000"
+            assert str(posted_product.current_inventory_value_ex_vat) == "50.00"
+
+        service_detail = client.get(f"/products/{service_id}")
+        assert service_detail.status_code == 200
+        assert f'href="/products/{service_id}/receive"' not in service_detail.text
+        assert client.get(f"/products/{service_id}/receive").status_code == 400

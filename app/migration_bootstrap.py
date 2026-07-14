@@ -26,13 +26,21 @@ BASELINE_REVISION = "162323fcac91"
 AUTH_REVISION = "3f0d1c9a8b22"
 INVENTORY_REVISION = "7c2a91f4d8e3"
 STABILIZATION_REVISION = "9e4c3b2a1f08"
-HEAD_REVISION = STABILIZATION_REVISION
+UNIFIED_SALES_REVISION = "a4d7b9c2e1f3"
+INVOICE_FOLLOWUP_REVISION = "b5c8d2e4f6a1"
+SALE_DOCUMENT_REVISION = "c9d1e7a4b2f6"
+OPTIONAL_SHIFTS_REVISION = "e2f4a6b8c0d1"
+HEAD_REVISION = OPTIONAL_SHIFTS_REVISION
 
 CLASS_EMPTY = "empty database"
 CLASS_BASELINE = "matches baseline"
 CLASS_AUTH = "matches auth revision"
 CLASS_INVENTORY = "matches inventory revision"
 CLASS_STABILIZATION = "matches stabilization revision"
+CLASS_UNIFIED_SALES = "matches unified sales revision"
+CLASS_INVOICE_FOLLOWUP = "matches invoice follow-up revision"
+CLASS_SALE_DOCUMENTS = "matches sale document numbering revision"
+CLASS_OPTIONAL_SHIFTS = "matches optional cashier shifts revision"
 CLASS_UNKNOWN = "inconsistent / partially migrated / unknown"
 
 
@@ -353,6 +361,55 @@ STABILIZATION_COLUMNS = {
     },
 }
 
+UNIFIED_SALES_COLUMNS = {
+    "sales": {
+        "source_type",
+        "idempotency_key",
+        "finalized_at",
+        "settlement_status",
+        "invoice_customer_snapshot_json",
+    },
+}
+
+INVOICE_FOLLOWUP_COLUMNS = {
+    "sales": {
+        "transferred_to_invoicing_at",
+        "external_invoice_service",
+        "external_invoice_number",
+        "invoice_date",
+        "due_date",
+        "external_invoice_reference",
+        "invoice_handoff_notes",
+        "payment_status_checked_at",
+        "paid_at",
+        "next_follow_up_at",
+        "reminder_count",
+        "last_reminder_sent_at",
+        "follow_up_notes",
+    },
+}
+
+SALE_DOCUMENT_SETTING_KEYS = {
+    "sale_document_prefix",
+    "sale_document_padding",
+    "sale_document_annual_reset",
+    "next_sale_document_sequence",
+    "sale_document_sequence_year",
+}
+
+OPTIONAL_SHIFTS_COLUMNS = {
+    "sales": {"business_date"},
+}
+
+OPTIONAL_SHIFTS_SETTING_KEYS = {"require_cashier_shift"}
+
+NULLABLE_COLUMNS_BY_REVISION = {
+    OPTIONAL_SHIFTS_REVISION: {
+        "sales": {"seller_id", "shift_id", "business_date"},
+        "payments": {"seller_id", "shift_id"},
+    },
+}
+
 REQUIRED_INDEXES_BY_REVISION = {
     BASELINE_REVISION: {
         "ix_audit_log_id",
@@ -426,6 +483,20 @@ REQUIRED_INDEXES_BY_REVISION = {
         "ix_sales_cash_register_id",
         "ix_payments_received_by_user_id",
     },
+    UNIFIED_SALES_REVISION: {
+        "ix_sales_source_type",
+        "ix_sales_settlement_status",
+        "ix_sales_idempotency_key",
+        "ux_sales_active_work_order",
+    },
+    INVOICE_FOLLOWUP_REVISION: {
+        "ix_sales_external_invoice_number",
+        "ix_sales_due_date",
+        "ix_sales_next_follow_up_at",
+    },
+    OPTIONAL_SHIFTS_REVISION: {
+        "ix_sales_business_date",
+    },
 }
 
 REQUIRED_TRIGGERS_BY_REVISION = {
@@ -440,9 +511,22 @@ REVISION_LABELS = {
     AUTH_REVISION: CLASS_AUTH,
     INVENTORY_REVISION: CLASS_INVENTORY,
     STABILIZATION_REVISION: CLASS_STABILIZATION,
+    UNIFIED_SALES_REVISION: CLASS_UNIFIED_SALES,
+    INVOICE_FOLLOWUP_REVISION: CLASS_INVOICE_FOLLOWUP,
+    SALE_DOCUMENT_REVISION: CLASS_SALE_DOCUMENTS,
+    OPTIONAL_SHIFTS_REVISION: CLASS_OPTIONAL_SHIFTS,
 }
 
-REVISION_ORDER = [BASELINE_REVISION, AUTH_REVISION, INVENTORY_REVISION, STABILIZATION_REVISION]
+REVISION_ORDER = [
+    BASELINE_REVISION,
+    AUTH_REVISION,
+    INVENTORY_REVISION,
+    STABILIZATION_REVISION,
+    UNIFIED_SALES_REVISION,
+    INVOICE_FOLLOWUP_REVISION,
+    SALE_DOCUMENT_REVISION,
+    OPTIONAL_SHIFTS_REVISION,
+]
 
 
 class MigrationBootstrapError(RuntimeError):
@@ -456,10 +540,13 @@ class SchemaInspection:
     sqlite: bool
     tables: set[str]
     columns_by_table: dict[str, set[str]]
+    nullable_columns_by_table: dict[str, set[str]]
     indexes: set[str]
     foreign_keys: set[tuple[str, str, str]]
     triggers: set[str]
     alembic_versions: tuple[str, ...]
+    settings_keys: set[str]
+    missing_finalized_sale_document_numbers: int
 
 
 @dataclass(frozen=True)
@@ -514,10 +601,13 @@ def inspect_database(database_url: str) -> SchemaInspection:
             sqlite=False,
             tables=set(),
             columns_by_table={},
+            nullable_columns_by_table={},
             indexes=set(),
             foreign_keys=set(),
             triggers=set(),
             alembic_versions=(),
+            settings_keys=set(),
+            missing_finalized_sale_document_numbers=0,
         )
 
     if not database_path.exists():
@@ -527,10 +617,13 @@ def inspect_database(database_url: str) -> SchemaInspection:
             sqlite=True,
             tables=set(),
             columns_by_table={},
+            nullable_columns_by_table={},
             indexes=set(),
             foreign_keys=set(),
             triggers=set(),
             alembic_versions=(),
+            settings_keys=set(),
+            missing_finalized_sale_document_numbers=0,
         )
 
     with _connect_sqlite(database_path) as connection:
@@ -540,10 +633,13 @@ def inspect_database(database_url: str) -> SchemaInspection:
         tables = {row[0] for row in rows}
 
         columns_by_table: dict[str, set[str]] = {}
+        nullable_columns_by_table: dict[str, set[str]] = {}
         foreign_keys: set[tuple[str, str, str]] = set()
         indexes: set[str] = set()
         for table in tables:
-            columns_by_table[table] = {row[1] for row in connection.execute(f'PRAGMA table_info("{table}")')}
+            table_info = connection.execute(f'PRAGMA table_info("{table}")').fetchall()
+            columns_by_table[table] = {row[1] for row in table_info}
+            nullable_columns_by_table[table] = {row[1] for row in table_info if row[3] == 0}
             for row in connection.execute(f'PRAGMA foreign_key_list("{table}")'):
                 foreign_keys.add((table, row[3], row[2]))
             for row in connection.execute(f'PRAGMA index_list("{table}")'):
@@ -559,6 +655,27 @@ def inspect_database(database_url: str) -> SchemaInspection:
             )
         else:
             alembic_versions = ()
+        if "settings" in tables and {"key", "value"}.issubset(columns_by_table.get("settings", set())):
+            settings_keys = {row[0] for row in connection.execute("SELECT key FROM settings").fetchall()}
+        else:
+            settings_keys = set()
+        missing_finalized_sale_document_numbers = 0
+        sale_columns = columns_by_table.get("sales", set())
+        if {"document_number", "status"}.issubset(sale_columns):
+            finalized_filter = "1 = 1"
+            if "finalized_at" in sale_columns:
+                finalized_filter = "finalized_at IS NOT NULL"
+            missing_finalized_sale_document_numbers = int(
+                connection.execute(
+                    f"""
+                    SELECT COUNT(*)
+                    FROM sales
+                    WHERE {finalized_filter}
+                      AND COALESCE(status, '') != 'cancelled'
+                      AND (document_number IS NULL OR document_number = '')
+                    """
+                ).fetchone()[0]
+            )
 
     return SchemaInspection(
         database_url=database_url,
@@ -566,10 +683,13 @@ def inspect_database(database_url: str) -> SchemaInspection:
         sqlite=True,
         tables=tables,
         columns_by_table=columns_by_table,
+        nullable_columns_by_table=nullable_columns_by_table,
         indexes=indexes,
         foreign_keys=foreign_keys,
         triggers=triggers,
         alembic_versions=alembic_versions,
+        settings_keys=settings_keys,
+        missing_finalized_sale_document_numbers=missing_finalized_sale_document_numbers,
     )
 
 
@@ -585,7 +705,11 @@ BASELINE_SCHEMA = merge_columns(BASELINE_TABLE_COLUMNS)
 AUTH_SCHEMA = merge_columns(BASELINE_SCHEMA, AUTH_COLUMNS)
 INVENTORY_SCHEMA = merge_columns(AUTH_SCHEMA, INVENTORY_COLUMNS, INVENTORY_TABLE_COLUMNS)
 STABILIZATION_SCHEMA = merge_columns(INVENTORY_SCHEMA, STABILIZATION_COLUMNS)
-HEAD_KNOWN_SCHEMA = STABILIZATION_SCHEMA
+UNIFIED_SALES_SCHEMA = merge_columns(STABILIZATION_SCHEMA, UNIFIED_SALES_COLUMNS)
+INVOICE_FOLLOWUP_SCHEMA = merge_columns(UNIFIED_SALES_SCHEMA, INVOICE_FOLLOWUP_COLUMNS)
+SALE_DOCUMENT_SCHEMA = INVOICE_FOLLOWUP_SCHEMA
+OPTIONAL_SHIFTS_SCHEMA = merge_columns(SALE_DOCUMENT_SCHEMA, OPTIONAL_SHIFTS_COLUMNS)
+HEAD_KNOWN_SCHEMA = OPTIONAL_SHIFTS_SCHEMA
 
 
 def _missing_schema(schema: dict[str, set[str]], inspection: SchemaInspection) -> list[str]:
@@ -612,20 +736,59 @@ def _unexpected_schema(inspection: SchemaInspection) -> list[str]:
 
 def _missing_indexes(revision: str, inspection: SchemaInspection) -> list[str]:
     required: set[str] = set()
-    if revision in {BASELINE_REVISION, AUTH_REVISION, INVENTORY_REVISION, STABILIZATION_REVISION}:
+    revision_index = REVISION_ORDER.index(revision)
+    if revision_index >= REVISION_ORDER.index(BASELINE_REVISION):
         required.update(REQUIRED_INDEXES_BY_REVISION[BASELINE_REVISION])
-    if revision in {INVENTORY_REVISION, STABILIZATION_REVISION}:
+    if revision_index >= REVISION_ORDER.index(INVENTORY_REVISION):
         required.update(REQUIRED_INDEXES_BY_REVISION[INVENTORY_REVISION])
-    if revision == STABILIZATION_REVISION:
+    if revision_index >= REVISION_ORDER.index(STABILIZATION_REVISION):
         required.update(REQUIRED_INDEXES_BY_REVISION[STABILIZATION_REVISION])
+    if revision_index >= REVISION_ORDER.index(UNIFIED_SALES_REVISION):
+        required.update(REQUIRED_INDEXES_BY_REVISION[UNIFIED_SALES_REVISION])
+    if revision_index >= REVISION_ORDER.index(INVOICE_FOLLOWUP_REVISION):
+        required.update(REQUIRED_INDEXES_BY_REVISION[INVOICE_FOLLOWUP_REVISION])
+    if revision_index >= REVISION_ORDER.index(OPTIONAL_SHIFTS_REVISION):
+        required.update(REQUIRED_INDEXES_BY_REVISION[OPTIONAL_SHIFTS_REVISION])
     return [f"missing index {index}" for index in sorted(required - inspection.indexes)]
+
+
+def _missing_nullable_requirements(revision: str, inspection: SchemaInspection) -> list[str]:
+    required: dict[str, set[str]] = {}
+    revision_index = REVISION_ORDER.index(revision)
+    for required_revision, table_columns in NULLABLE_COLUMNS_BY_REVISION.items():
+        if revision_index < REVISION_ORDER.index(required_revision):
+            continue
+        for table, columns in table_columns.items():
+            required.setdefault(table, set()).update(columns)
+
+    missing: list[str] = []
+    for table, columns in required.items():
+        nullable_columns = inspection.nullable_columns_by_table.get(table, set())
+        for column in sorted(columns - nullable_columns):
+            missing.append(f"column {table}.{column} is not nullable")
+    return missing
 
 
 def _missing_triggers(revision: str, inspection: SchemaInspection) -> list[str]:
     required: set[str] = set()
-    if revision == STABILIZATION_REVISION:
+    if REVISION_ORDER.index(revision) >= REVISION_ORDER.index(STABILIZATION_REVISION):
         required.update(REQUIRED_TRIGGERS_BY_REVISION[STABILIZATION_REVISION])
     return [f"missing trigger {trigger}" for trigger in sorted(required - inspection.triggers)]
+
+
+def _missing_data_requirements(revision: str, inspection: SchemaInspection) -> list[str]:
+    missing: list[str] = []
+    if REVISION_ORDER.index(revision) >= REVISION_ORDER.index(SALE_DOCUMENT_REVISION):
+        missing_settings = SALE_DOCUMENT_SETTING_KEYS - inspection.settings_keys
+        missing.extend(f"missing setting {key}" for key in sorted(missing_settings))
+        if inspection.missing_finalized_sale_document_numbers:
+            missing.append(
+                f"{inspection.missing_finalized_sale_document_numbers} finalized sale(s) missing document_number"
+            )
+    if REVISION_ORDER.index(revision) >= REVISION_ORDER.index(OPTIONAL_SHIFTS_REVISION):
+        missing_settings = OPTIONAL_SHIFTS_SETTING_KEYS - inspection.settings_keys
+        missing.extend(f"missing setting {key}" for key in sorted(missing_settings))
+    return missing
 
 
 def _future_revision_evidence(revision: str, inspection: SchemaInspection) -> list[str]:
@@ -656,6 +819,43 @@ def _future_revision_evidence(revision: str, inspection: SchemaInspection) -> li
         present_triggers = REQUIRED_TRIGGERS_BY_REVISION[STABILIZATION_REVISION] & inspection.triggers
         evidence.extend(f"future trigger {trigger}" for trigger in sorted(present_triggers))
 
+    if UNIFIED_SALES_REVISION in later_revisions:
+        for table, columns in UNIFIED_SALES_COLUMNS.items():
+            present = inspection.columns_by_table.get(table, set()) & columns
+            evidence.extend(f"future column {table}.{column}" for column in sorted(present))
+        present_indexes = REQUIRED_INDEXES_BY_REVISION[UNIFIED_SALES_REVISION] & inspection.indexes
+        evidence.extend(f"future index {index}" for index in sorted(present_indexes))
+
+    if INVOICE_FOLLOWUP_REVISION in later_revisions:
+        for table, columns in INVOICE_FOLLOWUP_COLUMNS.items():
+            present = inspection.columns_by_table.get(table, set()) & columns
+            evidence.extend(f"future column {table}.{column}" for column in sorted(present))
+        present_indexes = REQUIRED_INDEXES_BY_REVISION[INVOICE_FOLLOWUP_REVISION] & inspection.indexes
+        evidence.extend(f"future index {index}" for index in sorted(present_indexes))
+
+    if SALE_DOCUMENT_REVISION in later_revisions:
+        present_settings = SALE_DOCUMENT_SETTING_KEYS & inspection.settings_keys
+        evidence.extend(f"future setting {key}" for key in sorted(present_settings))
+        if inspection.missing_finalized_sale_document_numbers:
+            evidence.append(
+                "future sale document numbering has "
+                f"{inspection.missing_finalized_sale_document_numbers} finalized sale(s) missing document_number"
+            )
+        elif present_settings == SALE_DOCUMENT_SETTING_KEYS:
+            evidence.append("future sale document numbering data requirements")
+
+    if OPTIONAL_SHIFTS_REVISION in later_revisions:
+        for table, columns in OPTIONAL_SHIFTS_COLUMNS.items():
+            present = inspection.columns_by_table.get(table, set()) & columns
+            evidence.extend(f"future column {table}.{column}" for column in sorted(present))
+        present_indexes = REQUIRED_INDEXES_BY_REVISION[OPTIONAL_SHIFTS_REVISION] & inspection.indexes
+        evidence.extend(f"future index {index}" for index in sorted(present_indexes))
+        present_settings = OPTIONAL_SHIFTS_SETTING_KEYS & inspection.settings_keys
+        evidence.extend(f"future setting {key}" for key in sorted(present_settings))
+        for table, columns in NULLABLE_COLUMNS_BY_REVISION[OPTIONAL_SHIFTS_REVISION].items():
+            nullable = inspection.nullable_columns_by_table.get(table, set()) & columns
+            evidence.extend(f"future nullable column {table}.{column}" for column in sorted(nullable))
+
     return evidence
 
 
@@ -677,6 +877,10 @@ def classify_schema(inspection: SchemaInspection) -> SchemaClassification:
         )
 
     candidates = [
+        (OPTIONAL_SHIFTS_REVISION, OPTIONAL_SHIFTS_SCHEMA),
+        (SALE_DOCUMENT_REVISION, SALE_DOCUMENT_SCHEMA),
+        (INVOICE_FOLLOWUP_REVISION, INVOICE_FOLLOWUP_SCHEMA),
+        (UNIFIED_SALES_REVISION, UNIFIED_SALES_SCHEMA),
         (STABILIZATION_REVISION, STABILIZATION_SCHEMA),
         (INVENTORY_REVISION, INVENTORY_SCHEMA),
         (AUTH_REVISION, AUTH_SCHEMA),
@@ -686,7 +890,9 @@ def classify_schema(inspection: SchemaInspection) -> SchemaClassification:
     for revision, schema in candidates:
         missing = _missing_schema(schema, inspection)
         missing.extend(_missing_indexes(revision, inspection))
+        missing.extend(_missing_nullable_requirements(revision, inspection))
         missing.extend(_missing_triggers(revision, inspection))
+        missing.extend(_missing_data_requirements(revision, inspection))
         if not missing:
             future_evidence = _future_revision_evidence(revision, inspection)
             if future_evidence:
@@ -781,14 +987,12 @@ def plan_bootstrap(database_url: str, *, backup_dir: str | Path | None = None, d
     if classification.classification == CLASS_EMPTY:
         upgrade_target = "head"
         actions.append("run alembic upgrade head")
-    elif classification.matched_revision == STABILIZATION_REVISION:
-        stamp_revision = STABILIZATION_REVISION
-        actions.append(f"stamp {STABILIZATION_REVISION}")
-    elif classification.matched_revision in {BASELINE_REVISION, AUTH_REVISION, INVENTORY_REVISION}:
+    elif classification.matched_revision in REVISION_ORDER:
         stamp_revision = classification.matched_revision
-        upgrade_target = "head"
         actions.append(f"stamp {classification.matched_revision}")
-        actions.append("run alembic upgrade head")
+        if classification.matched_revision != HEAD_REVISION:
+            upgrade_target = "head"
+            actions.append("run alembic upgrade head")
     else:
         actions.append("abort without stamping or upgrading")
 

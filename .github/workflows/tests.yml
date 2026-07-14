@@ -11,7 +11,7 @@ on:
 jobs:
   pytest:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     env:
       PASSWORD_ITERATIONS: "1000"
 

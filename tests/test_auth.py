@@ -92,8 +92,8 @@ def test_seller_cannot_open_admin_user_page_when_auth_is_enabled():
         )
         response = client.get("/users", follow_redirects=False)
 
-    assert response.status_code == 303
-    assert response.headers["location"] == "/"
+    assert response.status_code == 403
+    assert "Admin or Manager role required." in response.text
 
 
 def test_read_only_user_cannot_modify_data_when_auth_is_enabled():
@@ -114,5 +114,28 @@ def test_read_only_user_cannot_modify_data_when_auth_is_enabled():
             follow_redirects=False,
         )
 
-    assert response.status_code == 303
-    assert response.headers["location"] == "/"
+    assert response.status_code == 403
+    assert "Read only users cannot modify data." in response.text
+
+
+def test_seller_navigation_shows_settings_but_hides_restricted_admin_links_when_auth_is_enabled():
+    create_login_user("Nav Seller", "seller", password="secret123")
+
+    with TestClient(app) as client:
+        client.post(
+            "/login",
+            data={
+                "login_name": "nav.seller",
+                "password": "secret123",
+                "next_url": "/",
+            },
+        )
+        response = client.get("/")
+
+    assert response.status_code == 200
+    assert '<span class="nav-icon" aria-hidden="true">US</span>' not in response.text
+    assert '<span class="nav-icon" aria-hidden="true">CR</span>' not in response.text
+    assert '<span class="nav-icon" aria-hidden="true">AL</span>' not in response.text
+    assert '<span class="nav-icon" aria-hidden="true">BU</span>' not in response.text
+    assert '<span class="nav-icon" aria-hidden="true">ST</span>' in response.text
+    assert "Administration" in response.text

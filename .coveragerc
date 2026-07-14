@@ -1,0 +1,13 @@
+[run]
+source = app
+omit =
+    app/templates/*
+    app/static/*
+
+[report]
+omit =
+    app/templates/*
+    app/static/*
+
+[html]
+directory = htmlcov

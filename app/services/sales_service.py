@@ -1,8 +1,10 @@
 import json
 from collections import defaultdict
-from datetime import UTC, date, datetime, time
+from dataclasses import dataclass
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -24,6 +26,8 @@ from app.models import (
 )
 from app.services.audit_service import log_audit_event
 from app.services.money_service import money, parse_decimal, sum_money, vat_included_breakdown
+from app.services.receipt_number_service import allocate_sale_document_number
+from app.services.settings_service import get_app_settings
 
 
 ROLE_DEFINITIONS = {
@@ -39,7 +43,30 @@ PAYMENT_METHODS = {
     "bank_transfer": "Bank transfer",
     "mobile": "Mobile",
     "other": "Other",
+    "invoice": "Awaiting invoice",
 }
+IMMEDIATE_PAYMENT_METHODS = {"cash", "card", "bank_transfer", "mobile", "other"}
+INVOICE_PAYMENT_METHOD = "invoice"
+INVOICE_FOLLOW_UP_STATUSES = {
+    "awaiting_invoice",
+    "transferred_to_invoicing",
+    "payment_check_due",
+    "unpaid",
+    "reminder_due",
+    "reminder_sent",
+    "paid",
+    "cancelled",
+}
+INVOICE_ACTIVE_STATUSES = {
+    "awaiting_invoice",
+    "partially_paid_awaiting_invoice",
+    "transferred_to_invoicing",
+    "payment_check_due",
+    "unpaid",
+    "reminder_due",
+    "reminder_sent",
+}
+INVOICE_ALERT_STATUSES = {"payment_check_due", "reminder_due"}
 
 VAT_PERCENT_MAX = Decimal("100")
 SNAPSHOT_SCHEMA_VERSION = 1
@@ -50,10 +77,38 @@ SALE_SELLER_SELECTION_MODES = {
     "shift_owner",
     "selectable_active_seller",
 }
+SELLER_MODES = {"default", "selected", "none"}
 
 
 class AuthorizationError(ValueError):
     pass
+
+
+@dataclass(frozen=True)
+class SaleLineInput:
+    description: str
+    quantity: object = "1"
+    unit_price: object = "0"
+    vat_percent: object = "24"
+    discount_amount: object = "0"
+    product_id: int | None = None
+    work_order_item_id: int | None = None
+
+
+@dataclass(frozen=True)
+class PaymentInput:
+    payment_method: str
+    amount: object | None = None
+    reference: str = ""
+
+
+@dataclass(frozen=True)
+class SaleContext:
+    shift: Shift | None
+    business_date: date
+    cash_register_id: int | None
+    sold_by: User | None
+    operator: User | None
 
 
 def format_decimal_key(value) -> str:
@@ -104,6 +159,75 @@ def require_payment_method(payment_method: str) -> None:
         raise ValueError("Invalid payment method.")
 
 
+def sale_paid_amount(sale: Sale) -> Decimal:
+    return sum_money(payment.amount for payment in sale.payments)
+
+
+def sale_balance_due(sale: Sale) -> Decimal:
+    return money(parse_decimal(sale.total) - sale_paid_amount(sale))
+
+
+def invoice_follow_up_status(sale: Sale, *, as_of: date | None = None) -> str:
+    status = sale.settlement_status or sale.status
+    if status in {"paid", "cancelled", "refunded"}:
+        return status
+    today = as_of or date.today()
+    if sale.next_follow_up_at and sale.next_follow_up_at.date() <= today:
+        return "reminder_due"
+    if sale.due_date and sale.due_date < today and status in {"transferred_to_invoicing", "awaiting_invoice", "partially_paid_awaiting_invoice"}:
+        return "payment_check_due"
+    return status
+
+
+def invoice_follow_up_alerts(db: Session, *, as_of: date | None = None) -> list[dict]:
+    today = as_of or date.today()
+    sales = (
+        db.query(Sale)
+        .filter(Sale.settlement_status.in_(list(INVOICE_ACTIVE_STATUSES)))
+        .order_by(Sale.due_date.asc(), Sale.next_follow_up_at.asc(), Sale.sold_at.desc())
+        .all()
+    )
+    alerts: list[dict] = []
+    for sale in sales:
+        derived_status = invoice_follow_up_status(sale, as_of=today)
+        if derived_status == "payment_check_due":
+            alerts.append(
+                {
+                    "sale": sale,
+                    "status": derived_status,
+                    "label": "Payment status check due",
+                    "message_key": "check_external_payment_status",
+                    "due_date": sale.due_date,
+                }
+            )
+        elif derived_status == "reminder_due":
+            alerts.append(
+                {
+                    "sale": sale,
+                    "status": derived_status,
+                    "label": "Payment reminder due",
+                    "message_key": "send_payment_reminder",
+                    "due_date": sale.next_follow_up_at.date() if sale.next_follow_up_at else None,
+                }
+            )
+    return alerts
+
+
+def settlement_status_for(*, total: Decimal, paid: Decimal, invoice_requested: bool) -> str:
+    balance = money(total - paid)
+    if paid > total:
+        raise ValueError("Payment total cannot exceed sale total.")
+    if balance == 0 and total > 0:
+        return "paid"
+    if paid == 0 and invoice_requested:
+        return "awaiting_invoice"
+    if paid > 0 and invoice_requested:
+        return "partially_paid_awaiting_invoice"
+    if paid > 0:
+        return "partially_paid"
+    return "unpaid"
+
+
 def remaining_refundable_amount(sale: Sale) -> Decimal:
     existing_refunds = sum_money(refund.amount for refund in sale.refunds)
     return money(parse_decimal(sale.total) - existing_refunds)
@@ -124,6 +248,15 @@ def require_sales_credit_user(user: User | None) -> User:
     if user.can_receive_sales_credit or (user.role and user.role.code == "seller"):
         return user
     raise ValueError("User is not eligible to receive sales credit.")
+
+
+def cashier_shift_required(db: Session) -> bool:
+    return str(get_app_settings(db).get("require_cashier_shift", "false")).lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def user_can_override_sale_seller(user: User | None) -> bool:
@@ -162,6 +295,591 @@ def resolve_sale_seller(
     return sold_by, operator
 
 
+def resolve_sale_context(
+    db: Session,
+    *,
+    shift_id: int | None,
+    cash_register_id: int | None,
+    seller_mode: str,
+    selected_seller_id: int | None,
+    created_by_user_id: int | None,
+    seller_selection_mode: str,
+) -> SaleContext:
+    shift = db.get(Shift, shift_id) if shift_id else None
+    if shift_id and (shift is None or shift.status != "open"):
+        raise ValueError("Selected cashier shift must be open.")
+    if shift is None and cashier_shift_required(db):
+        raise ValueError("An active cashier shift is required by configuration.")
+
+    operator = db.get(User, created_by_user_id) if created_by_user_id else None
+    if operator is not None:
+        require_operational_user(operator)
+
+    business_date = shift.business_date if shift is not None else date.today()
+    assert_business_date_open(db, business_date)
+
+    resolved_cash_register_id: int | None = None
+    if shift is not None:
+        resolved_cash_register_id = shift.cash_register_id
+    elif cash_register_id:
+        register = db.get(CashRegister, cash_register_id)
+        if register is None or not register.is_active:
+            raise ValueError("Active cash register not found.")
+        resolved_cash_register_id = register.id
+
+    mode = seller_mode if seller_mode in SELLER_MODES else "default"
+    sold_by: User | None
+    if mode == "none":
+        sold_by = None
+    elif mode == "selected":
+        if not selected_seller_id:
+            raise ValueError("Select a credited seller or use default seller mode.")
+        sold_by = require_sales_credit_user(db.get(User, selected_seller_id))
+    else:
+        sold_by = None
+        normalized_selection = (
+            seller_selection_mode
+            if seller_selection_mode in SALE_SELLER_SELECTION_MODES
+            else "selectable_active_seller"
+        )
+        if normalized_selection == "authenticated_user" and operator is not None:
+            if operator.can_receive_sales_credit or (operator.role and operator.role.code == "seller"):
+                sold_by = operator
+        elif selected_seller_id:
+            sold_by = require_sales_credit_user(db.get(User, selected_seller_id))
+        elif operator is not None and (operator.can_receive_sales_credit or (operator.role and operator.role.code == "seller")):
+            sold_by = operator
+        elif shift is not None:
+            sold_by = require_sales_credit_user(shift.seller)
+
+    return SaleContext(
+        shift=shift,
+        business_date=business_date,
+        cash_register_id=resolved_cash_register_id,
+        sold_by=sold_by,
+        operator=operator,
+    )
+
+
+def _customer_snapshot_for_invoice(work_order: Job | None) -> str | None:
+    if work_order is None or work_order.customer is None:
+        return None
+    customer = work_order.customer
+    return json.dumps(
+        {
+            "customer_id": customer.id,
+            "name": customer.name,
+            "company_name": customer.company_name,
+            "business_id": customer.business_id,
+            "email": customer.email,
+            "phone": customer.phone,
+            "address": customer.address,
+        },
+        sort_keys=True,
+    )
+
+
+def _normalize_line_input(line) -> SaleLineInput:
+    if isinstance(line, SaleLineInput):
+        return line
+    return SaleLineInput(**line)
+
+
+def _normalize_payment_input(payment) -> PaymentInput:
+    if isinstance(payment, PaymentInput):
+        return payment
+    return PaymentInput(**payment)
+
+
+def _sale_payment_method_label(payments: list[PaymentInput], invoice_requested: bool) -> str:
+    immediate_methods = [payment.payment_method for payment in payments if payment.payment_method != INVOICE_PAYMENT_METHOD]
+    if not immediate_methods and invoice_requested:
+        return INVOICE_PAYMENT_METHOD
+    unique_methods = sorted(set(immediate_methods))
+    return unique_methods[0] if len(unique_methods) == 1 else "mixed"
+
+
+def _validate_sale_source(source_type: str) -> str:
+    source = source_type.strip() if source_type else "pos"
+    if source not in {"pos", "work_order"}:
+        raise ValueError("Invalid sale source.")
+    return source
+
+
+def create_sale_from_lines(
+    db: Session,
+    *,
+    shift_id: int | None = None,
+    seller_id: int | None = None,
+    lines: list[SaleLineInput | dict],
+    payments: list[PaymentInput | dict] | None,
+    work_order_id: int | None = None,
+    cash_register_id: int | None = None,
+    seller_mode: str = "default",
+    created_by_user_id: int | None = None,
+    seller_selection_mode: str = "shift_owner",
+    source_type: str = "pos",
+    send_to_invoice: bool = False,
+    idempotency_key: str | None = None,
+) -> Sale:
+    if idempotency_key:
+        existing = db.query(Sale).filter(Sale.idempotency_key == idempotency_key).first()
+        if existing is not None:
+            return existing
+
+    source = _validate_sale_source(source_type)
+    context = resolve_sale_context(
+        db,
+        shift_id=shift_id,
+        cash_register_id=cash_register_id,
+        seller_mode=seller_mode,
+        selected_seller_id=seller_id,
+        created_by_user_id=created_by_user_id,
+        seller_selection_mode=seller_selection_mode,
+    )
+    shift = context.shift
+    sold_by = context.sold_by
+    operator = context.operator
+    operator_id = operator.id if operator is not None else (sold_by.id if sold_by is not None else None)
+
+    work_order = db.get(Job, work_order_id) if work_order_id else None
+    if work_order_id and work_order is None:
+        raise ValueError("Work Order not found.")
+    if source == "work_order":
+        if work_order is None:
+            raise ValueError("Work Order sale requires a Work Order.")
+        existing_work_order_sale = (
+            db.query(Sale)
+            .filter(Sale.work_order_id == work_order.id, Sale.status != "cancelled")
+            .first()
+        )
+        if existing_work_order_sale is not None:
+            return existing_work_order_sale
+    if send_to_invoice and (work_order is None or work_order.customer is None):
+        raise ValueError("Customer is required when sending a sale to invoicing.")
+
+    normalized_lines = [_normalize_line_input(line) for line in lines]
+    if not normalized_lines:
+        raise ValueError("Sale must contain at least one line.")
+    normalized_payments = [_normalize_payment_input(payment) for payment in payments or []]
+    invoice_requested = send_to_invoice or any(payment.payment_method == INVOICE_PAYMENT_METHOD for payment in normalized_payments)
+
+    line_payloads: list[dict] = []
+    vat_totals = defaultdict(lambda: {"gross": Decimal("0"), "net": Decimal("0"), "vat": Decimal("0")})
+    subtotal_total = Decimal("0")
+    vat_total = Decimal("0")
+    discount_total = Decimal("0")
+    gross_total = Decimal("0")
+
+    for line in normalized_lines:
+        product = db.get(Product, line.product_id) if line.product_id else None
+        if line.product_id and (product is None or not product.is_active):
+            raise ValueError("Active product not found.")
+        work_order_item = db.get(JobItem, line.work_order_item_id) if line.work_order_item_id else None
+        if line.work_order_item_id and work_order_item is None:
+            raise ValueError("Work Order item not found.")
+        if work_order_item and work_order_id and work_order_item.job_id != work_order_id:
+            raise ValueError("Work Order item does not belong to the selected Work Order.")
+        description_snapshot = (line.description or "").strip()
+        if not description_snapshot and product is not None:
+            description_snapshot = product.name
+        if not description_snapshot:
+            raise ValueError("Description is required.")
+        parsed_quantity = require_positive_quantity(line.quantity)
+        parsed_unit_price = require_non_negative_money(line.unit_price, "Unit price")
+        parsed_vat_percent = require_vat_percent(line.vat_percent)
+        parsed_discount = require_non_negative_money(line.discount_amount, "Discount amount")
+        gross_before_discount = parsed_quantity * parsed_unit_price
+        if parsed_discount > gross_before_discount:
+            raise ValueError("Discount cannot exceed line total.")
+        line_total = money(gross_before_discount - parsed_discount)
+        net_amount, vat_amount = vat_included_breakdown(line_total, parsed_vat_percent)
+        subtotal_total += net_amount
+        vat_total += vat_amount
+        discount_total += parsed_discount
+        gross_total += line_total
+        rate = format_decimal_key(parsed_vat_percent)
+        vat_totals[rate]["gross"] += line_total
+        vat_totals[rate]["net"] += net_amount
+        vat_totals[rate]["vat"] += vat_amount
+        line_payloads.append(
+            {
+                "line": line,
+                "product": product,
+                "description": description_snapshot,
+                "quantity": parsed_quantity,
+                "unit_price": parsed_unit_price,
+                "vat_percent": parsed_vat_percent,
+                "discount": money(parsed_discount),
+                "line_total": line_total,
+                "net": net_amount,
+                "vat": vat_amount,
+            }
+        )
+
+    total = money(gross_total)
+    if total < 0:
+        raise ValueError("Sale total cannot be negative.")
+
+    payment_total = Decimal("0")
+    immediate_payments: list[PaymentInput] = []
+    for payment in normalized_payments:
+        require_payment_method(payment.payment_method)
+        if payment.payment_method == INVOICE_PAYMENT_METHOD:
+            invoice_requested = True
+            continue
+        if payment.payment_method not in IMMEDIATE_PAYMENT_METHODS:
+            raise ValueError("Invalid immediate payment method.")
+        amount = total if payment.amount is None else require_positive_money(payment.amount, "Payment amount")
+        immediate_payments.append(PaymentInput(payment.payment_method, amount, payment.reference))
+        payment_total += amount
+    paid = money(payment_total)
+    settlement_status = settlement_status_for(total=total, paid=paid, invoice_requested=invoice_requested)
+
+    try:
+        sale = Sale(
+            seller_id=sold_by.id if sold_by is not None else None,
+            sold_by_user_id=sold_by.id if sold_by is not None else None,
+            created_by_user_id=operator_id,
+            shift_id=shift.id if shift is not None else None,
+            cash_register_id=context.cash_register_id,
+            work_order_id=work_order_id,
+            source_type=source,
+            idempotency_key=idempotency_key.strip() if idempotency_key else None,
+            finalized_at=utc_now(),
+            business_date=context.business_date,
+            payment_method=_sale_payment_method_label(immediate_payments, invoice_requested),
+            settlement_status=settlement_status,
+            invoice_customer_snapshot_json=_customer_snapshot_for_invoice(work_order) if invoice_requested else None,
+            subtotal=money(subtotal_total),
+            vat_total=money(vat_total),
+            discount_total=money(discount_total),
+            total=total,
+            vat_breakdown_json=json.dumps(
+                {
+                    rate: {
+                        "gross": str(money(values["gross"])),
+                        "net": str(money(values["net"])),
+                        "vat": str(money(values["vat"])),
+                    }
+                    for rate, values in vat_totals.items()
+                },
+                sort_keys=True,
+            ),
+            status="completed",
+        )
+        db.add(sale)
+        db.flush()
+        sale.document_number = allocate_sale_document_number(db, sale.business_date or sale.sold_at.date())
+
+        cogs_total = Decimal("0.00")
+        gross_profit_total = Decimal("0.00")
+        for payload in line_payloads:
+            source_line = payload["line"]
+            sale_line = SaleLine(
+                sale_id=sale.id,
+                work_order_item_id=source_line.work_order_item_id,
+                product_id=source_line.product_id,
+                description_snapshot=payload["description"],
+                quantity=payload["quantity"],
+                unit_price=payload["unit_price"],
+                vat_percent=payload["vat_percent"],
+                discount_amount=payload["discount"],
+                line_total=payload["line_total"],
+                vat_amount=payload["vat"],
+            )
+            db.add(sale_line)
+            db.flush()
+            line_cogs = Decimal("0.00")
+            product = payload["product"]
+            if product is not None and product.is_stock_item:
+                from app.services.inventory_service import issue_stock_for_sale_from_available_locations
+
+                transactions = issue_stock_for_sale_from_available_locations(
+                    db,
+                    product_id=product.id,
+                    quantity_value=payload["quantity"],
+                    sale_id=sale.id,
+                    created_by_user_id=operator_id,
+                    commit=False,
+                )
+                line_cogs = money(
+                    sum((-parse_decimal(transaction.total_inventory_cost) for transaction in transactions), Decimal("0"))
+                )
+            line_profit = money(payload["net"] - line_cogs)
+            line_margin = (line_profit / payload["net"] * Decimal("100")).quantize(Decimal("0.001")) if payload["net"] > 0 else None
+            sale_line.cost_of_goods_sold_ex_vat = line_cogs
+            sale_line.gross_profit_ex_vat = line_profit
+            sale_line.gross_margin_percent = line_margin
+            cogs_total += line_cogs
+            gross_profit_total += line_profit
+
+        sale.cost_of_goods_sold_ex_vat = money(cogs_total)
+        sale.gross_profit_ex_vat = money(gross_profit_total)
+        sale.gross_margin_percent = (
+            (money(gross_profit_total) / money(subtotal_total) * Decimal("100")).quantize(Decimal("0.001"))
+            if subtotal_total > 0
+            else None
+        )
+
+        for payment in immediate_payments:
+            db.add(
+                Payment(
+                    sale_id=sale.id,
+                    shift_id=shift.id if shift is not None else None,
+                    seller_id=sold_by.id if sold_by is not None else None,
+                    received_by_user_id=operator_id,
+                    payment_method=payment.payment_method,
+                    amount=money(parse_decimal(payment.amount)),
+                    reference=payment.reference.strip() or None,
+                )
+            )
+        log_audit_event(
+            db,
+            event_type="sale.created",
+            entity_type="sale",
+            entity_id=sale.id,
+            description=(
+                f"{source} sale {sale.document_number} created for {total}; settlement={settlement_status}; "
+                f"sold by {sold_by.id if sold_by else 'none'}/{sold_by.name if sold_by else 'Not specified'}; "
+                f"operator {operator_id if operator_id is not None else 'unknown'}; "
+                f"business date {context.business_date}; "
+                f"shift {shift.id if shift else 'none'}; cash register {context.cash_register_id if context.cash_register_id else 'none'}."
+            ),
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    db.refresh(sale)
+    return sale
+
+
+def create_sale_from_work_order(
+    db: Session,
+    *,
+    work_order_id: int,
+    shift_id: int | None = None,
+    seller_id: int | None = None,
+    payments: list[PaymentInput | dict] | None,
+    cash_register_id: int | None = None,
+    seller_mode: str = "default",
+    created_by_user_id: int | None = None,
+    seller_selection_mode: str = "shift_owner",
+    send_to_invoice: bool = False,
+    idempotency_key: str | None = None,
+) -> Sale:
+    work_order = db.get(Job, work_order_id)
+    if work_order is None:
+        raise ValueError("Work Order not found.")
+    if not work_order.items:
+        raise ValueError("Work Order has no billable rows.")
+    lines = [
+        SaleLineInput(
+            product_id=item.product_id,
+            work_order_item_id=item.id,
+            description=item.description,
+            quantity=item.quantity,
+            unit_price=item.unit_price,
+            vat_percent=item.vat_percent,
+            discount_amount="0",
+        )
+        for item in work_order.items
+    ]
+    return create_sale_from_lines(
+        db,
+        shift_id=shift_id,
+        seller_id=seller_id,
+        lines=lines,
+        payments=payments,
+        work_order_id=work_order.id,
+        cash_register_id=cash_register_id,
+        seller_mode=seller_mode,
+        created_by_user_id=created_by_user_id,
+        seller_selection_mode=seller_selection_mode,
+        source_type="work_order",
+        send_to_invoice=send_to_invoice,
+        idempotency_key=idempotency_key or f"work-order:{work_order.id}",
+    )
+
+
+def _parse_date_value(value: object, field_name: str, *, required: bool = False) -> date | None:
+    if value is None or value == "":
+        if required:
+            raise ValueError(f"{field_name} is required.")
+        return None
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    try:
+        return date.fromisoformat(str(value))
+    except ValueError as exc:
+        raise ValueError(f"{field_name} must be a valid date.") from exc
+
+
+def _date_to_utc_datetime(value: date) -> datetime:
+    return datetime.combine(value, time.min, tzinfo=UTC)
+
+
+def require_invoice_sale(sale: Sale | None) -> Sale:
+    if sale is None:
+        raise ValueError("Sale not found.")
+    if sale.settlement_status in {"paid", "cancelled"}:
+        raise ValueError("Sale is not awaiting invoice follow-up.")
+    if sale.payment_method != INVOICE_PAYMENT_METHOD and sale.settlement_status not in INVOICE_ACTIVE_STATUSES:
+        raise ValueError("Sale is not an invoice handoff sale.")
+    return sale
+
+
+def transfer_sale_to_invoicing(
+    db: Session,
+    *,
+    sale_id: int,
+    service_name: str,
+    external_invoice_number: str,
+    invoice_date_value: object,
+    due_date_value: object,
+    external_reference: str = "",
+    notes: str = "",
+    actor_user_id: int | None = None,
+) -> Sale:
+    sale = require_invoice_sale(db.get(Sale, sale_id))
+    service = service_name.strip()
+    invoice_number = external_invoice_number.strip()
+    if not service:
+        raise ValueError("External invoicing service is required.")
+    if not invoice_number:
+        raise ValueError("External invoice number is required.")
+    invoice_date = _parse_date_value(invoice_date_value, "Invoice date", required=True)
+    due_date = _parse_date_value(due_date_value, "Due date", required=True)
+    if due_date < invoice_date:
+        raise ValueError("Due date cannot be before invoice date.")
+
+    sale.transferred_to_invoicing_at = utc_now()
+    sale.external_invoice_service = service
+    sale.external_invoice_number = invoice_number
+    sale.invoice_date = invoice_date
+    sale.due_date = due_date
+    sale.external_invoice_reference = external_reference.strip() or None
+    sale.invoice_handoff_notes = notes.strip() or None
+    sale.settlement_status = "transferred_to_invoicing"
+    log_audit_event(
+        db,
+        event_type="invoice.transferred",
+        entity_type="sale",
+        entity_id=sale.id,
+        description=f"Sale transferred to external invoicing service {service}; invoice {invoice_number}; actor {actor_user_id}.",
+    )
+    db.commit()
+    db.refresh(sale)
+    return sale
+
+
+def confirm_invoice_paid(
+    db: Session,
+    *,
+    sale_id: int,
+    payment_date_value: object,
+    received_amount: object | None = None,
+    notes: str = "",
+    actor_user_id: int | None = None,
+) -> Sale:
+    sale = require_invoice_sale(db.get(Sale, sale_id))
+    payment_date = _parse_date_value(payment_date_value, "Payment date", required=True)
+    sale.payment_status_checked_at = utc_now()
+    sale.paid_at = _date_to_utc_datetime(payment_date)
+    sale.next_follow_up_at = None
+    sale.settlement_status = "paid"
+    if notes.strip():
+        sale.follow_up_notes = notes.strip()
+    if received_amount not in (None, ""):
+        amount = require_positive_money(received_amount, "Received amount")
+        db.add(
+            Payment(
+                sale_id=sale.id,
+                shift_id=sale.shift_id,
+                seller_id=sale.sold_by_user_id or sale.seller_id,
+                received_by_user_id=actor_user_id,
+                payment_method="bank_transfer",
+                amount=amount,
+                paid_at=_date_to_utc_datetime(payment_date),
+                reference=sale.external_invoice_number,
+            )
+        )
+    log_audit_event(
+        db,
+        event_type="invoice.paid_confirmed",
+        entity_type="sale",
+        entity_id=sale.id,
+        description=f"External invoice payment manually confirmed; actor {actor_user_id}; payment date {payment_date}.",
+    )
+    db.commit()
+    db.refresh(sale)
+    return sale
+
+
+def confirm_invoice_unpaid(
+    db: Session,
+    *,
+    sale_id: int,
+    checked_date_value: object | None = None,
+    next_follow_up_date_value: object | None = None,
+    notes: str = "",
+    actor_user_id: int | None = None,
+) -> Sale:
+    sale = require_invoice_sale(db.get(Sale, sale_id))
+    checked_date = _parse_date_value(checked_date_value, "Checked date") or date.today()
+    next_follow_up_date = _parse_date_value(next_follow_up_date_value, "Next follow-up date") or (checked_date + timedelta(days=7))
+    if next_follow_up_date < checked_date:
+        raise ValueError("Next follow-up date cannot be before checked date.")
+    sale.payment_status_checked_at = _date_to_utc_datetime(checked_date)
+    sale.next_follow_up_at = _date_to_utc_datetime(next_follow_up_date)
+    sale.settlement_status = "unpaid"
+    if notes.strip():
+        sale.follow_up_notes = notes.strip()
+    log_audit_event(
+        db,
+        event_type="invoice.unpaid_confirmed",
+        entity_type="sale",
+        entity_id=sale.id,
+        description=f"External invoice manually confirmed unpaid; actor {actor_user_id}; next follow-up {next_follow_up_date}.",
+    )
+    db.commit()
+    db.refresh(sale)
+    return sale
+
+
+def record_invoice_reminder_sent(
+    db: Session,
+    *,
+    sale_id: int,
+    reminder_date_value: object,
+    next_follow_up_date_value: object | None = None,
+    notes: str = "",
+    actor_user_id: int | None = None,
+) -> Sale:
+    sale = require_invoice_sale(db.get(Sale, sale_id))
+    reminder_date = _parse_date_value(reminder_date_value, "Reminder sent date", required=True)
+    next_follow_up_date = _parse_date_value(next_follow_up_date_value, "Next follow-up date") or (reminder_date + timedelta(days=7))
+    if next_follow_up_date < reminder_date:
+        raise ValueError("Next follow-up date cannot be before reminder date.")
+    sale.last_reminder_sent_at = _date_to_utc_datetime(reminder_date)
+    sale.reminder_count = (sale.reminder_count or 0) + 1
+    sale.next_follow_up_at = _date_to_utc_datetime(next_follow_up_date)
+    sale.settlement_status = "reminder_sent"
+    if notes.strip():
+        sale.follow_up_notes = notes.strip()
+    log_audit_event(
+        db,
+        event_type="invoice.reminder_sent",
+        entity_type="sale",
+        entity_id=sale.id,
+        description=f"External invoice reminder recorded; actor {actor_user_id}; count {sale.reminder_count}; next follow-up {next_follow_up_date}.",
+    )
+    db.commit()
+    db.refresh(sale)
+    return sale
+
+
 def require_closing_manager(user: User | None) -> User:
     if not user_can_manage_closing(user):
         raise ValueError("Only Admin or Manager can manage daily closings.")
@@ -186,6 +904,25 @@ def ensure_default_roles(db: Session) -> list[Role]:
             db.add(Role(code=code, name=name))
     db.commit()
     return db.query(Role).order_by(Role.id.asc()).all()
+
+
+def ensure_default_cash_register(db: Session) -> CashRegister:
+    register = db.query(CashRegister).order_by(CashRegister.id.asc()).first()
+    if register is not None:
+        return register
+    register = CashRegister(name="Main register", location="Default", is_active=True)
+    db.add(register)
+    db.flush()
+    log_audit_event(
+        db,
+        event_type="cash_register.created",
+        entity_type="cash_register",
+        entity_id=register.id,
+        description="Default cash register created for first local setup.",
+    )
+    db.commit()
+    db.refresh(register)
+    return register
 
 
 def user_can_manage_closing(user: User | None) -> bool:
@@ -249,8 +986,10 @@ def open_shift(
 def create_sale_with_payment(
     db: Session,
     *,
-    seller_id: int,
-    shift_id: int,
+    seller_id: int | None = None,
+    shift_id: int | None = None,
+    cash_register_id: int | None = None,
+    seller_mode: str = "default",
     payment_method: str,
     description: str,
     quantity,
@@ -263,136 +1002,29 @@ def create_sale_with_payment(
     created_by_user_id: int | None = None,
     seller_selection_mode: str = "shift_owner",
 ) -> Sale:
-    shift = db.get(Shift, shift_id)
-    if shift is None or shift.status != "open":
-        raise ValueError("Sale requires an open shift.")
-    assert_business_date_open(db, shift.business_date)
-    sold_by, operator = resolve_sale_seller(
+    return create_sale_from_lines(
         db,
-        shift=shift,
-        selected_seller_id=seller_id,
+        shift_id=shift_id,
+        seller_id=seller_id,
+        cash_register_id=cash_register_id,
+        seller_mode=seller_mode,
+        lines=[
+            SaleLineInput(
+                product_id=product_id,
+                work_order_item_id=work_order_item_id,
+                description=description,
+                quantity=quantity,
+                unit_price=unit_price,
+                vat_percent=vat_percent,
+                discount_amount=discount_amount,
+            )
+        ],
+        payments=[PaymentInput(payment_method=payment_method)],
+        work_order_id=work_order_id,
         created_by_user_id=created_by_user_id,
         seller_selection_mode=seller_selection_mode,
+        source_type="work_order" if work_order_id else "pos",
     )
-    operator_id = operator.id if operator is not None else sold_by.id
-    require_payment_method(payment_method)
-
-    work_order = db.get(Job, work_order_id) if work_order_id else None
-    if work_order_id and work_order is None:
-        raise ValueError("Work Order not found.")
-    product = db.get(Product, product_id) if product_id else None
-    if product_id and (product is None or not product.is_active):
-        raise ValueError("Active product not found.")
-    work_order_item = db.get(JobItem, work_order_item_id) if work_order_item_id else None
-    if work_order_item_id and work_order_item is None:
-        raise ValueError("Work Order item not found.")
-    if work_order_item and work_order_id and work_order_item.job_id != work_order_id:
-        raise ValueError("Work Order item does not belong to the selected Work Order.")
-
-    description_snapshot = description.strip()
-    if not description_snapshot:
-        raise ValueError("Description is required.")
-    parsed_quantity = require_positive_quantity(quantity)
-    parsed_unit_price = require_non_negative_money(unit_price, "Unit price")
-    parsed_vat_percent = require_vat_percent(vat_percent)
-    parsed_discount = require_non_negative_money(discount_amount, "Discount amount")
-    gross_before_discount = parsed_quantity * parsed_unit_price
-    if parsed_discount > gross_before_discount:
-        raise ValueError("Discount cannot exceed line total.")
-    line_total = money(gross_before_discount - parsed_discount)
-    _, vat_amount = vat_included_breakdown(line_total, parsed_vat_percent)
-    subtotal = money(line_total - vat_amount)
-
-    vat_breakdown = {
-        format_decimal_key(parsed_vat_percent): {
-            "gross": str(line_total),
-            "net": str(subtotal),
-            "vat": str(vat_amount),
-        }
-    }
-    try:
-        sale = Sale(
-            seller_id=sold_by.id,
-            sold_by_user_id=sold_by.id,
-            created_by_user_id=operator_id,
-            shift_id=shift_id,
-            cash_register_id=shift.cash_register_id,
-            work_order_id=work_order_id,
-            payment_method=payment_method,
-            subtotal=subtotal,
-            vat_total=vat_amount,
-            discount_total=money(parsed_discount),
-            total=line_total,
-            vat_breakdown_json=json.dumps(vat_breakdown, sort_keys=True),
-        )
-        db.add(sale)
-        db.flush()
-        sale_line = SaleLine(
-            sale_id=sale.id,
-            work_order_item_id=work_order_item_id,
-            product_id=product_id,
-            description_snapshot=description_snapshot,
-            quantity=parsed_quantity,
-            unit_price=parsed_unit_price,
-            vat_percent=parsed_vat_percent,
-            discount_amount=money(parsed_discount),
-            line_total=line_total,
-            vat_amount=vat_amount,
-        )
-        db.add(sale_line)
-        cogs_total = Decimal("0.00")
-        if product is not None and product.is_stock_item:
-            from app.services.inventory_service import issue_stock_for_sale_from_available_locations
-
-            inventory_transactions = issue_stock_for_sale_from_available_locations(
-                db,
-                product_id=product.id,
-                quantity_value=parsed_quantity,
-                sale_id=sale.id,
-                created_by_user_id=operator_id,
-                commit=False,
-            )
-            cogs_total = money(
-                sum((-parse_decimal(transaction.total_inventory_cost) for transaction in inventory_transactions), Decimal("0"))
-            )
-        gross_profit = money(subtotal - cogs_total)
-        gross_margin_percent = (
-            (gross_profit / subtotal * Decimal("100")).quantize(Decimal("0.001"))
-            if subtotal > 0
-            else None
-        )
-        sale_line.cost_of_goods_sold_ex_vat = cogs_total
-        sale_line.gross_profit_ex_vat = gross_profit
-        sale_line.gross_margin_percent = gross_margin_percent
-        sale.cost_of_goods_sold_ex_vat = cogs_total
-        sale.gross_profit_ex_vat = gross_profit
-        sale.gross_margin_percent = gross_margin_percent
-        db.add(
-            Payment(
-                sale_id=sale.id,
-                shift_id=shift_id,
-                seller_id=sold_by.id,
-                received_by_user_id=operator_id,
-                payment_method=payment_method,
-                amount=line_total,
-            )
-        )
-        log_audit_event(
-            db,
-            event_type="sale.created",
-            entity_type="sale",
-            entity_id=sale.id,
-            description=(
-                f"Sale created for {line_total}; sold by {sold_by.id}/{sold_by.name}; "
-                f"operator {operator_id}; shift {shift.id}; cash register {shift.cash_register_id}."
-            ),
-        )
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-    db.refresh(sale)
-    return sale
 
 
 def correct_sale_seller(
@@ -406,9 +1038,8 @@ def correct_sale_seller(
     sale = db.get(Sale, sale_id)
     if sale is None:
         raise ValueError("Sale not found.")
-    if sale.shift is None:
-        raise ValueError("Sale has no shift for business date validation.")
-    assert_business_date_open(db, sale.shift.business_date)
+    business_date = sale.business_date or (sale.shift.business_date if sale.shift else sale.sold_at.date())
+    assert_business_date_open(db, business_date)
     corrected_by = require_sale_seller_override_user(db.get(User, corrected_by_user_id))
     correction_reason = reason.strip()
     if not correction_reason:
@@ -618,9 +1249,13 @@ def close_shift(db: Session, *, shift_id: int, counted_cash, notes: str = "") ->
 def build_daily_closing_snapshot(db: Session, business_date: date) -> dict:
     shifts = db.query(Shift).filter(Shift.business_date == business_date).all()
     shift_ids = [shift.id for shift in shifts]
-    sales = db.query(Sale).filter(Sale.shift_id.in_(shift_ids)).all() if shift_ids else []
+    sales_filter = Sale.business_date == business_date
+    if shift_ids:
+        sales_filter = or_(sales_filter, (Sale.business_date.is_(None)) & Sale.shift_id.in_(shift_ids))
+    sales = db.query(Sale).filter(sales_filter).all()
     refunds = db.query(Refund).filter(Refund.shift_id.in_(shift_ids)).all() if shift_ids else []
-    payments = db.query(Payment).filter(Payment.shift_id.in_(shift_ids)).all() if shift_ids else []
+    sale_ids = [sale.id for sale in sales]
+    payments = db.query(Payment).filter(Payment.sale_id.in_(sale_ids)).all() if sale_ids else []
 
     vat_totals = defaultdict(
         lambda: {
@@ -649,13 +1284,17 @@ def build_daily_closing_snapshot(db: Session, business_date: date) -> dict:
     discount_total = Decimal("0")
     gross_vat = Decimal("0")
     refund_vat = Decimal("0")
+    shift_linked_cash = Decimal("0")
+    shiftless_cash_assigned = Decimal("0")
+    shiftless_cash_unassigned = Decimal("0")
+    unassigned_cash_sales: list[dict] = []
 
     for sale in sales:
         sale_seller_id = sale.sold_by_user_id or sale.seller_id
         sale_seller = sale.sold_by or sale.seller
         seller_bucket = seller_totals[sale_seller_id]
         seller_bucket["seller_id"] = sale_seller_id
-        seller_bucket["seller_name"] = sale_seller.name if sale_seller else f"User {sale_seller_id}"
+        seller_bucket["seller_name"] = sale_seller.name if sale_seller else "Unspecified seller"
         seller_bucket["gross_sales"] += parse_decimal(sale.total)
         seller_bucket["discounts"] += parse_decimal(sale.discount_total)
         seller_bucket["transaction_count"] += 1
@@ -668,6 +1307,25 @@ def build_daily_closing_snapshot(db: Session, business_date: date) -> dict:
 
     for payment in payments:
         payment_totals[payment.payment_method]["gross_received"] += parse_decimal(payment.amount)
+        if payment.payment_method == "cash":
+            payment_sale = payment.sale
+            if payment.shift_id:
+                shift_linked_cash += parse_decimal(payment.amount)
+            elif payment_sale and payment_sale.cash_register_id:
+                shiftless_cash_assigned += parse_decimal(payment.amount)
+            else:
+                shiftless_cash_unassigned += parse_decimal(payment.amount)
+                if payment_sale is not None:
+                    unassigned_cash_sales.append(
+                        {
+                            "sale_id": payment_sale.id,
+                            "document_number": payment_sale.document_number,
+                            "business_date": (payment_sale.business_date or payment_sale.sold_at.date()).isoformat(),
+                            "amount": decimal_string(payment.amount),
+                            "operator": payment_sale.created_by.name if payment_sale.created_by else "",
+                            "seller": (payment_sale.sold_by or payment_sale.seller).name if (payment_sale.sold_by or payment_sale.seller) else "",
+                        }
+                    )
 
     for refund in refunds:
         payment_totals[refund.payment_method]["refunds"] += parse_decimal(refund.amount)
@@ -686,6 +1344,24 @@ def build_daily_closing_snapshot(db: Session, business_date: date) -> dict:
     gross_sales = sum_money(sale.total for sale in sales)
     total_refunds = sum_money(refund.amount for refund in refunds)
     net_sales = money(gross_sales - total_refunds)
+    awaiting_invoice_sales = sum_money(
+        sale.total for sale in sales if sale.settlement_status == "awaiting_invoice"
+    )
+    partially_paid_invoice_sales = sum_money(
+        sale.total for sale in sales if sale.settlement_status == "partially_paid_awaiting_invoice"
+    )
+    invoice_status_totals = defaultdict(lambda: {"count": 0, "total": Decimal("0")})
+    for sale in sales:
+        derived_status = invoice_follow_up_status(sale, as_of=business_date)
+        invoice_related = (
+            sale.payment_method == INVOICE_PAYMENT_METHOD
+            or sale.external_invoice_number is not None
+            or sale.settlement_status in INVOICE_ACTIVE_STATUSES
+        )
+        if invoice_related and derived_status in INVOICE_FOLLOW_UP_STATUSES:
+            invoice_status_totals[derived_status]["count"] += 1
+            invoice_status_totals[derived_status]["total"] += parse_decimal(sale.total)
+    payment_received_total = sum_money(payment.amount for payment in payments)
 
     return {
         "schema_version": SNAPSHOT_SCHEMA_VERSION,
@@ -697,6 +1373,21 @@ def build_daily_closing_snapshot(db: Session, business_date: date) -> dict:
         "total_discounts": decimal_string(discount_total),
         "total_refunds": decimal_string(total_refunds),
         "net_sales": decimal_string(net_sales),
+        "awaiting_invoice_sales": decimal_string(awaiting_invoice_sales),
+        "partially_paid_invoice_sales": decimal_string(partially_paid_invoice_sales),
+        "invoice_status_totals": [
+            {
+                "status": status,
+                "count": values["count"],
+                "total": decimal_string(values["total"]),
+            }
+            for status, values in sorted(invoice_status_totals.items())
+        ],
+        "payment_received_total": decimal_string(payment_received_total),
+        "shift_linked_cash": decimal_string(shift_linked_cash),
+        "shiftless_cash_assigned": decimal_string(shiftless_cash_assigned),
+        "shiftless_cash_unassigned": decimal_string(shiftless_cash_unassigned),
+        "unassigned_cash_sales": unassigned_cash_sales,
         "gross_vat": decimal_string(gross_vat),
         "refund_vat": decimal_string(refund_vat),
         "net_vat": decimal_string(gross_vat - refund_vat),

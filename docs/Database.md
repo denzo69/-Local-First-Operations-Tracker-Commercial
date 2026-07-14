@@ -213,7 +213,21 @@ The MVP now includes seller accounts, cash registers, shifts, sales, payments, r
 Important accounting rules:
 
 - Work Orders, Sales, Payments, and Refunds are separate records.
+- A Work Order is operational, not financial. It becomes billable by creating a Sale.
+- A Sale may originate from direct POS sale or from a Work Order.
 - A Sale may reference a Work Order, but payments are stored in `payments`.
+- Work Order conversion is idempotent. A Work Order must not create multiple active Sales accidentally.
+- `sales.document_number` is the Sale receipt/register document number. Direct POS Sales and Work Order-originated Sales use the same Sale document-number sequence. Work Order numbers and external invoice numbers are separate references and must not replace it.
+- Sales store `source_type`, `settlement_status`, `finalized_at`, and optional `invoice_customer_snapshot_json`.
+- Invoice handoff fields include `transferred_to_invoicing_at`, `external_invoice_service`, `external_invoice_number`, `invoice_date`, `due_date`, `external_invoice_reference`, `invoice_handoff_notes`, `payment_status_checked_at`, `paid_at`, `next_follow_up_at`, `reminder_count`, `last_reminder_sent_at`, and `follow_up_notes`.
+- `settlement_status` tracks paid, partially paid, awaiting invoice, transferred to invoicing, unpaid, reminder sent, and cancelled states. `payment_check_due` and `reminder_due` are derived from due and follow-up dates for alerts and reports.
+- Invoice handoff creates no fake cash/card payment row. It is not statutory invoicing or accounting export. External payment is marked paid only after explicit manual confirmation.
+- Split and partial payments are represented as multiple `payments` rows for the same Sale.
+- Cashier shifts are optional by default. `sales.shift_id` and `payments.shift_id` may be null. If a shift is selected it must be open, controls the Sale business date and cash register, and is used for shift closing. If no shift is selected, `sales.business_date` is set at finalization and the Sale remains valid without appearing in shift closing.
+- `sales.business_date` is the daily-closing date for Sales. Existing data is backfilled from the linked shift business date first, then from `sold_at` when no shift exists.
+- Shiftless cash Sales may optionally reference `sales.cash_register_id`; if no cash register is selected they are reported as unassigned cash rather than silently placed in a register.
+- `payments.received_by_user_id` is the operator who received or recorded payment; it is separate from the credited seller.
+- `sales.sold_by_user_id` credits the seller for reports and may be null when the operator explicitly chooses no seller on the receipt; `sales.created_by_user_id` records the operator.
 - Refunds are stored in `refunds` and include `vat_breakdown_json`.
 - Refunds reference the original sale through `sale_id`, but `shift_id`, `seller_id`, and `refunded_at` describe the actual refund event.
 - A later refund is attributed to the refund shift business date and refunding seller. It does not move the original sale away from the original sale shift or seller.
@@ -221,15 +235,15 @@ Important accounting rules:
 - `daily_closings.current_version` points to the latest closing snapshot version.
 - Reopening a Daily Closing must preserve older snapshots and store `reopened_at`, `reopened_by_user_id`, and `reopen_reason`.
 - Closed business dates block financial writes until reopened.
-- Daily closing reports use actual event dates: sales from sale shifts, refunds from refund shifts.
+- Daily closing reports use actual event dates: sales from `sales.business_date`, refunds from refund shifts.
 - SQLite compatibility creates partial unique indexes to prevent more than one open shift per seller and more than one open shift per cash register.
 
 Current limitations:
 
 - Authentication exists for local trusted-network use, but some MVP forms still preserve explicit user selectors for operational workflows.
 - Role checks protect routes and business operations, but the app is still not hardened for public internet exposure.
-- Sale documents, payment transaction numbers, refund numbers, shift numbers, and closing numbers are not official stable document numbers yet.
-- Sales UI creates one line and one payment. Future versions should finalize sales from multiple validated lines and separate payment balancing.
+- Sale document numbers are stable Sale receipt/register numbers. Payment transaction numbers, refund numbers, shift numbers, and closing numbers are not official stable document numbers yet.
+- Sales support multiple validated lines and multiple payment rows. Full accounting invoicing, automatic external payment status sync, external payment gateways, and statutory e-invoicing are not implemented.
 - Multi-VAT refunds are rejected until line-level refund allocation is added.
 - Financial refunds do not yet create customer-return inventory transactions.
 

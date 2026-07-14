@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block content %}
+<nav class="small text-muted mb-3"><a href="/products">{{ t.products }}</a> &gt; {{ t.stock_balances }}</nav>
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+    <div>
+        <h1 class="h3 mb-1">{{ t.stock_balances }}</h1>
+        <p class="text-muted mb-0">{{ t.inventory_by_location }}</p>
+    </div>
+    <a class="btn btn-outline-primary" href="/products/inventory/transactions">{{ t.inventory_transactions }}</a>
+</div>
+
+<form class="card shadow-sm border-0 mb-3" method="get" action="/products/inventory">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label" for="product_id">{{ t.product }}</label>
+                <select class="form-select" id="product_id" name="product_id">
+                    <option value="">-</option>
+                    {% for product in products %}<option value="{{ product.id }}">{{ product.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="warehouse_id">{{ t.warehouse }}</label>
+                <select class="form-select" id="warehouse_id" name="warehouse_id">
+                    <option value="">-</option>
+                    {% for warehouse in warehouses %}<option value="{{ warehouse.id }}">{{ warehouse.code }} - {{ warehouse.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <button class="btn btn-primary w-100" type="submit">{{ t.view }}</button>
+            </div>
+        </div>
+    </div>
+</form>
+
+<div class="card shadow-sm border-0">
+    <div class="table-responsive responsive-card-table">
+        <table class="table mb-0 align-middle">
+            <thead>
+            <tr>
+                <th>{{ t.product }}</th>
+                <th>{{ t.warehouse }}</th>
+                <th>{{ t.location }}</th>
+                <th>{{ t.quantity }}</th>
+                <th>{{ t.weighted_average_cost }}</th>
+                <th>{{ t.value }}</th>
+                <th>{{ t.sale_price }}</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for balance in balances %}
+            <tr>
+                <td data-label="{{ t.product }}"><a href="/products/{{ balance.product_id }}">{{ balance.product.name if balance.product else balance.product_id }}</a></td>
+                <td data-label="{{ t.warehouse }}">{{ balance.warehouse_location.warehouse.name if balance.warehouse_location and balance.warehouse_location.warehouse else "-" }}</td>
+                <td data-label="{{ t.location }}">{{ balance.warehouse_location.code if balance.warehouse_location else "-" }}</td>
+                <td data-label="{{ t.quantity }}">{{ balance.quantity_on_hand }}</td>
+                <td data-label="{{ t.weighted_average_cost }}">{{ balance.weighted_average_cost_ex_vat or "-" }}</td>
+                <td data-label="{{ t.value }}">{{ balance.inventory_value_ex_vat }}</td>
+                <td data-label="{{ t.sale_price }}">{{ balance.product.unit_price if balance.product else "-" }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-muted p-4">{{ t.no_inventory }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

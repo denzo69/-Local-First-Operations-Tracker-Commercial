@@ -5,7 +5,7 @@
         <h1>{{ t.inventory_reconciliation }}</h1>
         <p class="text-muted">{{ t.inventory_reconciliation_help }}</p>
     </div>
-    <a class="btn btn-outline-secondary" href="/inventory/ledger">{{ t.inventory_ledger }}</a>
+    <a class="btn btn-outline-secondary" href="{{ reconciliation_ledger_url|default('/inventory/ledger') }}">{{ t.inventory_ledger }}</a>
 </div>
 
 {% if report.is_clean %}
@@ -57,7 +57,7 @@
 </div>
 
 {% if not report.is_clean %}
-<form class="card p-3" method="post" action="/inventory/reconciliation/repair">
+<form class="card p-3" method="post" action="{{ reconciliation_repair_action|default('/inventory/reconciliation/repair') }}">
     <h2 class="h5">{{ t.repair_from_ledger }}</h2>
     <label class="form-label" for="user_id">{{ t.created_by }}</label>
     <select class="form-select mb-2" id="user_id" name="user_id">

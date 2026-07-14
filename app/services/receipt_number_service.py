@@ -2,7 +2,7 @@ from datetime import date
 
 from sqlalchemy.orm import Session
 
-from app.models import Job, Setting
+from app.models import Job, Sale, Setting
 from app.services.settings_service import get_app_settings
 
 
@@ -51,3 +51,39 @@ def allocate_receipt_number(db: Session, receipt_date: date | None = None) -> st
     _set_setting(db, "next_receipt_sequence", str(sequence + 1))
     _set_setting(db, "receipt_sequence_year", sequence_year)
     return receipt_number
+
+
+def allocate_sale_document_number(db: Session, document_date: date | None = None) -> str:
+    """Allocate a unique Sale document number without touching Work Order numbers.
+
+    The caller owns the database transaction. The unique index on
+    ``sales.document_number`` is the final protection against duplicates.
+    """
+    settings = get_app_settings(db)
+    current_year = (document_date or date.today()).year
+    annual_reset = settings.get("sale_document_annual_reset", "false").lower() == "true"
+    sequence_year = settings.get("sale_document_sequence_year") or str(current_year)
+    sequence = int(settings.get("next_sale_document_sequence") or "1")
+    padding = int(settings.get("sale_document_padding") or "6")
+    prefix = settings.get("sale_document_prefix", "SALE-")
+
+    if annual_reset and sequence_year != str(current_year):
+        sequence = 1
+        sequence_year = str(current_year)
+
+    while True:
+        document_number = format_receipt_number(
+            current_year,
+            sequence,
+            prefix=prefix,
+            padding=padding,
+        )
+        exists = db.query(Sale.id).filter(Sale.document_number == document_number).first()
+        if not exists:
+            break
+        sequence += 1
+
+    _set_setting(db, "next_sale_document_sequence", str(sequence + 1))
+    _set_setting(db, "sale_document_sequence_year", sequence_year)
+    db.flush()
+    return document_number

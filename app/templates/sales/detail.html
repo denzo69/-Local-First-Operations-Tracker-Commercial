@@ -2,17 +2,18 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
-        <h1>{{ t.sales }} #{{ sale.id }}</h1>
+        <h1>{{ t.sales }} #{{ sale.document_number or sale.id }}</h1>
         <p class="text-muted">
-            {{ t.original_seller }}: {{ (sale.sold_by or sale.seller).name if (sale.sold_by or sale.seller) else "-" }} -
-            {{ t.shifts }} #{{ sale.shift_id }} -
-            {{ t.business_date }} {{ sale.shift.business_date if sale.shift else "-" }}
+            {{ t.original_seller }}: {{ (sale.sold_by or sale.seller).name if (sale.sold_by or sale.seller) else "Not specified" }} -
+            Cashier shift: {% if sale.shift %}#{{ sale.shift_id }}{% else %}No cashier shift{% endif %} -
+            {{ t.business_date }} {{ sale.business_date or (sale.shift.business_date if sale.shift else "-") }}
         </p>
         {% if sale.created_by %}
         <p class="text-muted mb-0">{{ t.created_by }}: {{ sale.created_by.name }}</p>
         {% endif %}
     </div>
     <a class="btn btn-outline-secondary" href="/sales">{{ t.back }}</a>
+    <a class="btn btn-outline-primary" href="/sales/{{ sale.id }}/receipt">Receipt / summary</a>
 </div>
 <div class="row g-3 mb-3">
     <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.net }}</div><strong>{{ sale.subtotal }}</strong></div></div>
@@ -25,8 +26,76 @@
     <div class="col-md-4"><div class="card p-3"><div class="text-muted">{{ t.gross_profit }}</div><strong>{{ sale.gross_profit_ex_vat }}</strong></div></div>
     <div class="col-md-4"><div class="card p-3"><div class="text-muted">{{ t.gross_margin }}</div><strong>{{ sale.gross_margin_percent or "-" }}</strong></div></div>
 </div>
+<div class="row g-3 mb-3">
+    <div class="col-md-4"><div class="card p-3"><div class="text-muted">Document</div><strong>{{ sale.document_number or "-" }}</strong></div></div>
+    <div class="col-md-4"><div class="card p-3"><div class="text-muted">Paid</div><strong>{{ paid_amount }}</strong></div></div>
+    <div class="col-md-4"><div class="card p-3"><div class="text-muted">Balance due</div><strong>{{ balance_due }}</strong></div></div>
+</div>
 {% if sale.work_order %}
 <p>Work Order: <a href="/work-orders/{{ sale.work_order.id }}">{{ sale.work_order.title }}</a></p>
+{% endif %}
+{% if sale.payment_method == "invoice" or sale.settlement_status in ["awaiting_invoice", "partially_paid_awaiting_invoice", "transferred_to_invoicing", "payment_check_due", "unpaid", "reminder_due", "reminder_sent"] %}
+<section class="card p-3 mb-3">
+    <div class="d-flex justify-content-between gap-3 flex-wrap">
+        <div>
+            <h2 class="h5">{{ t.invoice_follow_up }}</h2>
+            <p class="text-muted mb-0">{{ t.external_invoice_notice }}</p>
+        </div>
+        <span class="status-badge {% if invoice_follow_up_status in ['payment_check_due', 'reminder_due'] %}status-warning{% elif invoice_follow_up_status == 'paid' %}status-success{% else %}status-info{% endif %}">{{ t[invoice_follow_up_status] }}</span>
+    </div>
+    <dl class="row mt-3 mb-0">
+        <dt class="col-sm-3">{{ t.external_invoice_service }}</dt><dd class="col-sm-9">{{ sale.external_invoice_service or "-" }}</dd>
+        <dt class="col-sm-3">{{ t.external_invoice_number }}</dt><dd class="col-sm-9">{{ sale.external_invoice_number or "-" }}</dd>
+        <dt class="col-sm-3">{{ t.invoice_date }}</dt><dd class="col-sm-9">{{ sale.invoice_date or "-" }}</dd>
+        <dt class="col-sm-3">{{ t.due_date }}</dt><dd class="col-sm-9">{{ sale.due_date or "-" }}</dd>
+        <dt class="col-sm-3">{{ t.next_follow_up }}</dt><dd class="col-sm-9">{{ sale.next_follow_up_at.date() if sale.next_follow_up_at else "-" }}</dd>
+        <dt class="col-sm-3">{{ t.reminder_count }}</dt><dd class="col-sm-9">{{ sale.reminder_count or 0 }}</dd>
+    </dl>
+</section>
+<div class="row g-3 mb-3">
+    <div class="col-lg-6">
+        <form class="card p-3 h-100" method="post" action="/sales/{{ sale.id }}/invoice-transfer">
+            <h3 class="h6">{{ t.transfer_to_invoicing }}</h3>
+            <input class="form-control mb-2" name="external_invoice_service" placeholder="{{ t.external_invoice_service }}" value="{{ sale.external_invoice_service or '' }}" required>
+            <input class="form-control mb-2" name="external_invoice_number" placeholder="{{ t.external_invoice_number }}" value="{{ sale.external_invoice_number or '' }}" required>
+            <label class="form-label">{{ t.invoice_date }}</label>
+            <input class="form-control mb-2" type="date" name="invoice_date" value="{{ sale.invoice_date or '' }}" required>
+            <label class="form-label">{{ t.due_date }}</label>
+            <input class="form-control mb-2" type="date" name="due_date" value="{{ sale.due_date or '' }}" required>
+            <input class="form-control mb-2" name="external_invoice_reference" placeholder="{{ t.external_reference_url }}" value="{{ sale.external_invoice_reference or '' }}">
+            <textarea class="form-control mb-2" name="notes" placeholder="{{ t.notes }}">{{ sale.invoice_handoff_notes or '' }}</textarea>
+            <button class="btn btn-outline-primary" type="submit">{{ t.save }}</button>
+        </form>
+    </div>
+    <div class="col-lg-6">
+        <form class="card p-3 mb-3" method="post" action="/sales/{{ sale.id }}/invoice-paid">
+            <h3 class="h6">{{ t.confirm_paid }}</h3>
+            <label class="form-label">{{ t.payment_date }}</label>
+            <input class="form-control mb-2" type="date" name="payment_date" required>
+            <input class="form-control mb-2" name="received_amount" placeholder="{{ t.received_amount_optional }}">
+            <textarea class="form-control mb-2" name="notes" placeholder="{{ t.follow_up_notes }}">{{ sale.follow_up_notes or '' }}</textarea>
+            <button class="btn btn-success" type="submit">{{ t.confirm_paid }}</button>
+        </form>
+        <form class="card p-3 mb-3" method="post" action="/sales/{{ sale.id }}/invoice-unpaid">
+            <h3 class="h6">{{ t.confirm_not_paid }}</h3>
+            <label class="form-label">{{ t.checked_date }}</label>
+            <input class="form-control mb-2" type="date" name="checked_date">
+            <label class="form-label">{{ t.next_follow_up }}</label>
+            <input class="form-control mb-2" type="date" name="next_follow_up_date">
+            <textarea class="form-control mb-2" name="notes" placeholder="{{ t.follow_up_notes }}">{{ sale.follow_up_notes or '' }}</textarea>
+            <button class="btn btn-outline-warning" type="submit">{{ t.confirm_not_paid }}</button>
+        </form>
+        <form class="card p-3" method="post" action="/sales/{{ sale.id }}/invoice-reminder">
+            <h3 class="h6">{{ t.record_reminder_sent }}</h3>
+            <label class="form-label">{{ t.reminder_sent_date }}</label>
+            <input class="form-control mb-2" type="date" name="reminder_date" required>
+            <label class="form-label">{{ t.next_follow_up }}</label>
+            <input class="form-control mb-2" type="date" name="next_follow_up_date">
+            <textarea class="form-control mb-2" name="notes" placeholder="{{ t.follow_up_notes }}">{{ sale.follow_up_notes or '' }}</textarea>
+            <button class="btn btn-outline-primary" type="submit">{{ t.record_reminder_sent }}</button>
+        </form>
+    </div>
+</div>
 {% endif %}
 {% if can_correct_seller %}
 <form class="card p-3 mb-3" method="post" action="/sales/{{ sale.id }}/seller">

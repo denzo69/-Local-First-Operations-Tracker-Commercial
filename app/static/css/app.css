@@ -23,6 +23,13 @@ body {
     font-size: 15px;
 }
 
+.card,
+.form-control,
+.form-select,
+.btn {
+    min-width: 0;
+}
+
 a {
     color: var(--primary);
 }
@@ -110,6 +117,23 @@ button:focus-visible,
     color: #fff;
 }
 
+.sidebar-subnav {
+    display: grid;
+    gap: .2rem;
+    margin: .15rem 0 .35rem 2.65rem;
+}
+
+.sidebar-subnav a {
+    color: #b8c3d4;
+    font-size: .86rem;
+    text-decoration: none;
+    padding: .18rem 0;
+}
+
+.sidebar-subnav a:hover {
+    color: #fff;
+}
+
 .nav-icon {
     display: inline-flex;
     justify-content: center;
@@ -162,11 +186,42 @@ button:focus-visible,
     justify-content: flex-end;
 }
 
+.topbar-status > * {
+    max-width: 100%;
+}
+
+.alert {
+    overflow-wrap: anywhere;
+}
+
 .app-main {
     width: 100%;
     max-width: 1480px;
     margin: 0 auto;
     padding: 1.25rem;
+}
+
+.workspace-card {
+    display: grid;
+    gap: .25rem;
+    min-height: 104px;
+    height: 100%;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    text-decoration: none;
+    box-shadow: var(--shadow);
+}
+
+.workspace-card span {
+    color: var(--muted);
+    font-size: .9rem;
+}
+
+.workspace-card:hover {
+    border-color: #9db8ca;
 }
 
 .dashboard-hero {
@@ -445,7 +500,14 @@ button:focus-visible,
     }
 
     .topbar-status {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         justify-content: flex-start;
+    }
+
+    .topbar-status .btn {
+        width: 100%;
+        white-space: normal;
     }
 
     .kpi-grid {
@@ -519,11 +581,6 @@ button:focus-visible,
     .topbar-status,
     .quick-actions {
         width: 100%;
-    }
-
-    .topbar-status {
-        align-items: flex-start;
-        gap: .65rem;
     }
 
     .quick-actions .btn {

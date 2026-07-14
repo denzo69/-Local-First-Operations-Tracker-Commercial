@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
+<nav class="small text-muted mb-3"><a href="/products">{{ t.products }}</a> &gt; {{ t.warehouses }}</nav>
 <h1>{{ t.warehouses }}</h1>
-<form method="post" action="/inventory/warehouses" class="card p-3 mb-3">
+<form method="post" action="{{ warehouse_action|default('/inventory/warehouses') }}" class="card p-3 mb-3">
     <div class="row g-3">
         <div class="col-md-6"><label class="form-label" for="name">{{ t.warehouse }}</label><input class="form-control" id="name" name="name" required></div>
         <div class="col-md-6"><label class="form-label" for="code">{{ t.code }}</label><input class="form-control" id="code" name="code" required></div>
@@ -16,7 +17,7 @@
             {% for warehouse in warehouses %}
             <tr>
                 <td data-label="{{ t.code }}">{{ warehouse.code }}</td>
-                <td data-label="{{ t.warehouse }}">{{ warehouse.name }}</td>
+                <td data-label="{{ t.warehouse }}"><a href="/products/warehouses/{{ warehouse.id }}">{{ warehouse.name }}</a></td>
                 <td data-label="{{ t.location }}">{% for location in warehouse.locations %}{{ location.code }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
             </tr>
             {% endfor %}

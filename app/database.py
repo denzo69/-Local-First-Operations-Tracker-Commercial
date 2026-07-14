@@ -36,9 +36,10 @@ def init_db() -> None:
     """Create database tables for the early development version."""
     import app.models  # noqa: F401
     from app.services.migration_service import ensure_sqlite_schema_compatibility
-    from app.services.sales_service import ensure_default_roles
+    from app.services.sales_service import ensure_default_cash_register, ensure_default_roles
 
     Base.metadata.create_all(bind=engine)
     ensure_sqlite_schema_compatibility(engine)
     with SessionLocal() as db:
         ensure_default_roles(db)
+        ensure_default_cash_register(db)

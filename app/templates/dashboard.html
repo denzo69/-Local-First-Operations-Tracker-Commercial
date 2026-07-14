@@ -34,6 +34,19 @@
             <h2>{{ t.attention_required }}</h2>
             <a href="/work-orders?view=active">{{ t.view }}</a>
         </div>
+        {% if invoice_alerts %}
+        <div class="ops-list mb-3">
+            {% for alert in invoice_alerts %}
+            <a class="ops-row" href="/sales/{{ alert.sale.id }}">
+                <span>
+                    <strong>{{ t[alert.status] }}</strong>
+                    <small>{{ t[alert.message_key] }} {{ t.sales }} #{{ alert.sale.id }}{% if alert.due_date %} - {{ alert.due_date }}{% endif %}</small>
+                </span>
+                <span class="status-badge {% if alert.status == 'reminder_due' %}status-danger{% else %}status-warning{% endif %}">{{ t[alert.status] }}</span>
+            </a>
+            {% endfor %}
+        </div>
+        {% endif %}
         {% if attention_jobs or open_shifts or not daily_closing %}
         <div class="ops-list">
             {% for job in attention_jobs %}
