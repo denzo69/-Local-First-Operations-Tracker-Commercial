@@ -337,7 +337,7 @@ def sale_detail(sale_id: int, request: Request, db: Session = Depends(get_db)):
             "open_shifts": db.query(Shift).filter(Shift.status == "open").order_by(Shift.opened_at.desc()).all(),
             "sellers": db.query(User).filter(User.is_active.is_(True)).order_by(User.name.asc()).all(),
             "can_correct_seller": user_can_override_sale_seller(request_current_user(request)),
-            "payment_methods": PAYMENT_METHODS,
+            "payment_methods": {key: value for key, value in PAYMENT_METHODS.items() if key != "invoice"},
             "remaining_refundable": remaining_refundable_amount(sale),
             "paid_amount": sale_paid_amount(sale),
             "balance_due": sale_balance_due(sale),
@@ -468,21 +468,35 @@ def sale_receipt(sale_id: int, request: Request, db: Session = Depends(get_db)):
 @router.post("/{sale_id}/refunds")
 def create_refund(
     sale_id: int,
-    refund_shift_id: int = Form(...),
+    request: Request,
+    refund_shift_id: str = Form(""),
     amount: str = Form(...),
     payment_method: str = Form(...),
     reason: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    refund_shift = db.get(Shift, refund_shift_id)
-    if refund_shift is None:
+    sale = db.get(Sale, sale_id)
+    if sale is None:
+        raise HTTPException(status_code=404, detail="Sale not found")
+
+    parsed_refund_shift_id = _optional_int(refund_shift_id)
+    refund_shift = db.get(Shift, parsed_refund_shift_id) if parsed_refund_shift_id else None
+    if parsed_refund_shift_id and refund_shift is None:
         raise HTTPException(status_code=400, detail="Refund shift not found")
+    current_user = request_current_user(request)
+    seller_id = refund_shift.seller_id if refund_shift is not None else (
+        current_user.id
+        if current_user is not None
+        else (sale.sold_by_user_id or sale.seller_id or sale.created_by_user_id)
+    )
+    if seller_id is None:
+        raise HTTPException(status_code=400, detail="Refund requires an active operator or sale seller.")
     try:
         add_refund(
             db,
             sale_id=sale_id,
-            refund_shift_id=refund_shift_id,
-            seller_id=refund_shift.seller_id,
+            refund_shift_id=parsed_refund_shift_id,
+            seller_id=seller_id,
             amount=amount,
             payment_method=payment_method,
             reason=reason,

@@ -30,7 +30,8 @@ UNIFIED_SALES_REVISION = "a4d7b9c2e1f3"
 INVOICE_FOLLOWUP_REVISION = "b5c8d2e4f6a1"
 SALE_DOCUMENT_REVISION = "c9d1e7a4b2f6"
 OPTIONAL_SHIFTS_REVISION = "e2f4a6b8c0d1"
-HEAD_REVISION = OPTIONAL_SHIFTS_REVISION
+SHIFTLESS_REFUNDS_REVISION = "f3a9b7c1d2e4"
+HEAD_REVISION = SHIFTLESS_REFUNDS_REVISION
 
 CLASS_EMPTY = "empty database"
 CLASS_BASELINE = "matches baseline"
@@ -41,6 +42,7 @@ CLASS_UNIFIED_SALES = "matches unified sales revision"
 CLASS_INVOICE_FOLLOWUP = "matches invoice follow-up revision"
 CLASS_SALE_DOCUMENTS = "matches sale document numbering revision"
 CLASS_OPTIONAL_SHIFTS = "matches optional cashier shifts revision"
+CLASS_SHIFTLESS_REFUNDS = "matches shiftless refunds revision"
 CLASS_UNKNOWN = "inconsistent / partially migrated / unknown"
 
 
@@ -401,12 +403,19 @@ OPTIONAL_SHIFTS_COLUMNS = {
     "sales": {"business_date"},
 }
 
+SHIFTLESS_REFUNDS_COLUMNS = {
+    "refunds": {"business_date"},
+}
+
 OPTIONAL_SHIFTS_SETTING_KEYS = {"require_cashier_shift"}
 
 NULLABLE_COLUMNS_BY_REVISION = {
     OPTIONAL_SHIFTS_REVISION: {
         "sales": {"seller_id", "shift_id", "business_date"},
         "payments": {"seller_id", "shift_id"},
+    },
+    SHIFTLESS_REFUNDS_REVISION: {
+        "refunds": {"shift_id", "business_date"},
     },
 }
 
@@ -497,6 +506,9 @@ REQUIRED_INDEXES_BY_REVISION = {
     OPTIONAL_SHIFTS_REVISION: {
         "ix_sales_business_date",
     },
+    SHIFTLESS_REFUNDS_REVISION: {
+        "ix_refunds_business_date",
+    },
 }
 
 REQUIRED_TRIGGERS_BY_REVISION = {
@@ -515,6 +527,7 @@ REVISION_LABELS = {
     INVOICE_FOLLOWUP_REVISION: CLASS_INVOICE_FOLLOWUP,
     SALE_DOCUMENT_REVISION: CLASS_SALE_DOCUMENTS,
     OPTIONAL_SHIFTS_REVISION: CLASS_OPTIONAL_SHIFTS,
+    SHIFTLESS_REFUNDS_REVISION: CLASS_SHIFTLESS_REFUNDS,
 }
 
 REVISION_ORDER = [
@@ -526,6 +539,7 @@ REVISION_ORDER = [
     INVOICE_FOLLOWUP_REVISION,
     SALE_DOCUMENT_REVISION,
     OPTIONAL_SHIFTS_REVISION,
+    SHIFTLESS_REFUNDS_REVISION,
 ]
 
 
@@ -709,7 +723,8 @@ UNIFIED_SALES_SCHEMA = merge_columns(STABILIZATION_SCHEMA, UNIFIED_SALES_COLUMNS
 INVOICE_FOLLOWUP_SCHEMA = merge_columns(UNIFIED_SALES_SCHEMA, INVOICE_FOLLOWUP_COLUMNS)
 SALE_DOCUMENT_SCHEMA = INVOICE_FOLLOWUP_SCHEMA
 OPTIONAL_SHIFTS_SCHEMA = merge_columns(SALE_DOCUMENT_SCHEMA, OPTIONAL_SHIFTS_COLUMNS)
-HEAD_KNOWN_SCHEMA = OPTIONAL_SHIFTS_SCHEMA
+SHIFTLESS_REFUNDS_SCHEMA = merge_columns(OPTIONAL_SHIFTS_SCHEMA, SHIFTLESS_REFUNDS_COLUMNS)
+HEAD_KNOWN_SCHEMA = SHIFTLESS_REFUNDS_SCHEMA
 
 
 def _missing_schema(schema: dict[str, set[str]], inspection: SchemaInspection) -> list[str]:
@@ -749,6 +764,8 @@ def _missing_indexes(revision: str, inspection: SchemaInspection) -> list[str]:
         required.update(REQUIRED_INDEXES_BY_REVISION[INVOICE_FOLLOWUP_REVISION])
     if revision_index >= REVISION_ORDER.index(OPTIONAL_SHIFTS_REVISION):
         required.update(REQUIRED_INDEXES_BY_REVISION[OPTIONAL_SHIFTS_REVISION])
+    if revision_index >= REVISION_ORDER.index(SHIFTLESS_REFUNDS_REVISION):
+        required.update(REQUIRED_INDEXES_BY_REVISION[SHIFTLESS_REFUNDS_REVISION])
     return [f"missing index {index}" for index in sorted(required - inspection.indexes)]
 
 
@@ -856,6 +873,16 @@ def _future_revision_evidence(revision: str, inspection: SchemaInspection) -> li
             nullable = inspection.nullable_columns_by_table.get(table, set()) & columns
             evidence.extend(f"future nullable column {table}.{column}" for column in sorted(nullable))
 
+    if SHIFTLESS_REFUNDS_REVISION in later_revisions:
+        for table, columns in SHIFTLESS_REFUNDS_COLUMNS.items():
+            present = inspection.columns_by_table.get(table, set()) & columns
+            evidence.extend(f"future column {table}.{column}" for column in sorted(present))
+        present_indexes = REQUIRED_INDEXES_BY_REVISION[SHIFTLESS_REFUNDS_REVISION] & inspection.indexes
+        evidence.extend(f"future index {index}" for index in sorted(present_indexes))
+        for table, columns in NULLABLE_COLUMNS_BY_REVISION[SHIFTLESS_REFUNDS_REVISION].items():
+            nullable = inspection.nullable_columns_by_table.get(table, set()) & columns
+            evidence.extend(f"future nullable column {table}.{column}" for column in sorted(nullable))
+
     return evidence
 
 
@@ -877,6 +904,7 @@ def classify_schema(inspection: SchemaInspection) -> SchemaClassification:
         )
 
     candidates = [
+        (SHIFTLESS_REFUNDS_REVISION, SHIFTLESS_REFUNDS_SCHEMA),
         (OPTIONAL_SHIFTS_REVISION, OPTIONAL_SHIFTS_SCHEMA),
         (SALE_DOCUMENT_REVISION, SALE_DOCUMENT_SCHEMA),
         (INVOICE_FOLLOWUP_REVISION, INVOICE_FOLLOWUP_SCHEMA),

@@ -490,8 +490,9 @@ class Refund(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     sale_id = Column(Integer, ForeignKey("sales.id"), nullable=False)
-    shift_id = Column(Integer, ForeignKey("shifts.id"), nullable=False)
+    shift_id = Column(Integer, ForeignKey("shifts.id"), nullable=True)
     seller_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    business_date = Column(Date, nullable=True, index=True)
     amount = Column(Numeric(12, 2), nullable=False)
     vat_amount = Column(Numeric(12, 2), default=0)
     vat_breakdown_json = Column(Text, nullable=True)

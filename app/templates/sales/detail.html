@@ -150,8 +150,8 @@
                 <div>{{ refund.amount }} - {{ refund.payment_method }} - {{ refund.refunded_at }}</div>
                 <div class="text-muted">
                     {{ t.refunding_seller }}: {{ refund.seller.name if refund.seller else "-" }} -
-                    {{ t.refund_shift }} #{{ refund.shift_id }} -
-                    {{ t.business_date }} {{ refund.shift.business_date if refund.shift else "-" }}
+                    {{ t.refund_shift }} {% if refund.shift_id %}#{{ refund.shift_id }}{% else %}{{ t.no_refund_shift }}{% endif %} -
+                    {{ t.business_date }} {{ refund.business_date or (refund.shift.business_date if refund.shift else "-") }}
                 </div>
                 {% if refund.reason %}<div>{{ refund.reason }}</div>{% endif %}
                 {% if refund.vat_breakdown_json %}<code>{{ refund.vat_breakdown_json }}</code>{% endif %}
@@ -165,20 +165,21 @@
 <form class="card p-3 mt-3" method="post" action="/sales/{{ sale.id }}/refunds">
     <h2 class="h5">{{ t.refund }}</h2>
     <p class="text-muted">{{ t.remaining_refundable }}: {{ remaining_refundable }}</p>
-    <label class="form-label" for="refund_shift_id">{{ t.refund_shift }}</label>
-    <select class="form-select mb-2" id="refund_shift_id" name="refund_shift_id" required {% if not open_shifts %}disabled{% endif %}>
+    <label class="form-label" for="refund_shift_id">{{ t.refund_shift_optional }}</label>
+    <select class="form-select mb-2" id="refund_shift_id" name="refund_shift_id">
+        <option value="">{{ t.no_refund_shift }}</option>
         {% for shift in open_shifts %}
         <option value="{{ shift.id }}">#{{ shift.id }} - {{ shift.seller.name }} - {{ shift.cash_register.name }} - {{ shift.business_date }}</option>
         {% endfor %}
     </select>
-    {% if not open_shifts %}<div class="alert alert-warning">{{ t.open_shift_required_for_refund }}</div>{% endif %}
-    <input class="form-control mb-2" name="amount" placeholder="{{ t.refund }}" required {% if not open_shifts %}disabled{% endif %}>
-    <select class="form-select mb-2" name="payment_method" {% if not open_shifts %}disabled{% endif %}>
+    {% if not open_shifts %}<div class="alert alert-info">{{ t.refund_without_shift_hint }}</div>{% endif %}
+    <input class="form-control mb-2" name="amount" placeholder="{{ t.refund }}" required>
+    <select class="form-select mb-2" name="payment_method">
         {% for code, label in payment_methods.items() %}
-        <option value="{{ code }}">{{ label }}</option>
+        <option value="{{ code }}">{{ t[code] }}</option>
         {% endfor %}
     </select>
-    <input class="form-control mb-2" name="reason" placeholder="{{ t.reopen_reason }}" {% if not open_shifts %}disabled{% endif %}>
-    <button class="btn btn-outline-danger" type="submit" {% if not open_shifts %}disabled{% endif %}>{{ t.refund }}</button>
+    <input class="form-control mb-2" name="reason" placeholder="{{ t.refund_reason }}">
+    <button class="btn btn-outline-danger" type="submit">{{ t.refund }}</button>
 </form>
 {% endblock %}
