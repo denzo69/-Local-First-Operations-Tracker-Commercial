@@ -3,28 +3,28 @@
 <div class="receipt-page">
     <div class="d-flex justify-content-between align-items-start mb-3">
         <div>
-            <h1>Sale summary {{ sale.document_number or sale.id }}</h1>
+            <h1>{{ t.sale_summary }} {{ sale.document_number or sale.id }}</h1>
             <p class="text-muted">{{ sale.sold_at }}</p>
         </div>
-        <button class="btn btn-outline-secondary d-print-none" onclick="window.print()">Print</button>
+        <button class="btn btn-outline-secondary d-print-none" onclick="window.print()">{{ t.print }}</button>
     </div>
     {% if sale.settlement_status in ["awaiting_invoice", "partially_paid_awaiting_invoice"] %}
-    <div class="alert alert-warning">Awaiting invoicing - this is a sales summary, not a statutory invoice.</div>
+    <div class="alert alert-warning">{{ t.awaiting_invoice_summary_notice }}</div>
     {% endif %}
     <dl class="row">
-        <dt class="col-sm-3">Sale receipt/document number</dt><dd class="col-sm-9">{{ sale.document_number or "-" }}</dd>
-        <dt class="col-sm-3">Customer</dt><dd class="col-sm-9">{{ sale.work_order.customer.name if sale.work_order and sale.work_order.customer else "-" }}</dd>
-        <dt class="col-sm-3">Source Work Order</dt><dd class="col-sm-9">{% if sale.work_order %}{{ sale.work_order.receipt_number or sale.work_order.job_number or sale.work_order.id }} - {{ sale.work_order.title }}{% else %}-{% endif %}</dd>
-        {% if sale.external_invoice_number %}<dt class="col-sm-3">External invoice number</dt><dd class="col-sm-9">{{ sale.external_invoice_number }}</dd>{% endif %}
-        <dt class="col-sm-3">Credited seller</dt><dd class="col-sm-9">{{ (sale.sold_by or sale.seller).name if (sale.sold_by or sale.seller) else "Not specified" }}</dd>
-        <dt class="col-sm-3">Operator</dt><dd class="col-sm-9">{{ sale.created_by.name if sale.created_by else "-" }}</dd>
-        {% if sale.shift %}<dt class="col-sm-3">Cashier shift</dt><dd class="col-sm-9">#{{ sale.shift_id }}</dd>{% endif %}
-        {% if sale.cash_register %}<dt class="col-sm-3">Cash register</dt><dd class="col-sm-9">{{ sale.cash_register.name }}</dd>{% endif %}
-        <dt class="col-sm-3">Business date</dt><dd class="col-sm-9">{{ sale.business_date or (sale.shift.business_date if sale.shift else sale.sold_at.date()) }}</dd>
-        <dt class="col-sm-3">Settlement</dt><dd class="col-sm-9">{{ sale.settlement_status }}</dd>
+        <dt class="col-sm-3">{{ t.sale_document_number }}</dt><dd class="col-sm-9">{{ sale.document_number or "-" }}</dd>
+        <dt class="col-sm-3">{{ t.customer }}</dt><dd class="col-sm-9">{{ sale.work_order.customer.name if sale.work_order and sale.work_order.customer else "-" }}</dd>
+        <dt class="col-sm-3">{{ t.source_work_order }}</dt><dd class="col-sm-9">{% if sale.work_order %}{{ sale.work_order.receipt_number or sale.work_order.job_number or sale.work_order.id }} - {{ sale.work_order.title }}{% else %}-{% endif %}</dd>
+        {% if sale.external_invoice_number %}<dt class="col-sm-3">{{ t.external_invoice_number }}</dt><dd class="col-sm-9">{{ sale.external_invoice_number }}</dd>{% endif %}
+        <dt class="col-sm-3">{{ t.credited_seller }}</dt><dd class="col-sm-9">{{ (sale.sold_by or sale.seller).name if (sale.sold_by or sale.seller) else t.not_specified }}</dd>
+        <dt class="col-sm-3">{{ t.operator }}</dt><dd class="col-sm-9">{{ sale.created_by.name if sale.created_by else "-" }}</dd>
+        {% if sale.shift %}<dt class="col-sm-3">{{ t.cashier_shift }}</dt><dd class="col-sm-9">#{{ sale.shift_id }}</dd>{% endif %}
+        {% if sale.cash_register %}<dt class="col-sm-3">{{ t.cash_register }}</dt><dd class="col-sm-9">{{ sale.cash_register.name }}</dd>{% endif %}
+        <dt class="col-sm-3">{{ t.business_date }}</dt><dd class="col-sm-9">{{ sale.business_date or (sale.shift.business_date if sale.shift else sale.sold_at.date()) }}</dd>
+        <dt class="col-sm-3">{{ t.settlement }}</dt><dd class="col-sm-9">{{ t[sale.settlement_status] }}</dd>
     </dl>
     <table class="table">
-        <thead><tr><th>Description</th><th class="text-end">Qty</th><th class="text-end">Unit</th><th class="text-end">VAT</th><th class="text-end">Total</th></tr></thead>
+        <thead><tr><th>{{ t.description }}</th><th class="text-end">{{ t.quantity }}</th><th class="text-end">{{ t.unit }}</th><th class="text-end">{{ t.vat }}</th><th class="text-end">{{ t.total }}</th></tr></thead>
         <tbody>
         {% for line in sale.lines %}
         <tr><td>{{ line.description_snapshot }}</td><td class="text-end">{{ line.quantity }}</td><td class="text-end">{{ line.unit_price }}</td><td class="text-end">{{ line.vat_percent }}%</td><td class="text-end">{{ line.line_total }}</td></tr>
@@ -33,19 +33,19 @@
     </table>
     <div class="row">
         <div class="col-md-6">
-            <h2 class="h5">Payments</h2>
+            <h2 class="h5">{{ t.payments }}</h2>
             {% for payment in sale.payments %}
-            <div>{{ payment.payment_method }}: {{ payment.amount }}</div>
+            <div>{{ t[payment.payment_method] }}: {{ payment.amount }}</div>
             {% else %}
-            <div class="text-muted">No payments</div>
+            <div class="text-muted">{{ t.no_payments }}</div>
             {% endfor %}
         </div>
         <div class="col-md-6 text-md-end">
-            <div>Net: {{ sale.subtotal }}</div>
-            <div>VAT: {{ sale.vat_total }}</div>
-            <div class="h4">Total: {{ sale.total }}</div>
-            <div>Paid: {{ paid_amount }}</div>
-            <div>Remaining balance: {{ balance_due }}</div>
+            <div>{{ t.net }}: {{ sale.subtotal }}</div>
+            <div>{{ t.vat }}: {{ sale.vat_total }}</div>
+            <div class="h4">{{ t.total }}: {{ sale.total }}</div>
+            <div>{{ t.paid }}: {{ paid_amount }}</div>
+            <div>{{ t.remaining_balance }}: {{ balance_due }}</div>
         </div>
     </div>
 </div>

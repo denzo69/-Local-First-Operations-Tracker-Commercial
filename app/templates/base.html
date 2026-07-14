@@ -27,7 +27,6 @@
         <div class="sidebar-group">
             <div class="sidebar-group-label">{{ t.sales_nav }}</div>
             <a class="sidebar-link" href="/sales/quick"><span class="nav-icon" aria-hidden="true">QS</span><span>{{ t.quick_sale }}</span></a>
-            <a class="sidebar-link" href="/sales/new"><span class="nav-icon" aria-hidden="true">NS</span><span>{{ t.new_sale }}</span></a>
             <a class="sidebar-link {% if active_page == 'sales' %}active{% endif %}" href="/sales"><span class="nav-icon" aria-hidden="true">SA</span><span>{{ t.sales }}</span></a>
             <a class="sidebar-link" href="/sales/invoice-queue"><span class="nav-icon" aria-hidden="true">IQ</span><span>{{ t.invoice_queue }}</span></a>
             <a class="sidebar-link {% if active_page == 'shifts' %}active{% endif %}" href="/shifts"><span class="nav-icon" aria-hidden="true">SH</span><span>{{ t.shifts }}</span></a>
@@ -76,7 +75,6 @@
             <a class="sidebar-link" href="/customers">{{ t.customers }}</a>
             <a class="sidebar-link" href="/work-orders">{{ t.work_orders }}</a>
             <div class="sidebar-group-label">{{ t.sales_nav }}</div>
-            <a class="sidebar-link" href="/sales/new">{{ t.new_sale }}</a>
             <a class="sidebar-link" href="/sales/quick">{{ t.quick_sale }}</a>
             <a class="sidebar-link" href="/sales">{{ t.sales }}</a>
             <a class="sidebar-link" href="/sales/invoice-queue">{{ t.invoice_queue }}</a>

@@ -91,20 +91,7 @@ def list_sales(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/new", response_class=HTMLResponse)
 def new_sale(request: Request, db: Session = Depends(get_db)):
-    return templates.TemplateResponse(
-        "sales/form.html",
-        {
-            "request": request,
-            "app_name": settings.app_name,
-            "active_page": "sales",
-            "shifts": db.query(Shift).filter(Shift.status == "open").order_by(Shift.opened_at.desc()).all(),
-            "products": db.query(Product).filter(Product.is_active.is_(True)).order_by(Product.name.asc()).all(),
-            "work_orders": db.query(Job).order_by(Job.created_at.desc()).limit(100).all(),
-            "sellers": _eligible_sellers(db),
-            "cash_registers": db.query(CashRegister).filter(CashRegister.is_active.is_(True)).order_by(CashRegister.name.asc()).all(),
-            "payment_methods": PAYMENT_METHODS,
-        },
-    )
+    return RedirectResponse(url="/sales/quick", status_code=303)
 
 
 @router.get("/quick", response_class=HTMLResponse)

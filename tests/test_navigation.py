@@ -104,7 +104,7 @@ def test_new_navigation_labels_render_in_finnish_and_english():
 def test_every_main_navigation_label_renders_in_both_languages():
     english_labels = [
         "Dashboard", "Operations", "Customers", "Work Orders", "Sales",
-        "New sale", "Shifts", "Daily closing", "Catalog", "Products",
+        "Quick sale", "Shifts", "Daily closing", "Catalog", "Products",
         "Reports", "Seller reports", "Administration", "Users",
         "Cash registers", "Audit log", "Backups", "Settings",
     ]
@@ -130,8 +130,42 @@ def test_every_main_navigation_label_renders_in_both_languages():
         assert label in english.text
     for label in finnish_labels:
         assert label in finnish.text
+    assert "New sale" not in english.text
+    assert "Uusi myynti" not in finnish.text
+    assert 'href="/sales/new"' not in english.text
     assert 'dropdown-toggle"></a>' not in english.text
     assert 'sidebar-group-label"></div>' not in english.text
+
+
+def test_quick_sale_page_uses_finnish_labels_without_cashier_shift_noise():
+    with TestClient(app) as client:
+        client.post(
+            "/settings",
+            data={
+                "company_name": "Test Company Oy",
+                "default_vat_percent": "24",
+                "receipt_prefix": "TEST-",
+                "language": "fi",
+            },
+            follow_redirects=False,
+        )
+        response = client.get("/sales/quick")
+
+    assert response.status_code == 200
+    assert "Kassamyynti" in response.text
+    assert "Viimeistele myynti" in response.text
+    assert "Hyvitettävä myyjä" in response.text
+    assert "Cashier shift" not in response.text
+    assert "Quick sale" not in response.text
+    assert "Complete sale" not in response.text
+
+
+def test_legacy_new_sale_url_redirects_to_quick_sale():
+    with TestClient(app) as client:
+        response = client.get("/sales/new", follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/sales/quick"
 
 
 def test_mobile_navigation_markup_is_present():

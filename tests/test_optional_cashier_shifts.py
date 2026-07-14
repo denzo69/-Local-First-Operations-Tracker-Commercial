@@ -73,9 +73,10 @@ def test_optional_shift_quick_sale_ui_is_not_blocking():
         response = client.get("/sales/quick")
 
     assert response.status_code == 200
-    assert "Cashier shift (optional)" in response.text
-    assert "No cashier shift" in response.text
+    assert "Cashier shift (optional)" not in response.text
+    assert "No cashier shift" not in response.text
     assert "No seller on receipt" in response.text
+    assert 'name="shift_id" value=""' in response.text
 
 
 def test_quick_sale_accepts_whitespace_optional_select_values():

@@ -2,33 +2,33 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
-        <h1>Sales</h1>
-        <p class="text-muted">Sales and payments, optionally linked to Work Orders.</p>
+        <h1>{{ t.sales }}</h1>
+        <p class="text-muted">{{ t.sales_list_help }}</p>
     </div>
     <div class="d-flex gap-2">
-        <a class="btn btn-outline-secondary" href="/sales/invoice-queue">Invoice queue</a>
-        <a class="btn btn-primary" href="/sales/quick">Quick sale</a>
+        <a class="btn btn-outline-secondary" href="/sales/invoice-queue">{{ t.invoice_queue }}</a>
+        <a class="btn btn-primary" href="/sales/quick">{{ t.quick_sale }}</a>
     </div>
 </div>
 <div class="card">
     <div class="table-responsive responsive-card-table">
         <table class="table mb-0">
-            <thead><tr><th>Document</th><th>Time</th><th>Seller</th><th>Source</th><th>Work Order</th><th>Payment</th><th>Total</th><th>Settlement</th><th></th></tr></thead>
+            <thead><tr><th>{{ t.document }}</th><th>{{ t.time }}</th><th>{{ t.seller }}</th><th>{{ t.source }}</th><th>{{ t.work_orders }}</th><th>{{ t.payment }}</th><th>{{ t.total }}</th><th>{{ t.settlement }}</th><th></th></tr></thead>
             <tbody>
             {% for sale in sales %}
             <tr>
-                <td data-label="Document"><a href="/sales/{{ sale.id }}">{{ sale.document_number or sale.id }}</a></td>
-                <td data-label="Time">{{ sale.sold_at }}</td>
-                <td data-label="Seller">{{ sale.seller.name if sale.seller else "-" }}</td>
-                <td data-label="Source">{{ sale.source_type or ("work_order" if sale.work_order else "pos") }}</td>
-                <td data-label="Work Order">{% if sale.work_order %}<a href="/work-orders/{{ sale.work_order.id }}">{{ sale.work_order.title }}</a>{% else %}-{% endif %}</td>
-                <td data-label="Payment">{{ sale.payment_method }}</td>
-                <td data-label="Total">{{ sale.total }}</td>
-                <td data-label="Settlement">{{ sale.settlement_status or sale.status }}</td>
-                <td data-label="Action" class="text-end"><a href="/sales/{{ sale.id }}">View</a></td>
+                <td data-label="{{ t.document }}"><a href="/sales/{{ sale.id }}">{{ sale.document_number or sale.id }}</a></td>
+                <td data-label="{{ t.time }}">{{ sale.sold_at }}</td>
+                <td data-label="{{ t.seller }}">{{ sale.seller.name if sale.seller else "-" }}</td>
+                <td data-label="{{ t.source }}">{{ sale.source_type or ("work_order" if sale.work_order else "pos") }}</td>
+                <td data-label="{{ t.work_orders }}">{% if sale.work_order %}<a href="/work-orders/{{ sale.work_order.id }}">{{ sale.work_order.title }}</a>{% else %}-{% endif %}</td>
+                <td data-label="{{ t.payment }}">{{ t[sale.payment_method] }}</td>
+                <td data-label="{{ t.total }}">{{ sale.total }}</td>
+                <td data-label="{{ t.settlement }}">{{ t[sale.settlement_status or sale.status] }}</td>
+                <td data-label="{{ t.action }}" class="text-end"><a href="/sales/{{ sale.id }}">{{ t.view }}</a></td>
             </tr>
             {% else %}
-            <tr><td colspan="9" class="text-muted">No sales yet.</td></tr>
+            <tr><td colspan="9" class="text-muted">{{ t.no_sales_yet }}</td></tr>
             {% endfor %}
             </tbody>
         </table>
