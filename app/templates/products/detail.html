@@ -10,9 +10,12 @@
         <p class="text-muted mb-0">{{ product.description or t.products }}</p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
+        {% if product.is_stock_item %}
+        <a class="btn btn-primary" href="/products/{{ product.id }}/receive">{{ t.receive_stock }}</a>
+        {% endif %}
         <a class="btn btn-outline-secondary" href="/products/{{ product.id }}/edit">{{ t.edit }}</a>
         <a class="btn btn-outline-primary" href="/products/inventory/transactions?product_id={{ product.id }}">{{ t.inventory_transactions }}</a>
-        <a class="btn btn-primary" href="/products/goods-receipts/new">{{ t.new_goods_receipt }}</a>
+        <a class="btn btn-outline-primary" href="/products/goods-receipts/new">{{ t.new_goods_receipt }}</a>
     </div>
 </div>
 

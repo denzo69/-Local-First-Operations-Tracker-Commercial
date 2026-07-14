@@ -565,6 +565,86 @@ def repair_product_inventory_reconciliation(
     return RedirectResponse(url="/products/inventory/reconciliation", status_code=303)
 
 
+@router.get("/{product_id}/receive", response_class=HTMLResponse)
+def receive_product_stock_form(product_id: int, request: Request, db: Session = Depends(get_db)):
+    product = db.get(Product, product_id)
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+    if not product.is_stock_item:
+        raise HTTPException(status_code=400, detail="Only stock products can be received into inventory.")
+
+    create_default_warehouse(db)
+    db.commit()
+    return templates.TemplateResponse(
+        "products/receive_stock.html",
+        {
+            "request": request,
+            "app_name": settings.app_name,
+            "active_page": "products",
+            "page_title": "Receive stock",
+            "product": product,
+            "suppliers": db.query(Supplier).filter(Supplier.is_active.is_(True)).order_by(Supplier.name.asc()).all(),
+            "locations": db.query(WarehouseLocation).filter(WarehouseLocation.is_active.is_(True)).order_by(WarehouseLocation.code.asc()).all(),
+            "users": db.query(User).filter(User.is_active.is_(True)).order_by(User.name.asc()).all(),
+            "today": date.today(),
+        },
+    )
+
+
+@router.post("/{product_id}/receive")
+def receive_product_stock(
+    product_id: int,
+    request: Request,
+    supplier_id: int = Form(...),
+    receipt_date: date = Form(...),
+    destination_location_id: int = Form(...),
+    quantity_value: str = Form(...),
+    purchase_unit_price_ex_vat: str = Form(...),
+    vat_rate: str = Form("24"),
+    delivery_number: str = Form(""),
+    invoice_number: str = Form(""),
+    freight_total_ex_vat: str = Form("0"),
+    freight_vat_rate: str = Form("0"),
+    other_costs_total_ex_vat: str = Form("0"),
+    other_costs_vat_rate: str = Form("0"),
+    allocation_method: str = Form("by_value"),
+    received_by_user_id: int | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    product = db.get(Product, product_id)
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+    if not product.is_stock_item:
+        raise HTTPException(status_code=400, detail="Only stock products can be received into inventory.")
+
+    try:
+        receipt = create_goods_receipt(
+            db,
+            supplier_id=supplier_id,
+            receipt_date=receipt_date,
+            received_by_user_id=operator_id_from_request(request, received_by_user_id),
+            delivery_number=delivery_number,
+            invoice_number=invoice_number,
+            freight_total_ex_vat=freight_total_ex_vat,
+            freight_vat_rate=freight_vat_rate,
+            other_costs_total_ex_vat=other_costs_total_ex_vat,
+            other_costs_vat_rate=other_costs_vat_rate,
+            allocation_method=allocation_method,
+        )
+        add_goods_receipt_line(
+            db,
+            goods_receipt_id=receipt.id,
+            product_id=product.id,
+            destination_location_id=destination_location_id,
+            quantity_value=quantity_value,
+            purchase_unit_price_ex_vat=purchase_unit_price_ex_vat,
+            vat_rate=vat_rate,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(url=f"/products/goods-receipts/{receipt.id}", status_code=303)
+
+
 @router.get("/{product_id}/edit", response_class=HTMLResponse)
 def edit_product(product_id: int, request: Request, db: Session = Depends(get_db)):
     product = db.get(Product, product_id)
