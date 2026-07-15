@@ -55,6 +55,66 @@ def test_main_navigation_targets_load():
             assert response.status_code == 200
 
 
+def test_document_workflow_navigation_uses_finnish_labels_and_routes_load():
+    with TestClient(app) as client:
+        client.post(
+            "/settings",
+            data={
+                "company_name": "Test Company Oy",
+                "default_vat_percent": "24",
+                "receipt_prefix": "TEST-",
+                "language": "fi",
+            },
+            follow_redirects=False,
+        )
+        dashboard = client.get("/")
+        delivery_notes = client.get("/delivery-notes")
+        quotes = client.get("/quotes")
+
+    assert dashboard.status_code == 200
+    assert delivery_notes.status_code == 200
+    assert quotes.status_code == 200
+    assert "Lähetteet" in dashboard.text
+    assert "Tarjoukset" in dashboard.text
+    assert "Delivery Notes" not in dashboard.text
+    assert "Quotes" not in dashboard.text
+    assert "Lähetteet" in delivery_notes.text
+    assert "Tarjoukset" in quotes.text
+
+
+def test_legacy_document_label_urls_redirect_to_canonical_routes():
+    with TestClient(app) as client:
+        for path, target in [
+            ("/delivery_notes", "/delivery-notes"),
+            ("/delivery-note", "/delivery-notes"),
+            ("/Delivery%20Notes", "/delivery-notes"),
+            ("/quote", "/quotes"),
+            ("/Quotes", "/quotes"),
+        ]:
+            response = client.get(path, follow_redirects=False)
+            assert response.status_code == 303
+            assert response.headers["location"] == target
+
+
+def test_finnish_404_error_page_is_translated():
+    with TestClient(app) as client:
+        client.post(
+            "/settings",
+            data={
+                "company_name": "Test Company Oy",
+                "default_vat_percent": "24",
+                "receipt_prefix": "TEST-",
+                "language": "fi",
+            },
+            follow_redirects=False,
+        )
+        response = client.get("/missing-document-workflow-page")
+
+    assert response.status_code == 404
+    assert "Sivua ei löydy" in response.text
+    assert "Not Found" not in response.text
+
+
 def test_products_is_the_visible_inventory_workspace_navigation():
     with TestClient(app) as client:
         response = client.get("/")
@@ -220,6 +280,7 @@ def test_static_stylesheets_are_served():
     assert ".d-none" in bootstrap.text
     assert app_css.status_code == 200
     assert ".app-sidebar" in app_css.text
+    assert ".offcanvas .sidebar-link" in app_css.text
     assert ".dashboard-hero" in app_css.text
 
 

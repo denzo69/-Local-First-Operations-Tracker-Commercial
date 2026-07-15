@@ -1,11 +1,21 @@
 from fastapi import APIRouter, Depends, Form, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.routes import jobs
 
 router = APIRouter(prefix="/delivery-notes", tags=["delivery-notes"])
+
+
+legacy_router = APIRouter(tags=["delivery-notes"])
+
+
+@legacy_router.get("/delivery_notes")
+@legacy_router.get("/delivery-note")
+@legacy_router.get("/Delivery Notes")
+def redirect_legacy_delivery_notes():
+    return RedirectResponse(url="/delivery-notes", status_code=303)
 
 
 @router.get("", response_class=HTMLResponse)
