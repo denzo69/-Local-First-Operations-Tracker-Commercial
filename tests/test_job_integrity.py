@@ -1,8 +1,10 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.main import app
 from app.models import Job, Sale
+from app.services.job_integrity_service import JobIntegrityError
 
 
 def _create_document(client: TestClient, route: str, title: str) -> tuple[int, str]:
@@ -48,6 +50,36 @@ def test_document_linked_to_sale_cannot_be_deleted():
     assert sale_response.status_code == 303
     assert delete_response.status_code == 409
     assert "finalized sale or invoice handoff" in delete_response.text
+
+    with SessionLocal() as db:
+        assert db.get(Job, quote_id) is not None
+        assert db.query(Sale).filter(Sale.work_order_id == quote_id).count() == 1
+
+
+def test_direct_orm_delete_of_sold_document_is_blocked():
+    with TestClient(app) as client:
+        quote_id, quote_url = _create_document(client, "/quotes", "ORM protected quote")
+        client.post(
+            f"{quote_url}/items",
+            data={
+                "product_id": "",
+                "description": "ORM billable service",
+                "quantity": "1",
+                "unit_price": "25",
+                "vat_percent": "24",
+            },
+            follow_redirects=False,
+        )
+        sale_response = client.post(f"{quote_url}/convert/sale", follow_redirects=False)
+
+    assert sale_response.status_code == 303
+
+    with SessionLocal() as db:
+        quote = db.get(Job, quote_id)
+        db.delete(quote)
+        with pytest.raises(JobIntegrityError, match="finalized sale or invoice handoff"):
+            db.commit()
+        db.rollback()
 
     with SessionLocal() as db:
         assert db.get(Job, quote_id) is not None
