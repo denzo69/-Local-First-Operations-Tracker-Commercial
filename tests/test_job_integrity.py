@@ -71,3 +71,40 @@ def test_printed_document_cannot_be_deleted_but_unreferenced_document_can():
     with SessionLocal() as db:
         assert db.get(Job, printed_id) is not None
         assert db.get(Job, disposable_id) is None
+
+
+def test_quote_and_delivery_note_print_routes_exist():
+    with TestClient(app) as client:
+        _, quote_url = _create_document(client, "/quotes", "Printable quote")
+        _, delivery_url = _create_document(client, "/delivery-notes", "Printable delivery note")
+
+        quote_receipt = client.get(f"{quote_url}/receipt")
+        delivery_receipt = client.get(f"{delivery_url}/receipt")
+
+    assert quote_receipt.status_code == 200
+    assert delivery_receipt.status_code == 200
+    assert "Printable quote" in quote_receipt.text
+    assert "Printable delivery note" in delivery_receipt.text
+
+
+def test_document_cannot_be_read_or_modified_through_wrong_route_type():
+    with TestClient(app) as client:
+        quote_id, _ = _create_document(client, "/quotes", "Route protected quote")
+
+        wrong_work_order_read = client.get(f"/work-orders/{quote_id}")
+        wrong_legacy_read = client.get(f"/jobs/{quote_id}")
+        wrong_update = client.post(
+            f"/work-orders/{quote_id}",
+            data={"title": "Wrongly changed title"},
+            follow_redirects=False,
+        )
+
+    assert wrong_work_order_read.status_code == 404
+    assert wrong_legacy_read.status_code == 404
+    assert wrong_update.status_code == 404
+
+    with SessionLocal() as db:
+        quote = db.get(Job, quote_id)
+        assert quote is not None
+        assert quote.document_type == "quote"
+        assert quote.title == "Route protected quote"
