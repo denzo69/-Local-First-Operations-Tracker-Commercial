@@ -4,14 +4,17 @@
 {% set document_type = job.document_type or "work_order" %}
 {% if document_type == "quote" %}
     {% set document_label = t.quote %}
+    {% set page_label = t.quote %}
 {% elif document_type == "delivery_note" %}
     {% set document_label = t.delivery_note %}
+    {% set page_label = t.delivery_note %}
 {% else %}
     {% set document_label = t.work_order %}
+    {% set page_label = t.receipt_work_order %}
 {% endif %}
 <div class="d-flex justify-content-between align-items-start gap-3 mb-4 no-print">
     <div>
-        <h1 class="h3 mb-1">{{ document_label }}</h1>
+        <h1 class="h3 mb-1">{{ page_label }}</h1>
         <p class="text-muted mb-0">{{ job.title }}</p>
     </div>
     <div class="d-flex gap-2">
