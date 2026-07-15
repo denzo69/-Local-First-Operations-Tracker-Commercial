@@ -35,6 +35,7 @@ from app.routes import (
 )
 from app.services.i18n_service import get_translations
 from app.services.backup_scheduler_service import start_backup_scheduler, stop_backup_scheduler
+from app.services.document_route_service import require_work_order_route
 from app.services.maintenance_service import is_maintenance_active
 from app.services.money_service import sum_money
 from app.services.sales_service import invoice_follow_up_alerts
@@ -67,7 +68,7 @@ app.include_router(delivery_notes.legacy_router)
 app.include_router(delivery_notes.router)
 app.include_router(quotes.legacy_router)
 app.include_router(quotes.router)
-app.include_router(jobs.router)
+app.include_router(jobs.router, dependencies=[Depends(require_work_order_route)])
 app.include_router(audit_log.router)
 app.include_router(products.router)
 app.include_router(users.router)
@@ -128,7 +129,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         db.query(Job)
         .filter(active_job_filter)
         .filter(Job.requested_pickup_date == tomorrow)
-        .order_by(Job.created_at.desc())
+        .order_by(Job.requested_pickup_date.asc(), Job.created_at.desc())
         .all()
     )
     ready_jobs = (
