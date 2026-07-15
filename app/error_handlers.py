@@ -6,6 +6,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.database import get_db
+from app.services.i18n_service import get_translations
+from app.services.job_integrity_service import JobIntegrityError
+from app.services.settings_service import get_app_settings
 from app.template_context import templates
 
 logger = logging.getLogger(__name__)
@@ -14,6 +18,7 @@ logger = logging.getLogger(__name__)
 def register_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    app.add_exception_handler(JobIntegrityError, job_integrity_exception_handler)
     app.add_exception_handler(Exception, unhandled_exception_handler)
 
 
@@ -43,6 +48,20 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
+async def job_integrity_exception_handler(request: Request, exc: JobIntegrityError):
+    logger.info(
+        "Blocked unsafe document deletion on %s %s: %s",
+        request.method,
+        request.url.path,
+        exc,
+    )
+    return _error_response(
+        request,
+        status_code=409,
+        detail=str(exc),
+    )
+
+
 async def unhandled_exception_handler(request: Request, exc: Exception):
     logger.exception(
         "Unhandled error on %s %s",
@@ -69,17 +88,33 @@ def _error_response(request: Request, *, status_code: int, detail: str):
             },
         )
 
+    title, localized_detail = _localized_error_text(request, status_code, detail)
     return templates.TemplateResponse(
         "error.html",
         {
             "request": request,
-            "page_title": _status_phrase(status_code),
+            "page_title": title,
             "status_code": status_code,
-            "error_title": _status_phrase(status_code),
-            "error_detail": detail,
+            "error_title": title,
+            "error_detail": localized_detail,
         },
         status_code=status_code,
     )
+
+
+def _localized_error_text(request: Request, status_code: int, detail: str) -> tuple[str, str]:
+    db = next(get_db())
+    try:
+        language = get_app_settings(db).get("language", "en")
+    finally:
+        db.close()
+    t = get_translations(language)
+    title = t.get(f"error_{status_code}_title", _status_phrase(status_code))
+    if status_code == 404 and detail == _status_phrase(404):
+        detail = t.get("error_404_detail", detail)
+    elif status_code == 422 and detail == "Request validation failed.":
+        detail = t.get("error_validation_detail", detail)
+    return title, detail
 
 
 def _prefers_json(request: Request) -> bool:

@@ -1,9 +1,20 @@
 {% extends "base.html" %}
 
 {% block content %}
+{% set document_type = job.document_type or "work_order" %}
+{% if document_type == "quote" %}
+    {% set document_label = t.quote %}
+    {% set page_label = t.quote %}
+{% elif document_type == "delivery_note" %}
+    {% set document_label = t.delivery_note %}
+    {% set page_label = t.delivery_note %}
+{% else %}
+    {% set document_label = t.work_order %}
+    {% set page_label = t.receipt_work_order %}
+{% endif %}
 <div class="d-flex justify-content-between align-items-start gap-3 mb-4 no-print">
     <div>
-        <h1 class="h3 mb-1">{{ t.receipt_work_order }}</h1>
+        <h1 class="h3 mb-1">{{ page_label }}</h1>
         <p class="text-muted mb-0">{{ job.title }}</p>
     </div>
     <div class="d-flex gap-2">
@@ -22,7 +33,7 @@
         </div>
         <div class="text-end">
             <div class="fw-semibold">{{ t.receipt_number }} {{ job.receipt_number }}</div>
-            <div class="text-muted">Work order #{{ job.id }}</div>
+            <div class="text-muted">{{ document_label }} #{{ job.id }}</div>
             <div class="text-muted">{{ job.created_at.date() if job.created_at else "" }}</div>
         </div>
     </div>
@@ -32,7 +43,7 @@
         <dd class="col-8">{{ job.customer.name if job.customer else "-" }}</dd>
         <dt class="col-4">{{ t.phone }}</dt>
         <dd class="col-8">{{ job.customer.phone if job.customer and job.customer.phone else "-" }}</dd>
-        <dt class="col-4">{{ t.work_orders }}</dt>
+        <dt class="col-4">{{ document_label }}</dt>
         <dd class="col-8">{{ job.title }}</dd>
         <dt class="col-4">{{ t.status }}</dt>
         <dd class="col-8">{{ status_label(job.status.name if job.status else "Received") }}</dd>

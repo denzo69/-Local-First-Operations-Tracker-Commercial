@@ -10,9 +10,23 @@
         <a class="btn btn-outline-secondary" href="{{ route_base }}">{{ t.back }}</a>
         <a class="btn btn-outline-primary" href="{{ route_base }}/{{ job.id }}/edit">{{ t.edit }}</a>
         <a class="btn btn-outline-dark" href="{{ route_base }}/{{ job.id }}/receipt">{{ t.print }}</a>
-        <a class="btn btn-primary" href="/sales/work-orders/{{ job.id }}">Create sale / take payment</a>
+        {% if document_type != "work_order" %}
+        <form method="post" action="{{ route_base }}/{{ job.id }}/convert/work_order"><button class="btn btn-outline-primary" type="submit">{{ t.convert_to_work_order }}</button></form>
+        {% endif %}
+        {% if document_type != "delivery_note" %}
+        <form method="post" action="{{ route_base }}/{{ job.id }}/convert/delivery_note"><button class="btn btn-outline-primary" type="submit">{{ t.convert_to_delivery_note }}</button></form>
+        {% endif %}
+        {% if document_type != "quote" %}
+        <form method="post" action="{{ route_base }}/{{ job.id }}/convert/quote"><button class="btn btn-outline-primary" type="submit">{{ t.convert_to_quote }}</button></form>
+        {% endif %}
+        <form method="post" action="{{ route_base }}/{{ job.id }}/convert/sale"><button class="btn btn-primary" type="submit">{{ t.convert_to_quick_sale }}</button></form>
+        <form method="post" action="{{ route_base }}/{{ job.id }}/convert/invoice"><button class="btn btn-outline-secondary" type="submit">{{ t.mark_transferred_to_invoicing }}</button></form>
     </div>
 </div>
+
+{% if document_type in ["quote", "delivery_note"] %}
+<div class="alert alert-info">{{ t.non_stock_document_help }}</div>
+{% endif %}
 
 <div class="card shadow-sm border-0 mb-3">
     <div class="card-body">

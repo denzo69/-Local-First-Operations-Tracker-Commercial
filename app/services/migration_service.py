@@ -81,6 +81,12 @@ def ensure_sqlite_schema_compatibility(engine: Engine) -> list[str]:
         _add_column_if_missing(connection, "sales", "last_reminder_sent_at", "DATETIME")
         _add_column_if_missing(connection, "sales", "follow_up_notes", "TEXT")
         _add_column_if_missing(connection, "sales", "business_date", "DATE")
+        _add_column_if_missing(connection, "sales", "customer_id", "INTEGER")
+        _add_column_if_missing(connection, "sales", "customer_name_snapshot", "VARCHAR(255)")
+        _add_column_if_missing(connection, "jobs", "document_type", "VARCHAR(50)")
+        _add_column_if_missing(connection, "jobs", "source_job_id", "INTEGER")
+        _add_column_if_missing(connection, "jobs", "converted_at", "DATETIME")
+        connection.execute(text("UPDATE jobs SET document_type = 'work_order' WHERE document_type IS NULL OR document_type = ''"))
         _add_column_if_missing(connection, "goods_receipts", "freight_vat_rate", "NUMERIC(5, 2) DEFAULT 0")
         _add_column_if_missing(connection, "goods_receipts", "freight_vat_amount", "NUMERIC(12, 2) DEFAULT 0")
         _add_column_if_missing(connection, "goods_receipts", "freight_total_inc_vat", "NUMERIC(12, 2) DEFAULT 0")
@@ -294,6 +300,9 @@ def _create_sales_compatibility_indexes(connection) -> None:
     _create_index_if_missing(connection, "ix_sales_due_date", "sales", "due_date")
     _create_index_if_missing(connection, "ix_sales_next_follow_up_at", "sales", "next_follow_up_at")
     _create_index_if_missing(connection, "ix_sales_business_date", "sales", "business_date")
+    _create_index_if_missing(connection, "ix_sales_customer_id", "sales", "customer_id")
+    _create_index_if_missing(connection, "ix_jobs_document_type", "jobs", "document_type")
+    _create_index_if_missing(connection, "ix_jobs_source_job_id", "jobs", "source_job_id")
 
 
 def _create_index_if_missing(connection, index_name: str, table: str, column: str) -> None:

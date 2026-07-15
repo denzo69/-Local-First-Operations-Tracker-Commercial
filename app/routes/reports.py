@@ -30,7 +30,12 @@ def sales_report(
     selected_day = parse_report_date(day)
     selected_month = month or selected_day.strftime("%Y-%m")
 
-    jobs = db.query(Job).order_by(Job.created_at.desc()).all()
+    jobs = (
+        db.query(Job)
+        .filter(Job.document_type == "work_order")
+        .order_by(Job.created_at.desc())
+        .all()
+    )
     sales = db.query(Sale).order_by(Sale.sold_at.desc()).all()
 
     day_jobs = [job for job in jobs if job.created_at and job.created_at.date() == selected_day]

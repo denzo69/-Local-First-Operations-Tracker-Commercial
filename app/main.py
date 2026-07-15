@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.auth_middleware import authentication_middleware
@@ -20,9 +20,11 @@ from app.routes import (
     cash_registers,
     customers,
     daily_closings,
+    delivery_notes,
     inventory,
     jobs,
     products,
+    quotes,
     reports,
     sales,
     seller_reports,
@@ -33,6 +35,7 @@ from app.routes import (
 )
 from app.services.i18n_service import get_translations
 from app.services.backup_scheduler_service import start_backup_scheduler, stop_backup_scheduler
+from app.services.document_route_service import require_work_order_route
 from app.services.maintenance_service import is_maintenance_active
 from app.services.money_service import sum_money
 from app.services.sales_service import invoice_follow_up_alerts
@@ -61,7 +64,11 @@ app.include_router(auth.router)
 app.include_router(backups.router)
 app.include_router(customers.router)
 app.include_router(work_orders.router)
-app.include_router(jobs.router)
+app.include_router(delivery_notes.legacy_router)
+app.include_router(delivery_notes.router)
+app.include_router(quotes.legacy_router)
+app.include_router(quotes.router)
+app.include_router(jobs.router, dependencies=[Depends(require_work_order_route)])
 app.include_router(audit_log.router)
 app.include_router(products.router)
 app.include_router(users.router)
@@ -98,7 +105,10 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     t = get_translations(get_app_settings(db).get("language", "en"))
     today_start = datetime.combine(today, time.min, tzinfo=UTC)
     tomorrow_start = datetime.combine(tomorrow, time.min, tzinfo=UTC)
-    active_job_filter = or_(Job.status_id.is_(None), ~Job.status.has(is_final=True))
+    active_job_filter = and_(
+        Job.document_type == "work_order",
+        or_(Job.status_id.is_(None), ~Job.status.has(is_final=True)),
+    )
 
     overdue_jobs = (
         db.query(Job)
@@ -119,7 +129,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         db.query(Job)
         .filter(active_job_filter)
         .filter(Job.requested_pickup_date == tomorrow)
-        .order_by(Job.created_at.desc())
+        .order_by(Job.requested_pickup_date.asc(), Job.created_at.desc())
         .all()
     )
     ready_jobs = (
@@ -189,7 +199,6 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
                 {"label": t["due_today"], "value": len(due_today_jobs), "tone": "warning", "icon": "TD", "href": "/work-orders?view=active"},
                 {"label": t["ready_for_pickup"], "value": len(ready_jobs), "tone": "success", "icon": "RP", "href": "/work-orders?view=ready"},
                 {"label": t["todays_sales"], "value": today_sales_total, "tone": "neutral", "icon": "SA", "href": "/sales"},
-                {"label": t["open_shift_status"], "value": len(open_shifts), "tone": "info", "icon": "SH", "href": "/shifts"},
                 {"label": t["daily_closing_status"], "value": t["closed"] if daily_closing and daily_closing.status == "closed" else t["not_closed"], "tone": "success" if daily_closing and daily_closing.status == "closed" else "warning", "icon": "DC", "href": "/daily-closings"},
             ],
             "attention_jobs": attention_jobs,

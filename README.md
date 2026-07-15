@@ -37,6 +37,8 @@ The app is not intended to be exposed directly to the public internet.
 - Dashboard with real work order counts and attention lists
 - Customer CRUD and customer work order history
 - Work Order CRUD through `/work-orders`
+- Delivery notes through `/delivery-notes` for customer-specific product handoff and invoicing handoff workflows
+- Quotes through `/quotes` for pricing products and work without reducing inventory
 - Legacy `/jobs` routes kept for backwards compatibility
 - Configurable work order statuses in Settings
 - Products and services with CSV price list import
@@ -91,6 +93,8 @@ The app is not intended to be exposed directly to the public internet.
 Work Orders, Sales, Payments, and Refunds are separate business objects. A Sale may link to a Work Order, but a Work Order is not treated as the payment record.
 
 A Work Order is operational, not financial. When it becomes billable, it is converted into a Sale. That Sale stores immutable line snapshots, credited seller, operator, shift, cash register, VAT totals, inventory COGS snapshots, and settlement status.
+
+The operational document family now includes Work Orders, Delivery Notes, and Quotes. A Quote can be used to price products or work without reducing inventory. A Delivery Note can represent products reserved, delivered, or prepared for a customer before final settlement. Quotes and Delivery Notes can be converted into Work Orders, Sales, or invoice handoff records. Inventory is not reduced by a Quote or Delivery Note by itself; stock is issued only when a Sale is finalized through the shared sales flow.
 
 Cashier shifts are optional by default. Small businesses, sole traders, and mobile workers can complete Sales without opening a shift. When a shift is selected, the Sale uses the shift business date and cash register and is included in shift closing. When no shift is selected, the Sale stores its own business date, may optionally reference a cash register, and remains visible in sales reports, daily totals, inventory reports, and seller reports without appearing in a shift closing. A future configuration flag, `require_cashier_shift`, can make active shifts mandatory for installations that need stricter cashier control.
 

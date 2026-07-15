@@ -36,14 +36,14 @@
             <a class="ops-row" href="/sales/{{ alert.sale.id }}">
                 <span>
                     <strong>{{ t[alert.status] }}</strong>
-                    <small>{{ t[alert.message_key] }} {{ t.sales }} #{{ alert.sale.id }}{% if alert.due_date %} - {{ alert.due_date }}{% endif %}</small>
+                    <small>{{ t[alert.message_key] }} {{ t.sales_history }} #{{ alert.sale.id }}{% if alert.due_date %} - {{ alert.due_date }}{% endif %}</small>
                 </span>
                 <span class="status-badge {% if alert.status == 'reminder_due' %}status-danger{% else %}status-warning{% endif %}">{{ t[alert.status] }}</span>
             </a>
             {% endfor %}
         </div>
         {% endif %}
-        {% if attention_jobs or open_shifts or not daily_closing %}
+        {% if attention_jobs or not daily_closing %}
         <div class="ops-list">
             {% for job in attention_jobs %}
             <a class="ops-row" href="/work-orders/{{ job.id }}">
@@ -56,12 +56,6 @@
                 </span>
             </a>
             {% endfor %}
-            {% if open_shifts %}
-            <a class="ops-row" href="/shifts">
-                <span><strong>{{ t.open_shift_status }}</strong><small>{{ open_shifts|length }} {{ t.open }}</small></span>
-                <span class="status-badge status-info">{{ t.open }}</span>
-            </a>
-            {% endif %}
             {% if not daily_closing %}
             <a class="ops-row" href="/daily-closings">
                 <span><strong>{{ t.daily_closing_not_completed }}</strong><small>{{ today }}</small></span>
@@ -74,28 +68,6 @@
             <span class="empty-icon" aria-hidden="true">OK</span>
             <p>{{ t.no_attention_required }}</p>
             <a href="/work-orders/new">{{ t.create_work_order }}</a>
-        </div>
-        {% endif %}
-    </section>
-
-    <section class="panel">
-        <div class="panel-header">
-            <h2>{{ t.current_shift }}</h2>
-            <a href="/shifts">{{ t.view }}</a>
-        </div>
-        {% if current_shift %}
-        <dl class="metric-list">
-            <div><dt>{{ t.seller }}</dt><dd>{{ current_shift.seller.name }}</dd></div>
-            <div><dt>{{ t.cash_register }}</dt><dd>{{ current_shift.cash_register.name }}</dd></div>
-            <div><dt>{{ t.time }}</dt><dd>{{ current_shift.opened_at }}</dd></div>
-            <div><dt>{{ t.starting_cash }}</dt><dd>{{ current_shift.starting_cash }}</dd></div>
-        </dl>
-        <a class="btn btn-sm btn-outline-primary" href="/shifts/{{ current_shift.id }}">{{ t.close_shift }}</a>
-        {% else %}
-        <div class="empty-state compact">
-            <span class="empty-icon" aria-hidden="true">SH</span>
-            <p>{{ t.no_current_shift }}</p>
-            <a href="/shifts/open">{{ t.open_shift }}</a>
         </div>
         {% endif %}
     </section>

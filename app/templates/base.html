@@ -23,13 +23,14 @@
             <div class="sidebar-group-label">{{ t.operations }}</div>
             <a class="sidebar-link {% if active_page == 'customers' %}active{% endif %}" href="/customers"><span class="nav-icon" aria-hidden="true">CU</span><span>{{ t.customers }}</span></a>
             <a class="sidebar-link {% if active_page == 'jobs' %}active{% endif %}" href="/work-orders"><span class="nav-icon" aria-hidden="true">WO</span><span>{{ t.work_orders }}</span></a>
+            <a class="sidebar-link {% if active_page == 'delivery_notes' %}active{% endif %}" href="/delivery-notes"><span class="nav-icon" aria-hidden="true">DN</span><span>{{ t.delivery_notes }}</span></a>
+            <a class="sidebar-link {% if active_page == 'quotes' %}active{% endif %}" href="/quotes"><span class="nav-icon" aria-hidden="true">QT</span><span>{{ t.quotes }}</span></a>
         </div>
         <div class="sidebar-group">
             <div class="sidebar-group-label">{{ t.sales_nav }}</div>
             <a class="sidebar-link" href="/sales/quick"><span class="nav-icon" aria-hidden="true">QS</span><span>{{ t.quick_sale }}</span></a>
-            <a class="sidebar-link {% if active_page == 'sales' %}active{% endif %}" href="/sales"><span class="nav-icon" aria-hidden="true">SA</span><span>{{ t.sales }}</span></a>
+            <a class="sidebar-link {% if active_page == 'sales' %}active{% endif %}" href="/sales"><span class="nav-icon" aria-hidden="true">SA</span><span>{{ t.sales_history }}</span></a>
             <a class="sidebar-link" href="/sales/invoice-queue"><span class="nav-icon" aria-hidden="true">IQ</span><span>{{ t.invoice_queue }}</span></a>
-            <a class="sidebar-link {% if active_page == 'shifts' %}active{% endif %}" href="/shifts"><span class="nav-icon" aria-hidden="true">SH</span><span>{{ t.shifts }}</span></a>
             <a class="sidebar-link {% if active_page == 'daily_closings' %}active{% endif %}" href="/daily-closings"><span class="nav-icon" aria-hidden="true">DC</span><span>{{ t.daily_closing }}</span></a>
         </div>
         <div class="sidebar-group">
@@ -74,11 +75,12 @@
             <div class="sidebar-group-label">{{ t.operations }}</div>
             <a class="sidebar-link" href="/customers">{{ t.customers }}</a>
             <a class="sidebar-link" href="/work-orders">{{ t.work_orders }}</a>
+            <a class="sidebar-link" href="/delivery-notes">{{ t.delivery_notes }}</a>
+            <a class="sidebar-link" href="/quotes">{{ t.quotes }}</a>
             <div class="sidebar-group-label">{{ t.sales_nav }}</div>
             <a class="sidebar-link" href="/sales/quick">{{ t.quick_sale }}</a>
-            <a class="sidebar-link" href="/sales">{{ t.sales }}</a>
+            <a class="sidebar-link" href="/sales">{{ t.sales_history }}</a>
             <a class="sidebar-link" href="/sales/invoice-queue">{{ t.invoice_queue }}</a>
-            <a class="sidebar-link" href="/shifts">{{ t.shifts }}</a>
             <a class="sidebar-link" href="/daily-closings">{{ t.daily_closing }}</a>
             <div class="sidebar-group-label">{{ t.catalog }}</div>
             <a class="sidebar-link" href="/products">{{ t.products }}</a>
@@ -116,7 +118,6 @@
             <div class="topbar-meta">{{ current_date }} &middot; {{ current_operator_label }}</div>
         </div>
         <div class="topbar-status">
-            <span>{{ t.open_shift_status }}: <strong>{{ open_shift_count }}</strong></span>
             <form method="post" action="/settings/language" class="topbar-language-form">
                 <label class="visually-hidden" for="topbar_language">{{ t.language }}</label>
                 <span>{{ t.language_status }}:</span>

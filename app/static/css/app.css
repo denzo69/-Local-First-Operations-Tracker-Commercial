@@ -134,6 +134,26 @@ button:focus-visible,
     color: #fff;
 }
 
+.offcanvas .sidebar-nav {
+    padding: .25rem 0;
+}
+
+.offcanvas .sidebar-group-label {
+    color: var(--text);
+    font-weight: 800;
+}
+
+.offcanvas .sidebar-link {
+    color: var(--text);
+    font-weight: 600;
+}
+
+.offcanvas .sidebar-link:hover,
+.offcanvas .sidebar-link:focus {
+    background: var(--surface-muted);
+    color: var(--primary);
+}
+
 .nav-icon {
     display: inline-flex;
     justify-content: center;

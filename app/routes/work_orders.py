@@ -4,8 +4,13 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.routes import jobs
+from app.services.document_route_service import require_work_order_route
 
-router = APIRouter(prefix="/work-orders", tags=["work-orders"])
+router = APIRouter(
+    prefix="/work-orders",
+    tags=["work-orders"],
+    dependencies=[Depends(require_work_order_route)],
+)
 
 
 @router.get("", response_class=HTMLResponse)
@@ -150,3 +155,20 @@ def update_work_order_status(
 @router.post("/{job_id}/delete")
 def delete_work_order(request: Request, job_id: int, db: Session = Depends(get_db)):
     return jobs.delete_job(request=request, job_id=job_id, db=db)
+
+
+@router.post("/{job_id}/convert/{target_type}")
+def convert_work_order(
+    request: Request,
+    job_id: int,
+    target_type: str,
+    payment_method: str = Form("cash"),
+    db: Session = Depends(get_db),
+):
+    return jobs.convert_job_document(
+        request=request,
+        job_id=job_id,
+        target_type=target_type,
+        payment_method=payment_method,
+        db=db,
+    )

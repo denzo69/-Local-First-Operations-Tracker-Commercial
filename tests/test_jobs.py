@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import AuditLog, Job, Product, Receipt, Setting
+from app.models import AuditLog, InventoryTransaction, Job, Product, Receipt, Sale, Setting
 
 
 def test_new_job_page_has_customer_select():
@@ -61,6 +61,46 @@ def test_work_order_routes_create_and_redirect_to_work_order_detail():
     assert 'action="/work-orders"' in form_response.text
     assert response.status_code == 303
     assert response.headers["location"].startswith("/work-orders/")
+
+
+def test_quote_and_delivery_note_workflow_converts_without_stock_until_sale():
+    with TestClient(app) as client:
+        customer_response = client.post("/customers", data={"name": "Document Customer"}, follow_redirects=False)
+        customer_id = customer_response.headers["location"].rsplit("/", 1)[-1]
+        with SessionLocal() as db:
+            product = Product(name="Document Service", unit_price="25", vat_percent="24", is_stock_item=False)
+            db.add(product)
+            db.commit()
+            product_id = product.id
+
+        quote_response = client.post(
+            "/quotes",
+            data={"title": "Quote document", "customer_id": customer_id},
+            follow_redirects=False,
+        )
+        quote_id = quote_response.headers["location"].rsplit("/", 1)[-1]
+        item_response = client.post(
+            f"/quotes/{quote_id}/items",
+            data={"product_id": str(product_id), "quantity": "2", "unit_price": "25", "vat_percent": "24"},
+            follow_redirects=False,
+        )
+        delivery_response = client.post(f"/quotes/{quote_id}/convert/delivery_note", follow_redirects=False)
+        sale_response = client.post(f"/quotes/{quote_id}/convert/sale", follow_redirects=False)
+
+    with SessionLocal() as db:
+        quote = db.get(Job, int(quote_id))
+        delivery = db.query(Job).filter(Job.source_job_id == quote.id, Job.document_type == "delivery_note").one()
+        sale = db.query(Sale).filter(Sale.work_order_id == quote.id).one()
+        inventory_transactions = db.query(InventoryTransaction).filter(InventoryTransaction.sale_id == sale.id).count()
+
+    assert quote_response.status_code == 303
+    assert item_response.status_code == 303
+    assert delivery_response.status_code == 303
+    assert sale_response.status_code == 303
+    assert quote.document_type == "quote"
+    assert delivery.document_type == "delivery_note"
+    assert sale.total == 50
+    assert inventory_transactions == 0
 
 
 def test_work_order_can_be_created_with_empty_customer_selection():
