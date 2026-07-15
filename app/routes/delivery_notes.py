@@ -4,10 +4,13 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.routes import jobs
+from app.services.document_route_service import require_delivery_note_route
 
-router = APIRouter(prefix="/delivery-notes", tags=["delivery-notes"])
-
-
+router = APIRouter(
+    prefix="/delivery-notes",
+    tags=["delivery-notes"],
+    dependencies=[Depends(require_delivery_note_route)],
+)
 legacy_router = APIRouter(tags=["delivery-notes"])
 
 
@@ -54,6 +57,11 @@ def edit_delivery_note(job_id: int, request: Request, db: Session = Depends(get_
     return jobs.edit_job(job_id=job_id, request=request, db=db)
 
 
+@router.get("/{job_id}/receipt", response_class=HTMLResponse)
+def delivery_note_receipt(job_id: int, request: Request, db: Session = Depends(get_db)):
+    return jobs.job_receipt(job_id=job_id, request=request, db=db)
+
+
 @router.post("/{job_id}")
 def update_delivery_note(
     request: Request,
@@ -93,6 +101,11 @@ def delete_delivery_note_item(request: Request, job_id: int, item_id: int, db: S
 @router.post("/{job_id}/status")
 def update_delivery_note_status(request: Request, job_id: int, status_id: int = Form(...), db: Session = Depends(get_db)):
     return jobs.update_job_status(request=request, job_id=job_id, status_id=status_id, db=db)
+
+
+@router.post("/{job_id}/delete")
+def delete_delivery_note(request: Request, job_id: int, db: Session = Depends(get_db)):
+    return jobs.delete_job(request=request, job_id=job_id, db=db)
 
 
 @router.post("/{job_id}/convert/{target_type}")
