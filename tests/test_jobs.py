@@ -316,6 +316,94 @@ def test_completed_work_order_is_available_in_history():
     assert "Completed" in history_response.text
 
 
+def test_sold_work_order_is_completed_and_removed_from_active_and_overdue_lists():
+    with TestClient(app) as client:
+        job_response = client.post(
+            "/work-orders",
+            data={
+                "title": "Sold overdue work order",
+                "requested_pickup_date": "2026-07-12",
+            },
+            follow_redirects=False,
+        )
+        job_url = job_response.headers["location"]
+        item_response = client.post(
+            f"{job_url}/items",
+            data={
+                "product_id": "",
+                "description": "Billable service",
+                "quantity": "1",
+                "unit_price": "25",
+                "vat_percent": "24",
+            },
+            follow_redirects=False,
+        )
+        sale_response = client.post(f"{job_url}/convert/sale", follow_redirects=False)
+        active_response = client.get("/work-orders?view=active")
+        ready_response = client.get("/work-orders?view=ready")
+        history_response = client.get("/work-orders?view=history")
+        dashboard_response = client.get("/")
+
+    with SessionLocal() as db:
+        job = db.get(Job, int(job_url.rsplit("/", 1)[-1]))
+        sale = db.query(Sale).filter(Sale.work_order_id == job.id).one()
+        sale_id = sale.id
+        job_is_final = job.status is not None and job.status.is_final is True
+        job_converted_at = job.converted_at
+
+    assert item_response.status_code == 303
+    assert sale_response.status_code == 303
+    assert sale_response.headers["location"] == f"/sales/{sale_id}"
+    assert job_is_final is True
+    assert job_converted_at is not None
+    assert "Sold overdue work order" not in active_response.text
+    assert "Sold overdue work order" not in ready_response.text
+    assert "Sold overdue work order" in history_response.text
+    assert "Sold overdue work order" not in dashboard_response.text
+
+
+def test_invoice_handoff_work_order_is_completed_and_history_only():
+    with TestClient(app) as client:
+        customer_response = client.post("/customers", data={"name": "Invoice Customer"}, follow_redirects=False)
+        customer_id = customer_response.headers["location"].rsplit("/", 1)[-1]
+        job_response = client.post(
+            "/work-orders",
+            data={
+                "title": "Invoice handoff work order",
+                "customer_id": customer_id,
+                "requested_pickup_date": "2026-07-12",
+            },
+            follow_redirects=False,
+        )
+        job_url = job_response.headers["location"]
+        client.post(
+            f"{job_url}/items",
+            data={
+                "product_id": "",
+                "description": "Invoice service",
+                "quantity": "1",
+                "unit_price": "40",
+                "vat_percent": "24",
+            },
+            follow_redirects=False,
+        )
+        invoice_response = client.post(f"{job_url}/convert/invoice", follow_redirects=False)
+        active_response = client.get("/work-orders?view=active")
+        history_response = client.get("/work-orders?view=history")
+
+    with SessionLocal() as db:
+        job = db.get(Job, int(job_url.rsplit("/", 1)[-1]))
+        sale = db.query(Sale).filter(Sale.work_order_id == job.id).one()
+        settlement_status = sale.settlement_status
+        job_is_final = job.status is not None and job.status.is_final is True
+
+    assert invoice_response.status_code == 303
+    assert settlement_status == "awaiting_invoice"
+    assert job_is_final is True
+    assert "Invoice handoff work order" not in active_response.text
+    assert "Invoice handoff work order" in history_response.text
+
+
 def test_jobs_can_be_searched():
     with TestClient(app) as client:
         customer_response = client.post(

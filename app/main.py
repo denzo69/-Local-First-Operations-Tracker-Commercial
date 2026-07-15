@@ -108,6 +108,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     active_job_filter = and_(
         Job.document_type == "work_order",
         or_(Job.status_id.is_(None), ~Job.status.has(is_final=True)),
+        ~Job.sales.any(Sale.status != "cancelled"),
     )
 
     overdue_jobs = (

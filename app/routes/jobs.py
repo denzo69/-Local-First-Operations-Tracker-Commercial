@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.models import AuditLog, Customer, Job, JobItem, JobStatus, Product, utc_now
+from app.models import AuditLog, Customer, Job, JobItem, JobStatus, Product, Sale, utc_now
 from app.services.auth_service import request_current_user
 from app.services.audit_service import log_audit_event
 from app.services.money_service import line_total as calculate_line_total
@@ -157,13 +157,16 @@ def list_jobs(
     document_type = document_type_for(request)
     query = db.query(Job).join(Job.status, isouter=True)
     query = query.filter(Job.document_type == document_type)
+    no_active_sale_filter = ~Job.sales.any(Sale.status != "cancelled")
 
     if view == "active":
         query = query.filter(Job.status_id.is_(None) | Job.status.has(is_final=False))
+        query = query.filter(no_active_sale_filter)
     elif view == "ready":
         query = query.filter(Job.status.has(is_ready_state=True))
+        query = query.filter(no_active_sale_filter)
     elif view == "history":
-        query = query.filter(Job.status.has(is_final=True))
+        query = query.filter(Job.status.has(is_final=True) | Job.sales.any(Sale.status != "cancelled"))
 
     search = q.strip()
     if search:

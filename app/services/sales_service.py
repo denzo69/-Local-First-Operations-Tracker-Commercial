@@ -14,6 +14,7 @@ from app.models import (
     DailyClosingSnapshot,
     Job,
     JobItem,
+    JobStatus,
     Payment,
     Product,
     Customer,
@@ -407,6 +408,50 @@ def _validate_sale_source(source_type: str) -> str:
     return source
 
 
+def _completed_work_order_status(db: Session) -> JobStatus:
+    status = (
+        db.query(JobStatus)
+        .filter(JobStatus.is_active.is_(True), JobStatus.is_final.is_(True))
+        .order_by(JobStatus.sort_order.asc(), JobStatus.name.asc())
+        .first()
+    )
+    if status is not None:
+        return status
+    status = JobStatus(
+        name="Completed",
+        sort_order=50,
+        is_final=True,
+        is_ready_state=False,
+        is_packed_state=False,
+        is_active=True,
+    )
+    db.add(status)
+    db.flush()
+    return status
+
+
+def _mark_work_order_completed_by_sale(db: Session, *, work_order: Job, sale_id: int, invoice_requested: bool) -> None:
+    completed_status = _completed_work_order_status(db)
+    old_status_name = work_order.status.name if work_order.status else "Received"
+    already_final = work_order.status is not None and work_order.status.is_final is True
+    if not already_final:
+        work_order.status = completed_status
+    if work_order.converted_at is None:
+        work_order.converted_at = utc_now()
+    if not already_final:
+        target = "invoice handoff" if invoice_requested else "sale"
+        log_audit_event(
+            db,
+            event_type=f"{work_order.document_type}.{target.replace(' ', '_')}_created",
+            entity_type="job",
+            entity_id=work_order.id,
+            description=(
+                f"{work_order.document_type} converted to {target} #{sale_id}. "
+                f"Status changed from {old_status_name} to {completed_status.name}."
+            ),
+        )
+
+
 def create_sale_from_lines(
     db: Session,
     *,
@@ -457,6 +502,13 @@ def create_sale_from_lines(
             .first()
         )
         if existing_work_order_sale is not None:
+            _mark_work_order_completed_by_sale(
+                db,
+                work_order=work_order,
+                sale_id=existing_work_order_sale.id,
+                invoice_requested=(existing_work_order_sale.settlement_status or "").startswith("awaiting_invoice"),
+            )
+            db.commit()
             return existing_work_order_sale
     if send_to_invoice and (work_order is None or work_order.customer is None):
         raise ValueError("Customer is required when sending a sale to invoicing.")
@@ -646,6 +698,13 @@ def create_sale_from_lines(
                     amount=money(parse_decimal(payment.amount)),
                     reference=payment.reference.strip() or None,
                 )
+            )
+        if source == "work_order" and work_order is not None:
+            _mark_work_order_completed_by_sale(
+                db,
+                work_order=work_order,
+                sale_id=sale.id,
+                invoice_requested=invoice_requested,
             )
         log_audit_event(
             db,
