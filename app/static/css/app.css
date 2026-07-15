@@ -139,12 +139,13 @@ button:focus-visible,
 }
 
 .offcanvas .sidebar-group-label {
-    color: #5f6f86;
+    color: var(--text);
+    font-weight: 800;
 }
 
 .offcanvas .sidebar-link {
     color: var(--text);
-    font-weight: 700;
+    font-weight: 600;
 }
 
 .offcanvas .sidebar-link:hover,
