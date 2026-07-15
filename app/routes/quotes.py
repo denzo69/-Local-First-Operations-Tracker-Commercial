@@ -4,10 +4,13 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.routes import jobs
+from app.services.document_route_service import require_quote_route
 
-router = APIRouter(prefix="/quotes", tags=["quotes"])
-
-
+router = APIRouter(
+    prefix="/quotes",
+    tags=["quotes"],
+    dependencies=[Depends(require_quote_route)],
+)
 legacy_router = APIRouter(tags=["quotes"])
 
 
@@ -53,6 +56,11 @@ def edit_quote(job_id: int, request: Request, db: Session = Depends(get_db)):
     return jobs.edit_job(job_id=job_id, request=request, db=db)
 
 
+@router.get("/{job_id}/receipt", response_class=HTMLResponse)
+def quote_receipt(job_id: int, request: Request, db: Session = Depends(get_db)):
+    return jobs.job_receipt(job_id=job_id, request=request, db=db)
+
+
 @router.post("/{job_id}")
 def update_quote(
     request: Request,
@@ -92,6 +100,11 @@ def delete_quote_item(request: Request, job_id: int, item_id: int, db: Session =
 @router.post("/{job_id}/status")
 def update_quote_status(request: Request, job_id: int, status_id: int = Form(...), db: Session = Depends(get_db)):
     return jobs.update_job_status(request=request, job_id=job_id, status_id=status_id, db=db)
+
+
+@router.post("/{job_id}/delete")
+def delete_quote(request: Request, job_id: int, db: Session = Depends(get_db)):
+    return jobs.delete_job(request=request, job_id=job_id, db=db)
 
 
 @router.post("/{job_id}/convert/{target_type}")
