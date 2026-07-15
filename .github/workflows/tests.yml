@@ -31,7 +31,10 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
-      - name: Run tests
+      - name: Run focused document tests
+        run: python -m pytest tests/test_job_integrity.py tests/test_navigation.py tests/test_error_handlers.py -q --junitxml=focused-test-results.xml
+
+      - name: Run full test suite
         run: python -m pytest -q --durations=20 --cov=app --cov-report=term-missing --cov-report=xml --cov-report=html --junitxml=test-results.xml
 
       - name: Upload test diagnostics
@@ -40,6 +43,7 @@ jobs:
         with:
           name: test-diagnostics
           path: |
+            focused-test-results.xml
             test-results.xml
             coverage.xml
             htmlcov
