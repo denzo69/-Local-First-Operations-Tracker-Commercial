@@ -8,6 +8,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.database import get_db
 from app.services.i18n_service import get_translations
+from app.services.job_integrity_service import JobIntegrityError
 from app.services.settings_service import get_app_settings
 from app.template_context import templates
 
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 def register_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    app.add_exception_handler(JobIntegrityError, job_integrity_exception_handler)
     app.add_exception_handler(Exception, unhandled_exception_handler)
 
 
@@ -43,6 +45,20 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         request,
         status_code=422,
         detail="Request validation failed.",
+    )
+
+
+async def job_integrity_exception_handler(request: Request, exc: JobIntegrityError):
+    logger.info(
+        "Blocked unsafe document deletion on %s %s: %s",
+        request.method,
+        request.url.path,
+        exc,
+    )
+    return _error_response(
+        request,
+        status_code=409,
+        detail=str(exc),
     )
 
 
