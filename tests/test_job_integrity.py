@@ -83,6 +83,8 @@ def test_quote_and_delivery_note_print_routes_exist():
 
     assert quote_receipt.status_code == 200
     assert delivery_receipt.status_code == 200
+    assert '<h1 class="h3 mb-1">Quote</h1>' in quote_receipt.text
+    assert '<h1 class="h3 mb-1">Delivery note</h1>' in delivery_receipt.text
     assert "Printable quote" in quote_receipt.text
     assert "Printable delivery note" in delivery_receipt.text
 
