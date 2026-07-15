@@ -64,14 +64,14 @@ def cleanup_test_data() -> None:
         db.query(Customer).filter(Customer.name.in_(TEST_CUSTOMER_NAMES)).filter(
             ~Customer.jobs.any()
         ).delete(synchronize_session=False)
-        db.query(Product).filter(Product.name.ilike("Test product%")).delete(
+        db.query(Product).filter(Product.name.ilike("Test product%")) .delete(
             synchronize_session=False
         )
         db.query(AuditLog).filter(
             (AuditLog.entity_type == "status")
             & AuditLog.description.ilike("%Test status%")
         ).delete(synchronize_session=False)
-        db.query(JobStatus).filter(JobStatus.name.ilike("Test status%")).delete(
+        db.query(JobStatus).filter(JobStatus.name.ilike("Test status%")) .delete(
             synchronize_session=False
         )
         db.query(Setting).delete(synchronize_session=False)
@@ -81,13 +81,16 @@ def cleanup_test_data() -> None:
 @pytest.fixture(scope="session", autouse=True)
 def isolated_test_database():
     reset_database()
+    reset_backups()
     yield
+    engine.dispose()
+    shutil.rmtree(TEST_ROOT, ignore_errors=True)
 
 
 @pytest.fixture(autouse=True)
 def clean_test_data():
+    # Every test starts from a fresh schema. Rebuilding again after the test is
+    # redundant because the next setup performs the same reset.
     reset_database()
     reset_backups()
     yield
-    reset_database()
-    reset_backups()
