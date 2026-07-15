@@ -4,8 +4,13 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.routes import jobs
+from app.services.document_route_service import require_work_order_route
 
-router = APIRouter(prefix="/work-orders", tags=["work-orders"])
+router = APIRouter(
+    prefix="/work-orders",
+    tags=["work-orders"],
+    dependencies=[Depends(require_work_order_route)],
+)
 
 
 @router.get("", response_class=HTMLResponse)
