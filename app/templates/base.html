@@ -72,38 +72,46 @@
     <div class="offcanvas-body">
         <nav class="sidebar-nav" aria-label="Mobile navigation">
             <a class="sidebar-link" href="/">{{ t.dashboard }}</a>
-            <div class="sidebar-group-label">{{ t.operations }}</div>
-            <a class="sidebar-link" href="/customers">{{ t.customers }}</a>
-            <a class="sidebar-link" href="/work-orders">{{ t.work_orders }}</a>
-            <a class="sidebar-link" href="/delivery-notes">{{ t.delivery_notes }}</a>
-            <a class="sidebar-link" href="/quotes">{{ t.quotes }}</a>
-            <div class="sidebar-group-label">{{ t.sales_nav }}</div>
-            <a class="sidebar-link" href="/sales/quick">{{ t.quick_sale }}</a>
-            <a class="sidebar-link" href="/sales">{{ t.sales_history }}</a>
-            <a class="sidebar-link" href="/sales/invoice-queue">{{ t.invoice_queue }}</a>
-            <a class="sidebar-link" href="/daily-closings">{{ t.daily_closing }}</a>
-            <div class="sidebar-group-label">{{ t.catalog }}</div>
-            <a class="sidebar-link" href="/products">{{ t.products }}</a>
-            <a class="sidebar-link" href="/products/goods-receipts">{{ t.goods_receipts }}</a>
-            <a class="sidebar-link" href="/products/warehouses">{{ t.warehouses }}</a>
-            <a class="sidebar-link" href="/products/inventory">{{ t.stock_balances }}</a>
-            <a class="sidebar-link" href="/products/inventory/transactions">{{ t.inventory_transactions }}</a>
-            <a class="sidebar-link" href="/products/inventory/valuation">{{ t.inventory_valuation }}</a>
-            <div class="sidebar-group-label">{{ t.reports }}</div>
-            <a class="sidebar-link" href="/reports">{{ t.reports }}</a>
-            <a class="sidebar-link" href="/seller-reports">{{ t.seller_reports }}</a>
-            <div class="sidebar-group-label">{{ t.administration }}</div>
-            {% if can_manage_administration %}
-            <a class="sidebar-link" href="/users">{{ t.users }}</a>
-            <a class="sidebar-link" href="/cash-registers">{{ t.cash_registers }}</a>
-            <a class="sidebar-link" href="/audit-log">{{ t.audit_log }}</a>
-            <a class="sidebar-link" href="/backups">{{ t.backups }}</a>
-            {% endif %}
-            {% if can_manage_administration %}
-            <a class="sidebar-link" href="/settings">{{ t.settings }}</a>
-            {% else %}
-            <a class="sidebar-link" href="/settings/language">{{ t.language }}</a>
-            {% endif %}
+            <button class="sidebar-group-toggle" type="button" data-mobile-nav-toggle aria-expanded="true" aria-controls="mobileNavOperations">{{ t.operations }}</button>
+            <div class="mobile-nav-section" id="mobileNavOperations">
+                <a class="sidebar-link" href="/customers">{{ t.customers }}</a>
+                <a class="sidebar-link" href="/work-orders">{{ t.work_orders }}</a>
+                <a class="sidebar-link" href="/delivery-notes">{{ t.delivery_notes }}</a>
+                <a class="sidebar-link" href="/quotes">{{ t.quotes }}</a>
+            </div>
+            <button class="sidebar-group-toggle" type="button" data-mobile-nav-toggle aria-expanded="false" aria-controls="mobileNavSales">{{ t.sales_nav }}</button>
+            <div class="mobile-nav-section" id="mobileNavSales" hidden>
+                <a class="sidebar-link" href="/sales/quick">{{ t.quick_sale }}</a>
+                <a class="sidebar-link" href="/sales">{{ t.sales_history }}</a>
+                <a class="sidebar-link" href="/sales/invoice-queue">{{ t.invoice_queue }}</a>
+                <a class="sidebar-link" href="/daily-closings">{{ t.daily_closing }}</a>
+            </div>
+            <button class="sidebar-group-toggle" type="button" data-mobile-nav-toggle aria-expanded="false" aria-controls="mobileNavCatalog">{{ t.catalog }}</button>
+            <div class="mobile-nav-section" id="mobileNavCatalog" hidden>
+                <a class="sidebar-link" href="/products">{{ t.products }}</a>
+                <a class="sidebar-link" href="/products/goods-receipts">{{ t.goods_receipts }}</a>
+                <a class="sidebar-link" href="/products/warehouses">{{ t.warehouses }}</a>
+                <a class="sidebar-link" href="/products/inventory">{{ t.stock_balances }}</a>
+                <a class="sidebar-link" href="/products/inventory/transactions">{{ t.inventory_transactions }}</a>
+                <a class="sidebar-link" href="/products/inventory/valuation">{{ t.inventory_valuation }}</a>
+            </div>
+            <button class="sidebar-group-toggle" type="button" data-mobile-nav-toggle aria-expanded="false" aria-controls="mobileNavReports">{{ t.reports }}</button>
+            <div class="mobile-nav-section" id="mobileNavReports" hidden>
+                <a class="sidebar-link" href="/reports">{{ t.reports }}</a>
+                <a class="sidebar-link" href="/seller-reports">{{ t.seller_reports }}</a>
+            </div>
+            <button class="sidebar-group-toggle" type="button" data-mobile-nav-toggle aria-expanded="false" aria-controls="mobileNavAdmin">{{ t.administration }}</button>
+            <div class="mobile-nav-section" id="mobileNavAdmin" hidden>
+                {% if can_manage_administration %}
+                <a class="sidebar-link" href="/users">{{ t.users }}</a>
+                <a class="sidebar-link" href="/cash-registers">{{ t.cash_registers }}</a>
+                <a class="sidebar-link" href="/audit-log">{{ t.audit_log }}</a>
+                <a class="sidebar-link" href="/backups">{{ t.backups }}</a>
+                <a class="sidebar-link" href="/settings">{{ t.settings }}</a>
+                {% else %}
+                <a class="sidebar-link" href="/settings/language">{{ t.language }}</a>
+                {% endif %}
+            </div>
         </nav>
     </div>
 </div>

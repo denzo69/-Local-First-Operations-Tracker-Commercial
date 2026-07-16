@@ -9,6 +9,21 @@ document.querySelectorAll("[data-bs-toggle='collapse']").forEach((button) => {
     });
 });
 
+document.querySelectorAll("[data-mobile-nav-toggle]").forEach((button) => {
+    button.addEventListener("click", () => {
+        const targetId = button.getAttribute("aria-controls");
+        const target = targetId ? document.getElementById(targetId) : null;
+
+        if (!target) {
+            return;
+        }
+
+        const expanded = button.getAttribute("aria-expanded") === "true";
+        button.setAttribute("aria-expanded", String(!expanded));
+        target.hidden = expanded;
+    });
+});
+
 document.querySelectorAll("[data-live-filter-form]").forEach((form) => {
     const input = form.querySelector("[data-live-filter-input]");
     const target = document.querySelector(form.dataset.liveFilterTarget);

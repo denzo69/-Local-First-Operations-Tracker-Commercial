@@ -245,6 +245,9 @@ def test_mobile_navigation_markup_is_present():
     assert 'data-bs-toggle="offcanvas"' in response.text
     assert 'id="mobileNav"' in response.text
     assert 'aria-label="Mobile navigation"' in response.text
+    assert 'data-mobile-nav-toggle' in response.text
+    assert 'aria-controls="mobileNavOperations"' in response.text
+    assert 'id="mobileNavSales" hidden' in response.text
 
 
 def test_administration_tables_have_responsive_markup():
@@ -282,8 +285,9 @@ def test_static_stylesheets_are_served():
     assert ".app-sidebar" in app_css.text
     assert ".offcanvas .sidebar-link" in app_css.text
     assert ".offcanvas .sidebar-nav {\n    display: grid;" in app_css.text
-    assert ".offcanvas .sidebar-group-label {\n    display: block;" in app_css.text
+    assert ".offcanvas .sidebar-group-toggle {\n    display: flex;" in app_css.text
     assert "background: #111827;" in app_css.text
+    assert ".offcanvas .mobile-nav-section[hidden]" in app_css.text
     assert ".offcanvas .sidebar-link::after" in app_css.text
     assert 'content: "›";' in app_css.text
     assert ".dashboard-hero" in app_css.text
@@ -297,6 +301,8 @@ def test_static_scripts_are_served():
     assert bootstrap.status_code == 200
     assert "Offcanvas" in bootstrap.text
     assert app_js.status_code == 200
+    assert "data-mobile-nav-toggle" in app_js.text
+    assert "target.hidden = expanded;" in app_js.text
     assert "data-live-filter-form" in app_js.text
     assert "data-search-text" in app_js.text
 
