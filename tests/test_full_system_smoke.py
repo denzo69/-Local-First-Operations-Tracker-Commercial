@@ -30,6 +30,8 @@ DYNAMIC_SAMPLE_VALUES = {
     "target_type": "quote",
 }
 
+INTENTIONAL_FAILURE_ROUTES = {"/__test_unhandled_error"}
+
 
 def _concrete_path(route: APIRoute) -> str:
     path = route.path
@@ -59,11 +61,13 @@ def _internal_href_targets(html: str) -> set[str]:
 
 def test_every_registered_get_route_handles_missing_records_without_server_error():
     failures: list[tuple[str, int]] = []
-    with TestClient(app) as client:
+    with TestClient(app, raise_server_exceptions=False) as client:
         for route in app.routes:
             if not isinstance(route, APIRoute) or "GET" not in route.methods:
                 continue
             path = _concrete_path(route)
+            if path in INTENTIONAL_FAILURE_ROUTES:
+                continue
             response = client.get(path, follow_redirects=False)
             if response.status_code >= 500:
                 failures.append((path, response.status_code))
@@ -72,7 +76,7 @@ def test_every_registered_get_route_handles_missing_records_without_server_error
 
 
 def test_rendered_navigation_and_detail_links_do_not_point_to_missing_pages():
-    with TestClient(app) as client:
+    with TestClient(app, raise_server_exceptions=False) as client:
         customer_response = client.post(
             "/customers",
             data={"name": "Smoke Navigation Customer"},
@@ -139,7 +143,7 @@ def test_rendered_navigation_and_detail_links_do_not_point_to_missing_pages():
 
 
 def test_primary_quote_to_documents_and_sale_workflow_is_operational_and_idempotent():
-    with TestClient(app) as client:
+    with TestClient(app, raise_server_exceptions=False) as client:
         customer_response = client.post(
             "/customers",
             data={
