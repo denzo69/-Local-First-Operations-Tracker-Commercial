@@ -281,8 +281,11 @@ def test_static_stylesheets_are_served():
     assert app_css.status_code == 200
     assert ".app-sidebar" in app_css.text
     assert ".offcanvas .sidebar-link" in app_css.text
-    assert ".offcanvas .sidebar-group-label {\n    color: var(--text);\n    font-weight: 800;" in app_css.text
-    assert ".offcanvas .sidebar-link {\n    color: var(--text);\n    font-weight: 600;" in app_css.text
+    assert ".offcanvas .sidebar-nav {\n    display: grid;" in app_css.text
+    assert ".offcanvas .sidebar-group-label {\n    display: block;" in app_css.text
+    assert "border-left: 4px solid var(--primary);" in app_css.text
+    assert ".offcanvas .sidebar-link::after" in app_css.text
+    assert 'content: "›";' in app_css.text
     assert ".dashboard-hero" in app_css.text
 
 
