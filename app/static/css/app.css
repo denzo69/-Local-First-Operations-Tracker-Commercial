@@ -143,11 +143,10 @@ button:focus-visible,
 .offcanvas .sidebar-group-label {
     display: block;
     margin: 1.15rem 0 .35rem;
-    padding: .35rem .75rem;
-    border-left: 4px solid var(--primary);
-    border-radius: 0 var(--radius) var(--radius) 0;
-    background: var(--surface-muted);
-    color: #4d5b6d;
+    padding: .5rem .75rem;
+    border-radius: var(--radius);
+    background: #111827;
+    color: #fff;
     font-size: .74rem;
     font-weight: 800;
     letter-spacing: .08em;
@@ -157,11 +156,12 @@ button:focus-visible,
     position: relative;
     min-height: 44px;
     padding: .68rem 2.25rem .68rem .75rem;
-    border: 1px solid transparent;
+    border: 1px solid var(--border);
     border-radius: var(--radius);
     color: var(--text);
     font-weight: 600;
     background: #fff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
 }
 
 .offcanvas .sidebar-link::after {

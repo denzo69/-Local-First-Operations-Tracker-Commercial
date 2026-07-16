@@ -240,8 +240,8 @@ def test_mobile_navigation_markup_is_present():
         response = client.get("/")
 
     assert response.status_code == 200
-    assert 'href="http://testserver/static/vendor/bootstrap/bootstrap.min.css"' in response.text
-    assert 'href="http://testserver/static/css/app.css"' in response.text
+    assert 'href="http://testserver/static/vendor/bootstrap/bootstrap.min.css?v=' in response.text
+    assert 'href="http://testserver/static/css/app.css?v=' in response.text
     assert 'data-bs-toggle="offcanvas"' in response.text
     assert 'id="mobileNav"' in response.text
     assert 'aria-label="Mobile navigation"' in response.text
@@ -283,7 +283,7 @@ def test_static_stylesheets_are_served():
     assert ".offcanvas .sidebar-link" in app_css.text
     assert ".offcanvas .sidebar-nav {\n    display: grid;" in app_css.text
     assert ".offcanvas .sidebar-group-label {\n    display: block;" in app_css.text
-    assert "border-left: 4px solid var(--primary);" in app_css.text
+    assert "background: #111827;" in app_css.text
     assert ".offcanvas .sidebar-link::after" in app_css.text
     assert 'content: "›";' in app_css.text
     assert ".dashboard-hero" in app_css.text

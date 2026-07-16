@@ -10,6 +10,11 @@ from app.services.i18n_service import get_translations, translate_status
 from app.services.settings_service import get_app_settings
 
 
+ASSET_VERSION = str(
+    int((Path(__file__).resolve().parent / "static" / "css" / "app.css").stat().st_mtime)
+)
+
+
 def inject_global_template_context(request: Request) -> dict:
     db = next(get_db())
     try:
@@ -35,6 +40,7 @@ def inject_global_template_context(request: Request) -> dict:
             ),
             "open_shift_count": db.query(Shift).filter(Shift.status == "open").count(),
             "status_label": lambda status_name: translate_status(status_name, language),
+            "asset_version": ASSET_VERSION,
         }
     finally:
         db.close()
