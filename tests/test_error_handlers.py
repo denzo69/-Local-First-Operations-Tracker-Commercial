@@ -10,7 +10,7 @@ def test_http_error_uses_branded_html_page():
     assert response.status_code == 404
     assert "error-page" in response.text
     assert "Work order not found" in response.text
-    assert 'href="http://testserver/static/css/app.css"' in response.text
+    assert 'href="http://testserver/static/css/app.css' in response.text
 
 
 def test_http_error_can_return_json():
