@@ -51,4 +51,5 @@ jobs:
             test-results.xml
             coverage.xml
             htmlcov
+            app/services/sales_service.py
           if-no-files-found: warn
