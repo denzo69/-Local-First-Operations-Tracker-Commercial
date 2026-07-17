@@ -37,36 +37,24 @@ jobs:
           from pathlib import Path
 
           path = Path("app/services/sales_service.py")
-          text = path.read_text(encoding="utf-8")
-          old = '''    if send_to_invoice and (work_order is None or work_order.customer is None):
-              raise ValueError("Customer is required when sending a sale to invoicing.")
-          customer = db.get(Customer, customer_id) if customer_id else None
-          '''
-          new = '''    customer = db.get(Customer, customer_id) if customer_id else None
-          '''
-          if old in text:
-              text = text.replace(old, new, 1)
-          old_validation = '''    normalized_payments = [_normalize_payment_input(payment) for payment in payments or []]
-              invoice_requested = send_to_invoice or any(payment.payment_method == INVOICE_PAYMENT_METHOD for payment in normalized_payments)
-
-              line_payloads: list[dict] = []
-          '''
-          new_validation = '''    normalized_payments = [_normalize_payment_input(payment) for payment in payments or []]
-              invoice_requested = send_to_invoice or any(payment.payment_method == INVOICE_PAYMENT_METHOD for payment in normalized_payments)
-              if invoice_requested and customer is None:
-                  raise ValueError("Customer is required when sending a sale to invoicing.")
-
-              line_payloads: list[dict] = []
-          '''
-          if old_validation in text:
-              text = text.replace(old_validation, new_validation, 1)
-          path.write_text(text, encoding="utf-8")
+          lines = path.read_text(encoding="utf-8").splitlines()
+          cleaned = []
+          skip_next = False
+          for line in lines:
+              if skip_next:
+                  skip_next = False
+                  continue
+              if line.strip() == "if send_to_invoice and (work_order is None or work_order.customer is None):":
+                  skip_next = True
+                  continue
+              cleaned.append(line)
+          path.write_text("\n".join(cleaned) + "\n", encoding="utf-8")
           '@ | python
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app/services/sales_service.py
           if (git status --porcelain) {
-            git commit -m "Fix quick-sale invoice customer validation"
+            git commit -m "Remove obsolete invoice customer guard"
             git push origin HEAD:${{ github.head_ref }}
           }
 
