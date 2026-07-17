@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import DailyClosing, Job, Product, Sale, User
+from app.models import DailyClosing, Job, Product, Role, Sale, User
 from app.routes import jobs as jobs_routes
 from app.services import sales_service
 from app.services.sales_service import create_daily_closing, get_latest_daily_closing_snapshot
@@ -39,6 +39,26 @@ def _set_business_date(monkeypatch, business_date: date) -> None:
     ControlledBusinessDate.current = business_date
     monkeypatch.setattr(sales_service, "date", ControlledBusinessDate)
     monkeypatch.setattr(jobs_routes, "date", ControlledBusinessDate)
+
+
+def _create_closing_user() -> int:
+    with SessionLocal() as db:
+        role = db.query(Role).filter(Role.code == "admin").first()
+        if role is None:
+            role = Role(code="admin", name="Admin")
+            db.add(role)
+            db.flush()
+        user = User(
+            name="Two-day closing admin",
+            login_name="two-day-closing-admin",
+            role=role,
+            is_active=True,
+            can_receive_sales_credit=True,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return user.id
 
 
 def _create_customer(client: TestClient) -> int:
@@ -284,6 +304,7 @@ def test_all_document_conversion_and_settlement_paths_across_two_closed_days(mon
     with TestClient(app) as client:
         customer_id = _create_customer(client)
         product_id = _create_service_product(client)
+        closing_user_id = _create_closing_user()
 
         _set_business_date(monkeypatch, day_one)
         day_one_sale_ids = _run_complete_day(
@@ -295,12 +316,10 @@ def test_all_document_conversion_and_settlement_paths_across_two_closed_days(mon
         )
 
         with SessionLocal() as db:
-            user = db.query(User).filter(User.is_active.is_(True)).order_by(User.id.asc()).first()
-            assert user is not None
             day_one_closing = create_daily_closing(
                 db,
                 business_date=day_one,
-                created_by_user_id=user.id,
+                created_by_user_id=closing_user_id,
             )
             snapshot_row, snapshot = get_latest_daily_closing_snapshot(db, day_one_closing)
             assert snapshot_row.version == 1
@@ -338,12 +357,10 @@ def test_all_document_conversion_and_settlement_paths_across_two_closed_days(mon
         )
 
         with SessionLocal() as db:
-            user = db.query(User).filter(User.is_active.is_(True)).order_by(User.id.asc()).first()
-            assert user is not None
             day_two_closing = create_daily_closing(
                 db,
                 business_date=day_two,
-                created_by_user_id=user.id,
+                created_by_user_id=closing_user_id,
             )
             _, snapshot = get_latest_daily_closing_snapshot(db, day_two_closing)
             assert snapshot["sale_count"] == 14
