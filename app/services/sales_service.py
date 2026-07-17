@@ -510,8 +510,6 @@ def create_sale_from_lines(
             )
             db.commit()
             return existing_work_order_sale
-    if send_to_invoice and (work_order is None or work_order.customer is None):
-        raise ValueError("Customer is required when sending a sale to invoicing.")
     customer = db.get(Customer, customer_id) if customer_id else None
     if customer_id and customer is None:
         raise ValueError("Customer not found.")
