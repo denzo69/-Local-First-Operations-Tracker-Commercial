@@ -1666,10 +1666,20 @@ def seller_report(db: Session, *, seller_id: int, start_date: date, end_date: da
     total_refunds = sum_money(refund.amount for refund in refunds)
     transaction_count = len(sales)
     net_sales = money(total_sales - total_refunds)
+    gross_profit = sum_money(sale.gross_profit_ex_vat for sale in sales)
+    net_sales_ex_vat = sum_money((parse_decimal(sale.total) - parse_decimal(sale.vat_total)) for sale in sales)
+    gross_margin_percent = (
+        (gross_profit / net_sales_ex_vat * Decimal("100")).quantize(Decimal("0.001"))
+        if net_sales_ex_vat
+        else None
+    )
     return {
         "gross_sales": total_sales,
         "total_sales": total_sales,
         "net_sales": net_sales,
+        "net_sales_ex_vat": net_sales_ex_vat,
+        "gross_profit": gross_profit,
+        "gross_margin_percent": gross_margin_percent,
         "transaction_count": transaction_count,
         "average_sale": money(total_sales / transaction_count) if transaction_count else Decimal("0.00"),
         "discounts": sum_money(sale.discount_total for sale in sales),

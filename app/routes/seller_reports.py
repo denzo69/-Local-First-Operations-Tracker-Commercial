@@ -40,6 +40,13 @@ def seller_reports(
         if selected_seller_id
         else None
     )
+    seller_summaries = [
+        {
+            "seller": user,
+            "report": seller_report(db, seller_id=user.id, start_date=start_date, end_date=end_date),
+        }
+        for user in users
+    ]
     return templates.TemplateResponse(
         "seller_reports/index.html",
         {
@@ -52,5 +59,6 @@ def seller_reports(
             "start_date": start_date,
             "end_date": end_date,
             "report": report,
+            "seller_summaries": seller_summaries,
         },
     )

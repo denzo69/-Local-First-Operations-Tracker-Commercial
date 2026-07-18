@@ -1,7 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>{{ t.seller_reports }}</h1>
-<form method="get" action="/seller-reports" class="card p-3 mb-3">
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 mb-3">
+    <div>
+        <h1>{{ t.seller_reports }}</h1>
+        <p class="text-muted mb-0">{{ t.seller_commission_report_help }}</p>
+    </div>
+    <button class="btn btn-outline-secondary no-print" type="button" onclick="window.print()">{{ t.print_report }}</button>
+</div>
+<form method="get" action="/seller-reports" class="card p-3 mb-3 no-print">
     <div class="row g-3 align-items-end">
         <div class="col-md-5">
             <label class="form-label" for="seller_id">{{ t.seller }}</label>
@@ -24,11 +30,44 @@
 </form>
 {% if report %}
 <p class="text-muted">{{ start_date }} - {{ end_date }}</p>
+<div class="card mb-3">
+    <div class="card-header bg-white fw-semibold">{{ t.seller_summary }}</div>
+    <div class="table-responsive responsive-card-table">
+        <table class="table mb-0">
+            <thead>
+                <tr>
+                    <th>{{ t.seller }}</th>
+                    <th>{{ t.gross_sales }}</th>
+                    <th>{{ t.refunds }}</th>
+                    <th>{{ t.net_sales }}</th>
+                    <th>{{ t.transactions }}</th>
+                    <th>{{ t.gross_profit }}</th>
+                    <th>{{ t.gross_margin }}</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for row in seller_summaries %}
+                <tr>
+                    <td data-label="{{ t.seller }}">{{ row.seller.name }}</td>
+                    <td data-label="{{ t.gross_sales }}">{{ row.report.gross_sales }}</td>
+                    <td data-label="{{ t.refunds }}">{{ row.report.refunds }}</td>
+                    <td data-label="{{ t.net_sales }}">{{ row.report.net_sales }}</td>
+                    <td data-label="{{ t.transactions }}">{{ row.report.transaction_count }}</td>
+                    <td data-label="{{ t.gross_profit }}">{{ row.report.gross_profit }}</td>
+                    <td data-label="{{ t.gross_margin }}">{{ row.report.gross_margin_percent if row.report.gross_margin_percent is not none else "-" }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
 <div class="row g-3 mb-3">
     <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.gross_sales }}</div><strong>{{ report.gross_sales }}</strong></div></div>
     <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.refunds }}</div><strong>{{ report.refunds }}</strong></div></div>
     <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.net_sales }}</div><strong>{{ report.net_sales }}</strong></div></div>
     <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.transactions }}</div><strong>{{ report.transaction_count }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.gross_profit }}</div><strong>{{ report.gross_profit }}</strong></div></div>
+    <div class="col-md-3"><div class="card p-3"><div class="text-muted">{{ t.gross_margin }}</div><strong>{{ report.gross_margin_percent if report.gross_margin_percent is not none else "-" }}</strong></div></div>
 </div>
 <div class="card p-3">
     <h2 class="h5">{{ t.payment_methods }}</h2>

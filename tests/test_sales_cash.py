@@ -305,6 +305,60 @@ def test_seller_report_daily_weekly_monthly_source_metrics():
         assert report["discounts"] == Decimal("5.00")
         assert report["refunds"] == Decimal("4.00")
         assert report["payment_totals"]["mobile"] == Decimal("35.00")
+        assert report["gross_profit"] > Decimal("0.00")
+        assert report["gross_margin_percent"] is not None
+
+
+def test_seller_reports_page_has_printable_sales_and_margin_summary():
+    with SessionLocal() as db:
+        seller_one = create_user(db, "Commission Seller One")
+        seller_two = create_user(db, "Commission Seller Two")
+        register_one = create_register(db, "Commission Register One")
+        register_two = create_register(db, "Commission Register Two")
+        shift_one = open_shift(
+            db,
+            seller_id=seller_one.id,
+            cash_register_id=register_one.id,
+            business_date=date.today(),
+            starting_cash="0",
+        )
+        shift_two = open_shift(
+            db,
+            seller_id=seller_two.id,
+            cash_register_id=register_two.id,
+            business_date=date.today(),
+            starting_cash="0",
+        )
+        create_sale_with_payment(
+            db,
+            seller_id=seller_one.id,
+            shift_id=shift_one.id,
+            payment_method="card",
+            description="Seller one sale",
+            quantity="1",
+            unit_price="100",
+            vat_percent="24",
+        )
+        create_sale_with_payment(
+            db,
+            seller_id=seller_two.id,
+            shift_id=shift_two.id,
+            payment_method="cash",
+            description="Seller two sale",
+            quantity="1",
+            unit_price="50",
+            vat_percent="24",
+        )
+
+    response = client.get("/seller-reports")
+
+    assert response.status_code == 200
+    assert "Print report" in response.text
+    assert "Seller summary" in response.text
+    assert "Commission Seller One" in response.text
+    assert "Commission Seller Two" in response.text
+    assert "Gross profit" in response.text
+    assert "Gross margin" in response.text
 
 
 def test_new_sales_shift_closing_and_report_routes_load():

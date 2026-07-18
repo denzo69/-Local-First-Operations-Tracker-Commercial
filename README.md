@@ -1,6 +1,6 @@
 # JEronAI Operations
 
-Local-first ERP & CRM for small businesses
+Local-first business operations platform
 
 A lightweight local-first ERP and CRM workspace for small businesses, sole traders, and small teams.
 
