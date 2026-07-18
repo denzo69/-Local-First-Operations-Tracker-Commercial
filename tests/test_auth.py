@@ -311,3 +311,31 @@ def test_admin_can_manage_users_and_roles_from_settings():
     assert "Role User" in users_page.text
     assert updated_user.role_id == manager_role_id
     assert updated_user.can_receive_sales_credit is True
+
+
+def test_last_active_admin_cannot_be_demoted():
+    admin = create_login_user("Only Admin", "admin", password="secret123")
+    with SessionLocal() as db:
+        ensure_default_roles(db)
+        seller_role_id = db.query(Role).filter(Role.code == "seller").one().id
+
+    with TestClient(app) as client:
+        client.post(
+            "/login",
+            data={"login_name": "only.admin", "password": "secret123", "next_url": "/"},
+        )
+        response = client.post(
+            f"/users/{admin.id}",
+            data={
+                "name": "Only Admin",
+                "login_name": "only.admin",
+                "password": "",
+                "role_id": str(seller_role_id),
+                "is_active": "on",
+            },
+        )
+
+    assert response.status_code == 400
+    assert "Create another active Admin" in response.text
+    with SessionLocal() as db:
+        assert db.get(User, admin.id).role.code == "admin"
