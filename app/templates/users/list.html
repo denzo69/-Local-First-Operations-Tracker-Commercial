@@ -2,27 +2,27 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
-        <h1>Users</h1>
-        <p class="text-muted">Seller accounts and operational roles.</p>
+        <h1>{{ t.users }}</h1>
+        <p class="text-muted">{{ t.user_accounts_and_roles }}</p>
     </div>
-    <a class="btn btn-primary" href="/users/new">New user</a>
+    <a class="btn btn-primary" href="/users/new">{{ t.new_user }}</a>
 </div>
 <div class="card">
     <div class="table-responsive responsive-card-table">
         <table class="table mb-0">
-            <thead><tr><th>Name</th><th>Login</th><th>Role</th><th>{{ t.can_receive_sales_credit }}</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>{{ t.user_name }}</th><th>{{ t.login_name }}</th><th>{{ t.role }}</th><th>{{ t.can_receive_sales_credit }}</th><th>{{ t.status }}</th><th></th></tr></thead>
             <tbody>
             {% for user in users %}
             <tr>
-                <td data-label="Name">{{ user.name }}</td>
-                <td data-label="Login">{{ user.login_name or "-" }}</td>
-                <td data-label="Role">{{ user.role.name if user.role else "-" }}</td>
+                <td data-label="{{ t.user_name }}">{{ user.name }}</td>
+                <td data-label="{{ t.login_name }}">{{ user.login_name or "-" }}</td>
+                <td data-label="{{ t.role }}">{{ user.role.name if user.role else "-" }}</td>
                 <td data-label="{{ t.can_receive_sales_credit }}">{{ t.active if user.can_receive_sales_credit or (user.role and user.role.code == "seller") else "-" }}</td>
-                <td data-label="Status">{{ "Active" if user.is_active else "Inactive" }}</td>
-                <td data-label="Action" class="text-end"><a href="/users/{{ user.id }}/edit">Edit</a></td>
+                <td data-label="{{ t.status }}">{{ t.active if user.is_active else t.inactive }}</td>
+                <td data-label="{{ t.action }}" class="text-end"><a href="/users/{{ user.id }}/edit">{{ t.edit }}</a></td>
             </tr>
             {% else %}
-            <tr><td colspan="6" class="text-muted">No users yet.</td></tr>
+            <tr><td colspan="6" class="text-muted">{{ t.no_users_yet }}</td></tr>
             {% endfor %}
             </tbody>
         </table>

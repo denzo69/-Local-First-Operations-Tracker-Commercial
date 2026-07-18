@@ -7,8 +7,28 @@
 </div>
 
 {% if can_manage_administration %}
-<div class="mb-3">
-    <a class="btn btn-outline-secondary" href="/settings/statuses">Workflow statuses</a>
+<div class="row g-3 mb-3">
+    <div class="col-md-6">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-body">
+                <h2 class="h5">{{ t.user_management }}</h2>
+                <p class="text-muted">{{ t.user_management_help }}</p>
+                <div class="d-flex flex-wrap gap-2">
+                    <a class="btn btn-primary" href="/users">{{ t.manage_users }}</a>
+                    <a class="btn btn-outline-secondary" href="/users/new">{{ t.new_user }}</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-body">
+                <h2 class="h5">{{ t.workflow_statuses }}</h2>
+                <p class="text-muted">{{ t.workflow_status_help }}</p>
+                <a class="btn btn-outline-secondary" href="/settings/statuses">{{ t.workflow_statuses }}</a>
+            </div>
+        </div>
+    </div>
 </div>
 {% endif %}
 

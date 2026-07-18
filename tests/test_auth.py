@@ -219,3 +219,76 @@ def test_seller_can_change_general_settings_and_language_without_admin_links():
     assert language_update.status_code == 303
     assert dashboard.status_code == 200
     assert "FI" in dashboard.text
+
+
+def test_admin_can_manage_users_and_roles_from_settings():
+    create_login_user("Settings Admin", "admin", password="secret123")
+    with SessionLocal() as db:
+        ensure_default_roles(db)
+        seller_role_id = db.query(Role).filter(Role.code == "seller").one().id
+        manager_role_id = db.query(Role).filter(Role.code == "manager").one().id
+
+    with TestClient(app) as client:
+        client.post(
+            "/login",
+            data={
+                "login_name": "settings.admin",
+                "password": "secret123",
+                "next_url": "/",
+            },
+        )
+        settings_page = client.get("/settings")
+        new_user_page = client.get("/users/new")
+        create_response = client.post(
+            "/users",
+            data={
+                "name": "Role User",
+                "login_name": "role.user",
+                "password": "secret123",
+                "role_id": str(seller_role_id),
+                "is_active": "on",
+            },
+            follow_redirects=False,
+        )
+
+    with SessionLocal() as db:
+        created_user = db.query(User).filter(User.login_name == "role.user").one()
+
+    with TestClient(app) as client:
+        client.post(
+            "/login",
+            data={
+                "login_name": "settings.admin",
+                "password": "secret123",
+                "next_url": "/",
+            },
+        )
+        update_response = client.post(
+            f"/users/{created_user.id}",
+            data={
+                "name": "Role User",
+                "login_name": "role.user",
+                "password": "",
+                "role_id": str(manager_role_id),
+                "is_active": "on",
+                "can_receive_sales_credit": "on",
+            },
+            follow_redirects=False,
+        )
+        users_page = client.get("/users")
+
+    with SessionLocal() as db:
+        updated_user = db.get(User, created_user.id)
+
+    assert settings_page.status_code == 200
+    assert "User management" in settings_page.text
+    assert 'href="/users"' in settings_page.text
+    assert 'href="/users/new"' in settings_page.text
+    assert new_user_page.status_code == 200
+    assert "Role" in new_user_page.text
+    assert create_response.status_code == 303
+    assert update_response.status_code == 303
+    assert users_page.status_code == 200
+    assert "Role User" in users_page.text
+    assert updated_user.role_id == manager_role_id
+    assert updated_user.can_receive_sales_credit is True
