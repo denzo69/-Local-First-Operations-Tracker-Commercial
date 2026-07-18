@@ -43,6 +43,19 @@ def test_first_admin_setup_enables_login_and_redirects_home():
     assert "First Admin" in home.text
 
 
+def test_first_admin_setup_uses_translated_name_label():
+    with TestClient(app) as client:
+        client.post(
+            "/settings",
+            data={"company_name": "Test", "default_vat_percent": "24", "receipt_prefix": "T-", "language": "fi"},
+            follow_redirects=False,
+        )
+        response = client.get("/setup")
+
+    assert response.status_code == 200
+    assert '<label class="form-label" for="name">Nimi</label>' in response.text
+
+
 def test_setup_remains_available_when_only_seller_users_exist():
     create_login_user("Existing Seller", "seller", password="secret123")
 
