@@ -154,6 +154,23 @@ def test_dashboard_v2_renders_in_finnish_and_english_with_mobile_nav_groups():
     assert 'aria-controls="mobileNavStock"' in finnish.text
 
 
+def test_dashboard_cards_render_in_requested_operational_order():
+    with TestClient(app) as client:
+        response = client.get("/")
+
+    assert response.status_code == 200
+    card_ids = [
+        'id="quickActionsTitle"',
+        'id="workQueuesTitle"',
+        'id="upcomingJobsTitle"',
+        'id="recentActivityTitle"',
+        'id="salesInvoicingTitle"',
+        'id="dailyClosingTitle"',
+    ]
+    positions = [response.text.index(card_id) for card_id in card_ids]
+    assert positions == sorted(positions)
+
+
 def test_dashboard_work_queues_include_work_orders_only_not_quotes_or_delivery_notes():
     today = date.today()
     with SessionLocal() as db:

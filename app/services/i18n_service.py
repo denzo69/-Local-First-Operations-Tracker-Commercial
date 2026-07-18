@@ -12,6 +12,7 @@ class SafeTranslations(dict):
 TRANSLATIONS = {
     "en": {
         "dashboard": "Dashboard",
+        "toggle_sidebar": "Show or hide sidebar",
         "customers": "Customers",
         "jobs": "Work orders",
         "work_order": "Work order",
@@ -540,6 +541,7 @@ TRANSLATIONS = {
     },
     "fi": {
         "dashboard": "Työpöytä",
+        "toggle_sidebar": "Näytä tai piilota sivupalkki",
         "customers": "Asiakkaat",
         "jobs": "Työmääräimet",
         "work_order": "Työmääräin",

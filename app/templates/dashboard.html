@@ -13,9 +13,172 @@
 </section>
 
 <div class="dashboard-board" aria-label="{{ t.dashboard }}">
-    <div class="dashboard-column">
-        {% if dashboard_visibility.daily_closing %}
-        <section class="dashboard-card" id="criticalTasks" aria-labelledby="dailyClosingTitle">
+    {% if dashboard_visibility.quick_actions %}
+    <section class="dashboard-card" aria-labelledby="quickActionsTitle">
+        <div class="dashboard-card-header">
+            <div>
+                <h2 class="dashboard-card-title" id="quickActionsTitle">{{ t.quick_actions }}</h2>
+                <p class="dashboard-card-subtitle">{{ t.most_used_actions }}</p>
+            </div>
+        </div>
+        <div class="dashboard-card-body">
+            <div class="dashboard-button-row dashboard-button-grid">
+                <a class="btn btn-primary" href="/sales/quick">{{ t.quick_sale }}</a>
+                <a class="btn btn-primary" href="/work-orders/new">{{ t.create_work_order }}</a>
+                <a class="btn btn-primary" href="/customers/new">{{ t.new_customer }}</a>
+                <a class="btn btn-outline-secondary" href="/quotes/new">{{ t.create_quote }}</a>
+            </div>
+            <p class="muted mt-2">{{ t.quick_actions_help }}</p>
+        </div>
+    </section>
+    {% endif %}
+
+    {% if dashboard_visibility.work_queues %}
+    <section class="dashboard-card" aria-labelledby="workQueuesTitle">
+        <div class="dashboard-card-header">
+            <div>
+                <h2 class="dashboard-card-title" id="workQueuesTitle">{{ t.work_queues }}</h2>
+                <p class="dashboard-card-subtitle">{{ t.work_orders }}</p>
+            </div>
+        </div>
+        <div class="dashboard-card-body">
+            <div class="dashboard-pill-group">
+                <a class="dashboard-pill dashboard-pill-danger" href="/work-orders?view=active">
+                    {{ t.overdue }}: <strong>{{ overdue_jobs|length }}</strong>
+                </a>
+                <a class="dashboard-pill dashboard-pill-warning" href="/work-orders?view=active">
+                    {{ t.due_today }}: <strong>{{ due_today_jobs|length }}</strong>
+                </a>
+                <a class="dashboard-pill dashboard-pill-success" href="/work-orders?view=ready">
+                    {{ t.ready_for_pickup }}: <strong>{{ ready_jobs|length }}</strong>
+                </a>
+                <a class="dashboard-pill" href="/work-orders?view=active">
+                    {{ t.upcoming }}: <strong>{{ upcoming_jobs|length }}</strong>
+                </a>
+            </div>
+            {% if due_today_jobs or overdue_jobs or ready_jobs %}
+            <p class="muted mt-2">{{ t.critical_tasks_help }}</p>
+            {% else %}
+            <div class="empty-state compact mt-2">
+                <span class="empty-icon" aria-hidden="true">OK</span>
+                <p>{{ t.no_urgent_jobs }}</p>
+            </div>
+            {% endif %}
+            <div class="dashboard-button-row">
+                <a class="btn btn-outline-secondary" href="/work-orders?view=active">{{ t.open_work_order_list }}</a>
+                <a class="btn btn-primary" href="/work-orders/new">{{ t.create_work_order }}</a>
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
+    {% if dashboard_visibility.upcoming_jobs %}
+    <section class="dashboard-card" aria-labelledby="upcomingJobsTitle">
+        <div class="dashboard-card-header">
+            <div>
+                <h2 class="dashboard-card-title" id="upcomingJobsTitle">{{ t.upcoming_jobs }}</h2>
+                <p class="dashboard-card-subtitle">{{ t.next_days }}</p>
+            </div>
+            <span class="dashboard-badge dashboard-badge-success">{{ upcoming_jobs|length }}</span>
+        </div>
+        <div class="dashboard-card-body">
+            {% if upcoming_jobs %}
+            <div class="dashboard-list">
+                {% for job in upcoming_jobs %}
+                <a href="/work-orders/{{ job.id }}">
+                    <strong>{{ job.title }}</strong>
+                    <span>{{ job.requested_pickup_date or "-" }} &middot; {{ job.customer.name if job.customer else t.no_customer }} &middot; {{ status_label(job.status.name if job.status else none) }}</span>
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state compact">
+                <span class="empty-icon" aria-hidden="true">WO</span>
+                <div>
+                    <p>{{ t.no_upcoming_jobs }}</p>
+                    <p class="muted">{{ t.create_work_order_to_plan_ahead }}</p>
+                </div>
+            </div>
+            {% endif %}
+            <div class="dashboard-button-row">
+                <a class="btn btn-outline-secondary" href="/work-orders?view=active">{{ t.view_all }}</a>
+                <a class="btn btn-primary" href="/work-orders/new">{{ t.create_work_order }}</a>
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
+    {% if dashboard_visibility.recent_activity %}
+    <section class="dashboard-card" aria-labelledby="recentActivityTitle">
+        <div class="dashboard-card-header">
+            <div>
+                <h2 class="dashboard-card-title" id="recentActivityTitle">{{ t.recent_activity }}</h2>
+                <p class="dashboard-card-subtitle">{{ t.audit_log_summary }}</p>
+            </div>
+        </div>
+        <div class="dashboard-card-body">
+            {% if activity_feed %}
+            <div class="dashboard-list">
+                {% for item in activity_feed %}
+                <a href="{{ item.href }}">
+                    <strong>{{ t[item.label_key] }}</strong>
+                    <span>{{ item.detail }}</span>
+                    <small>{{ item.created_at }}</small>
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p>{{ t.no_activity_today }}</p>
+            {% endif %}
+            <p class="muted mt-2">{{ t.technical_audit_log_help }}</p>
+            <div class="dashboard-button-row">
+                <a class="btn btn-link px-0" href="/audit-log">{{ t.view_technical_audit_log }}</a>
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
+    {% if dashboard_visibility.sales_invoicing %}
+    <section class="dashboard-card" aria-labelledby="salesInvoicingTitle">
+        <div class="dashboard-card-header">
+            <div>
+                <h2 class="dashboard-card-title" id="salesInvoicingTitle">{{ t.sales_and_invoicing }}</h2>
+                <p class="dashboard-card-subtitle">{{ t.todays_sales }} / {{ t.invoice_queue }}</p>
+            </div>
+            <span class="dashboard-badge dashboard-badge-{{ 'warning' if invoice_action_required else 'success' }}">
+                {{ t.invoice_attention if invoice_action_required else t.dashboard_status_ok }}
+            </span>
+        </div>
+        <div class="dashboard-card-body">
+            <dl class="dashboard-metrics">
+                <div><dt>{{ t.todays_sales }}</dt><dd>{{ todays_sales_total }}</dd></div>
+                <div><dt>{{ t.refunds }}</dt><dd>{{ todays_refund_total }}</dd></div>
+                <div><dt>{{ t.invoice_attention }}</dt><dd>{{ invoice_action_required|length }}</dd></div>
+            </dl>
+            <div class="dashboard-pill-group">
+                <a class="dashboard-pill" href="/sales/invoice-queue?view=all">{{ t.invoice_history }}</a>
+                <a class="dashboard-pill" href="/sales">{{ t.sales_history }}</a>
+            </div>
+            {% if invoice_action_required %}
+            <div class="dashboard-list mt-2">
+                {% for sale in invoice_action_required[:3] %}
+                <a href="/sales/{{ sale.id }}">
+                    <strong>{{ t[invoice_follow_up_status(sale)] }}</strong>
+                    <span>{{ sale.document_number or ("#" ~ sale.id) }}{% if sale.due_date %} &middot; {{ t.due_date }} {{ sale.due_date }}{% endif %}</span>
+                </a>
+                {% endfor %}
+            </div>
+            {% endif %}
+            <div class="dashboard-button-row">
+                <a class="btn btn-outline-secondary" href="/sales/invoice-queue">{{ t.invoice_queue }}</a>
+                <a class="btn btn-outline-secondary" href="/reports">{{ t.reports }}</a>
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
+    {% if dashboard_visibility.daily_closing %}
+    <section class="dashboard-card" id="criticalTasks" aria-labelledby="dailyClosingTitle">
             <div class="dashboard-card-header">
                 <div>
                     <h2 class="dashboard-card-title" id="dailyClosingTitle">{{ t.daily_closing }}</h2>
@@ -31,175 +194,8 @@
                     <a class="btn btn-outline-secondary" href="/daily-closings">{{ t.view_history }}</a>
                 </div>
             </div>
-        </section>
-        {% endif %}
-
-        {% if dashboard_visibility.work_queues %}
-        <section class="dashboard-card" aria-labelledby="workQueuesTitle">
-            <div class="dashboard-card-header">
-                <div>
-                    <h2 class="dashboard-card-title" id="workQueuesTitle">{{ t.work_queues }}</h2>
-                    <p class="dashboard-card-subtitle">{{ t.work_orders }}</p>
-                </div>
-            </div>
-            <div class="dashboard-card-body">
-                <div class="dashboard-pill-group">
-                    <a class="dashboard-pill dashboard-pill-danger" href="/work-orders?view=active">
-                        {{ t.overdue }}: <strong>{{ overdue_jobs|length }}</strong>
-                    </a>
-                    <a class="dashboard-pill dashboard-pill-warning" href="/work-orders?view=active">
-                        {{ t.due_today }}: <strong>{{ due_today_jobs|length }}</strong>
-                    </a>
-                    <a class="dashboard-pill dashboard-pill-success" href="/work-orders?view=ready">
-                        {{ t.ready_for_pickup }}: <strong>{{ ready_jobs|length }}</strong>
-                    </a>
-                    <a class="dashboard-pill" href="/work-orders?view=active">
-                        {{ t.upcoming }}: <strong>{{ upcoming_jobs|length }}</strong>
-                    </a>
-                </div>
-                {% if due_today_jobs or overdue_jobs or ready_jobs %}
-                <p class="muted mt-2">{{ t.critical_tasks_help }}</p>
-                {% else %}
-                <div class="empty-state compact mt-2">
-                    <span class="empty-icon" aria-hidden="true">OK</span>
-                    <p>{{ t.no_urgent_jobs }}</p>
-                </div>
-                {% endif %}
-                <div class="dashboard-button-row">
-                    <a class="btn btn-outline-secondary" href="/work-orders?view=active">{{ t.open_work_order_list }}</a>
-                    <a class="btn btn-primary" href="/work-orders/new">{{ t.create_work_order }}</a>
-                </div>
-            </div>
-        </section>
-        {% endif %}
-
-        {% if dashboard_visibility.sales_invoicing %}
-        <section class="dashboard-card" aria-labelledby="salesInvoicingTitle">
-            <div class="dashboard-card-header">
-                <div>
-                    <h2 class="dashboard-card-title" id="salesInvoicingTitle">{{ t.sales_and_invoicing }}</h2>
-                    <p class="dashboard-card-subtitle">{{ t.todays_sales }} / {{ t.invoice_queue }}</p>
-                </div>
-                <span class="dashboard-badge dashboard-badge-{{ 'warning' if invoice_action_required else 'success' }}">
-                    {{ t.invoice_attention if invoice_action_required else t.dashboard_status_ok }}
-                </span>
-            </div>
-            <div class="dashboard-card-body">
-                <dl class="dashboard-metrics">
-                    <div><dt>{{ t.todays_sales }}</dt><dd>{{ todays_sales_total }}</dd></div>
-                    <div><dt>{{ t.refunds }}</dt><dd>{{ todays_refund_total }}</dd></div>
-                    <div><dt>{{ t.invoice_attention }}</dt><dd>{{ invoice_action_required|length }}</dd></div>
-                </dl>
-                <div class="dashboard-pill-group">
-                    <a class="dashboard-pill" href="/sales/invoice-queue?view=all">{{ t.invoice_history }}</a>
-                    <a class="dashboard-pill" href="/sales">{{ t.sales_history }}</a>
-                </div>
-                {% if invoice_action_required %}
-                <div class="dashboard-list mt-2">
-                    {% for sale in invoice_action_required[:3] %}
-                    <a href="/sales/{{ sale.id }}">
-                        <strong>{{ t[invoice_follow_up_status(sale)] }}</strong>
-                        <span>{{ sale.document_number or ("#" ~ sale.id) }}{% if sale.due_date %} &middot; {{ t.due_date }} {{ sale.due_date }}{% endif %}</span>
-                    </a>
-                    {% endfor %}
-                </div>
-                {% endif %}
-                <div class="dashboard-button-row">
-                    <a class="btn btn-outline-secondary" href="/sales/invoice-queue">{{ t.invoice_queue }}</a>
-                    <a class="btn btn-outline-secondary" href="/reports">{{ t.reports }}</a>
-                </div>
-            </div>
-        </section>
-        {% endif %}
-    </div>
-
-    <div class="dashboard-column">
-        {% if dashboard_visibility.quick_actions %}
-        <section class="dashboard-card" aria-labelledby="quickActionsTitle">
-            <div class="dashboard-card-header">
-                <div>
-                    <h2 class="dashboard-card-title" id="quickActionsTitle">{{ t.quick_actions }}</h2>
-                    <p class="dashboard-card-subtitle">{{ t.most_used_actions }}</p>
-                </div>
-            </div>
-            <div class="dashboard-card-body">
-                <div class="dashboard-button-row dashboard-button-grid">
-                    <a class="btn btn-primary" href="/sales/quick">{{ t.quick_sale }}</a>
-                    <a class="btn btn-primary" href="/work-orders/new">{{ t.create_work_order }}</a>
-                    <a class="btn btn-primary" href="/customers/new">{{ t.new_customer }}</a>
-                    <a class="btn btn-outline-secondary" href="/quotes/new">{{ t.create_quote }}</a>
-                </div>
-                <p class="muted mt-2">{{ t.quick_actions_help }}</p>
-            </div>
-        </section>
-        {% endif %}
-
-        {% if dashboard_visibility.upcoming_jobs %}
-        <section class="dashboard-card" aria-labelledby="upcomingJobsTitle">
-            <div class="dashboard-card-header">
-                <div>
-                    <h2 class="dashboard-card-title" id="upcomingJobsTitle">{{ t.upcoming_jobs }}</h2>
-                    <p class="dashboard-card-subtitle">{{ t.next_days }}</p>
-                </div>
-                <span class="dashboard-badge dashboard-badge-success">{{ upcoming_jobs|length }}</span>
-            </div>
-            <div class="dashboard-card-body">
-                {% if upcoming_jobs %}
-                <div class="dashboard-list">
-                    {% for job in upcoming_jobs %}
-                    <a href="/work-orders/{{ job.id }}">
-                        <strong>{{ job.title }}</strong>
-                        <span>{{ job.requested_pickup_date or "-" }} &middot; {{ job.customer.name if job.customer else t.no_customer }} &middot; {{ status_label(job.status.name if job.status else none) }}</span>
-                    </a>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <div class="empty-state compact">
-                    <span class="empty-icon" aria-hidden="true">WO</span>
-                    <div>
-                        <p>{{ t.no_upcoming_jobs }}</p>
-                        <p class="muted">{{ t.create_work_order_to_plan_ahead }}</p>
-                    </div>
-                </div>
-                {% endif %}
-                <div class="dashboard-button-row">
-                    <a class="btn btn-outline-secondary" href="/work-orders?view=active">{{ t.view_all }}</a>
-                    <a class="btn btn-primary" href="/work-orders/new">{{ t.create_work_order }}</a>
-                </div>
-            </div>
-        </section>
-        {% endif %}
-
-        {% if dashboard_visibility.recent_activity %}
-        <section class="dashboard-card" aria-labelledby="recentActivityTitle">
-            <div class="dashboard-card-header">
-                <div>
-                    <h2 class="dashboard-card-title" id="recentActivityTitle">{{ t.recent_activity }}</h2>
-                    <p class="dashboard-card-subtitle">{{ t.audit_log_summary }}</p>
-                </div>
-            </div>
-            <div class="dashboard-card-body">
-                {% if activity_feed %}
-                <div class="dashboard-list">
-                    {% for item in activity_feed %}
-                    <a href="{{ item.href }}">
-                        <strong>{{ t[item.label_key] }}</strong>
-                        <span>{{ item.detail }}</span>
-                        <small>{{ item.created_at }}</small>
-                    </a>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <p>{{ t.no_activity_today }}</p>
-                {% endif %}
-                <p class="muted mt-2">{{ t.technical_audit_log_help }}</p>
-                <div class="dashboard-button-row">
-                    <a class="btn btn-link px-0" href="/audit-log">{{ t.view_technical_audit_log }}</a>
-                </div>
-            </div>
-        </section>
-        {% endif %}
-    </div>
+    </section>
+    {% endif %}
 </div>
 
 {% if not dashboard_visibility.daily_closing and not dashboard_visibility.work_queues and not dashboard_visibility.sales_invoicing and not dashboard_visibility.quick_actions and not dashboard_visibility.upcoming_jobs and not dashboard_visibility.recent_activity %}

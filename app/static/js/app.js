@@ -39,6 +39,22 @@ document.querySelectorAll("[data-sidebar-group-toggle]").forEach((button) => {
     });
 });
 
+document.querySelectorAll("[data-sidebar-shell-toggle]").forEach((button) => {
+    const storageKey = "opsTrackerSidebarCollapsed";
+    const applyState = (collapsed) => {
+        document.body.classList.toggle("sidebar-collapsed", collapsed);
+        button.setAttribute("aria-pressed", String(collapsed));
+    };
+
+    applyState(window.localStorage?.getItem(storageKey) === "true");
+
+    button.addEventListener("click", () => {
+        const collapsed = !document.body.classList.contains("sidebar-collapsed");
+        applyState(collapsed);
+        window.localStorage?.setItem(storageKey, String(collapsed));
+    });
+});
+
 document.querySelectorAll("[data-live-filter-form]").forEach((form) => {
     const input = form.querySelector("[data-live-filter-input]");
     const target = document.querySelector(form.dataset.liveFilterTarget);

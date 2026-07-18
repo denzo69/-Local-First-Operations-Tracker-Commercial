@@ -70,6 +70,7 @@ button:focus-visible,
     color: #fff;
     border-right: 1px solid rgba(255, 255, 255, 0.08);
     z-index: 1030;
+    transition: transform .18s ease;
 }
 
 .sidebar-brand {
@@ -284,6 +285,7 @@ button:focus-visible,
 
 .app-shell {
     min-height: 100vh;
+    transition: margin-left .18s ease;
 }
 
 .app-topbar {
@@ -299,6 +301,16 @@ button:focus-visible,
     background: rgba(255, 255, 255, .96);
     border-bottom: 1px solid var(--border);
     backdrop-filter: blur(10px);
+    transition: left .18s ease;
+}
+
+.sidebar-shell-toggle {
+    align-items: center;
+    justify-content: center;
+    width: 2.45rem;
+    min-width: 2.45rem;
+    height: 2.45rem;
+    padding: 0;
 }
 
 .topbar-title {
@@ -915,6 +927,18 @@ button:focus-visible,
 
     .app-topbar {
         left: var(--sidebar-width);
+    }
+
+    body.sidebar-collapsed .app-sidebar {
+        transform: translateX(calc(-1 * var(--sidebar-width)));
+    }
+
+    body.sidebar-collapsed .app-shell {
+        margin-left: 0;
+    }
+
+    body.sidebar-collapsed .app-topbar {
+        left: 0;
     }
 }
 
