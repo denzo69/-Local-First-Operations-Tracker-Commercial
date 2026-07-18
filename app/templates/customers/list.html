@@ -3,15 +3,15 @@
 {% block content %}
 <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
     <div>
-        <h1 class="h3 mb-1">Customers</h1>
-        <p class="text-muted mb-0">Customer register for work orders and receipts.</p>
+        <h1 class="h3 mb-1">{{ t.customers }}</h1>
+        <p class="text-muted mb-0">{{ t.customer_register_help }}</p>
     </div>
-    <a class="btn btn-primary" href="/customers/new">+ New customer</a>
+    <a class="btn btn-primary" href="/customers/new">{{ t.new_customer }}</a>
 </div>
 
 <form class="mb-3" method="get" action="/customers" data-live-filter-form data-live-filter-target="#customerList">
     <div class="input-group">
-        <input class="form-control" name="q" value="{{ q }}" placeholder="Search customers, phone, email, company" data-live-filter-input>
+        <input class="form-control" name="q" value="{{ q }}" placeholder="{{ t.search_customer_placeholder }}" data-live-filter-input>
         <button class="btn btn-outline-secondary" type="submit">{{ t.search }}</button>
     </div>
     <div class="form-text" data-live-filter-count></div>
@@ -27,17 +27,17 @@
                     <div>
                         <div class="fw-semibold">{{ customer.name }}</div>
                         <div class="text-muted small">
-                            {{ customer.company_name or customer.phone or customer.email or "No contact details yet" }}
+                            {{ customer.company_name or customer.phone or customer.email or t.no_contact_details }}
                         </div>
                     </div>
-                    <span class="text-muted">View</span>
+                    <span class="text-muted">{{ t.view }}</span>
                 </div>
             </a>
             {% endfor %}
             <div class="p-4 text-muted d-none" data-live-filter-empty>{{ t.no_results }}</div>
         </div>
         {% else %}
-        <div class="p-4 text-muted">No customers yet.</div>
+        <div class="p-4 empty-state compact"><span class="empty-icon" aria-hidden="true">CU</span><div><p>{{ t.no_customers_yet }}</p><a class="btn btn-primary mt-2" href="/customers/new">{{ t.create_first_customer }}</a></div></div>
         {% endif %}
     </div>
 </div>
