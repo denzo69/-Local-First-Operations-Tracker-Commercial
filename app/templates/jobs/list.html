@@ -55,6 +55,7 @@
             {% else %}
             {{ t.no_documents_yet }}
             {% endif %}
+            <div class="mt-3"><a class="btn btn-primary" href="{{ route_base }}/new">{{ t["new_" ~ document_label_key] }}</a></div>
         </div>
         {% endif %}
     </div>
