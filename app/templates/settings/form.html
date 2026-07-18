@@ -11,11 +11,11 @@
     <div class="col-md-6">
         <div class="card shadow-sm border-0 h-100">
             <div class="card-body">
-                <h2 class="h5">{{ t.user_management }}</h2>
-                <p class="text-muted">{{ t.user_management_help }}</p>
+                <h2 class="h5">{{ t.employees_and_permissions }}</h2>
+                <p class="text-muted">{{ t.employees_and_permissions_help }}</p>
                 <div class="d-flex flex-wrap gap-2">
-                    <a class="btn btn-primary" href="/users">{{ t.manage_users }}</a>
-                    <a class="btn btn-outline-secondary" href="/users/new">{{ t.new_user }}</a>
+                    <a class="btn btn-primary" href="/users/new">{{ t.add_employee }}</a>
+                    <a class="btn btn-outline-secondary" href="/users">{{ t.manage_permissions }}</a>
                 </div>
             </div>
         </div>
@@ -31,6 +31,26 @@
     </div>
 </div>
 {% endif %}
+
+<section class="card shadow-sm border-0 mb-3" aria-labelledby="gettingStartedTitle">
+    <div class="card-body">
+        <h2 class="h5" id="gettingStartedTitle">{{ t.help_and_getting_started }}</h2>
+        <p class="text-muted">{{ t.help_and_getting_started_intro }}</p>
+        <ol class="mb-3">
+            <li>{{ t.help_step_customer }}</li>
+            <li>{{ t.help_step_document }}</li>
+            <li>{{ t.help_step_sale }}</li>
+            <li>{{ t.help_step_closing }}</li>
+        </ol>
+        <div class="alert alert-info mb-3">{{ t.help_inventory_rule }}</div>
+        <div class="d-flex flex-wrap gap-2">
+            <a class="btn btn-outline-secondary" href="/customers/new">{{ t.new_customer }}</a>
+            <a class="btn btn-outline-secondary" href="/work-orders/new">{{ t.create_work_order }}</a>
+            <a class="btn btn-outline-secondary" href="/sales/quick">{{ t.quick_sale }}</a>
+            <a class="btn btn-outline-secondary" href="/daily-closings">{{ t.daily_closing }}</a>
+        </div>
+    </div>
+</section>
 
 <form class="card shadow-sm border-0" method="post" action="/settings">
     <input type="hidden" name="dashboard_settings_present" value="true">
