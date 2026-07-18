@@ -185,8 +185,9 @@ def test_dashboard_leads_with_work_orders_and_uses_natural_overview_copy():
 
     assert response.status_code == 200
     assert "Today&#39;s operations overview" in response.text
-    work_order_position = response.text.index('href="/work-orders/new"')
-    quick_sale_position = response.text.index('href="/sales/quick"')
+    quick_actions = response.text[response.text.index('id="quickActionsTitle"'):]
+    work_order_position = quick_actions.index('href="/work-orders/new"')
+    quick_sale_position = quick_actions.index('href="/sales/quick"')
     assert work_order_position < quick_sale_position
 
 
