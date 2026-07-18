@@ -91,12 +91,54 @@ button:focus-visible,
 }
 
 .sidebar-group-label {
+    display: block;
+    width: 100%;
     color: #9facbf;
     font-size: .72rem;
     font-weight: 700;
     letter-spacing: .04em;
     text-transform: uppercase;
     padding: .65rem .65rem .35rem;
+}
+
+.sidebar-group-toggle-desktop {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border: 0;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+}
+
+.sidebar-group-toggle-desktop::after {
+    content: "+";
+    color: #dce5f2;
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.sidebar-group-toggle-desktop[aria-expanded="true"]::after {
+    content: "−";
+}
+
+.sidebar-group-toggle-desktop:hover,
+.sidebar-group-toggle-desktop:focus {
+    color: #dce5f2;
+}
+
+.sidebar-group-toggle-desktop:focus-visible {
+    outline: 3px solid rgba(255, 255, 255, 0.24);
+    outline-offset: 2px;
+}
+
+.sidebar-group-items {
+    display: grid;
+    gap: .2rem;
+}
+
+.sidebar-group-items[hidden] {
+    display: none;
 }
 
 .sidebar-link {
