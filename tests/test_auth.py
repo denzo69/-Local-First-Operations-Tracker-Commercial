@@ -43,6 +43,52 @@ def test_first_admin_setup_enables_login_and_redirects_home():
     assert "First Admin" in home.text
 
 
+def test_setup_remains_available_when_only_seller_users_exist():
+    create_login_user("Existing Seller", "seller", password="secret123")
+
+    with TestClient(app) as client:
+        login_page = client.get("/login")
+        setup_page = client.get("/setup")
+        setup = client.post(
+            "/setup",
+            data={
+                "name": "Recovery Admin",
+                "login_name": "recovery.admin",
+                "password": "secret123",
+            },
+            follow_redirects=False,
+        )
+        users_page = client.get("/users")
+
+    assert login_page.status_code == 200
+    assert "Create first admin" in login_page.text
+    assert setup_page.status_code == 200
+    assert setup.status_code == 303
+    assert setup.headers["location"] == "/"
+    assert users_page.status_code == 200
+    assert "Recovery Admin" in users_page.text
+
+
+def test_setup_is_blocked_after_admin_exists():
+    create_login_user("Existing Admin", "admin", password="secret123")
+
+    with TestClient(app) as client:
+        setup_page = client.get("/setup", follow_redirects=False)
+        setup_post = client.post(
+            "/setup",
+            data={
+                "name": "Second Admin",
+                "login_name": "second.admin",
+                "password": "secret123",
+            },
+            follow_redirects=False,
+        )
+
+    assert setup_page.status_code == 303
+    assert setup_page.headers["location"] == "/login"
+    assert setup_post.status_code == 409
+
+
 def test_configured_auth_redirects_anonymous_user_to_login():
     create_login_user("Auth Admin", "admin")
 

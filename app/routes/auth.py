@@ -7,6 +7,7 @@ from app.models import User
 from app.services.audit_service import log_audit_event
 from app.services.auth_service import (
     COOKIE_NAME,
+    admin_auth_is_configured,
     authenticate_user,
     auth_is_configured,
     create_session_token,
@@ -27,6 +28,7 @@ def login_form(request: Request, next: str = "/", db: Session = Depends(get_db))
             "page_title": "Login",
             "next_url": _safe_next(next),
             "auth_configured": auth_is_configured(db),
+            "admin_configured": admin_auth_is_configured(db),
             "error_key": None,
         },
     )
@@ -49,6 +51,7 @@ def login(
                 "page_title": "Login",
                 "next_url": _safe_next(next_url),
                 "auth_configured": auth_is_configured(db),
+                "admin_configured": admin_auth_is_configured(db),
                 "error_key": "invalid_login",
             },
             status_code=401,
@@ -74,7 +77,7 @@ def logout():
 
 @router.get("/setup", response_class=HTMLResponse)
 def setup_form(request: Request, db: Session = Depends(get_db)):
-    if auth_is_configured(db):
+    if admin_auth_is_configured(db):
         return RedirectResponse(url="/login", status_code=303)
     return templates.TemplateResponse(
         "auth/setup.html",
@@ -94,8 +97,8 @@ def create_first_admin(
     password: str = Form(...),
     db: Session = Depends(get_db),
 ):
-    if auth_is_configured(db):
-        raise HTTPException(status_code=409, detail="Authentication is already configured.")
+    if admin_auth_is_configured(db):
+        raise HTTPException(status_code=409, detail="Admin user is already configured.")
     if len(password) < 8:
         return templates.TemplateResponse(
             "auth/setup.html",
@@ -108,6 +111,8 @@ def create_first_admin(
         )
     if not name.strip() or not login_name.strip():
         raise HTTPException(status_code=400, detail="Name and login name are required.")
+    if db.query(User).filter(User.login_name == login_name.strip()).first():
+        raise HTTPException(status_code=400, detail="Login name is already in use.")
 
     role = ensure_first_admin_role(db)
     user = User(

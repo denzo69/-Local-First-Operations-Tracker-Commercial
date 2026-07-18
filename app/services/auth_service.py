@@ -76,6 +76,20 @@ def auth_is_configured(db: Session) -> bool:
     )
 
 
+def admin_auth_is_configured(db: Session) -> bool:
+    return (
+        db.query(User)
+        .join(User.role)
+        .filter(
+            User.is_active.is_(True),
+            User.password_hash.isnot(None),
+            Role.code == "admin",
+        )
+        .first()
+        is not None
+    )
+
+
 def authenticate_user(db: Session, login_name: str, password: str) -> User | None:
     user = (
         db.query(User)
