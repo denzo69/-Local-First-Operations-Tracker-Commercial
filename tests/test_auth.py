@@ -294,7 +294,11 @@ def test_admin_can_manage_users_and_roles_from_settings():
         updated_user = db.get(User, created_user.id)
 
     assert settings_page.status_code == 200
-    assert "User management" in settings_page.text
+    assert "Employees and permissions" in settings_page.text
+    assert "Add employee" in settings_page.text
+    assert "Manage permissions" in settings_page.text
+    assert "Help and getting started" in settings_page.text
+    assert "Quotes and delivery notes do not reduce stock" in settings_page.text
     assert 'href="/users"' in settings_page.text
     assert 'href="/users/new"' in settings_page.text
     assert new_user_page.status_code == 200
