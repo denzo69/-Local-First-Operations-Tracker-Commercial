@@ -1,44 +1,69 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-start gap-3 mb-3">
     <div>
         <h1>{{ t.invoice_queue }}</h1>
-        <p class="text-muted">{{ t.invoice_queue_description }}</p>
+        <p class="text-muted mb-0">{{ t.invoice_queue_description }}</p>
     </div>
-    <a class="btn btn-outline-secondary" href="/sales">{{ t.sales }}</a>
+    <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-outline-secondary" href="/sales">{{ t.sales_history }}</a>
+        <a class="btn btn-outline-secondary" href="/sales/invoice-queue?view=all">{{ t.invoice_history }}</a>
+    </div>
 </div>
+
+<div class="nav nav-pills gap-2 mb-3">
+    {% for tab in tabs %}
+    <a class="nav-link {% if tab.key == view %}active{% endif %}" href="{{ tab.href }}">
+        {{ t[tab.label_key] }}
+        <span class="badge text-bg-light ms-1">{{ tab.count }}</span>
+    </a>
+    {% endfor %}
+</div>
+
 <div class="card">
     <div class="table-responsive responsive-card-table">
         <table class="table mb-0">
             <thead>
             <tr>
-                <th>{{ t.sales }}</th>
+                <th>{{ t.document }}</th>
                 <th>{{ t.customer }}</th>
-                <th>{{ t.external_invoice_number }}</th>
-                <th>{{ t.due_date }}</th>
-                <th>{{ t.next_follow_up }}</th>
                 <th>{{ t.total }}</th>
-                <th>{{ t.paid }}</th>
+                <th>{{ t.time }}</th>
+                <th>{{ t.due_date }}</th>
+                <th>{{ t.settlement }}</th>
+                <th>{{ t.external_invoice_number }}</th>
+                <th>{{ t.source_document }}</th>
                 <th>{{ t.balance_due }}</th>
-                <th>{{ t.status }}</th>
+                <th>{{ t.action }}</th>
             </tr>
             </thead>
             <tbody>
-            {% for sale in sales %}
-            {% set derived_status = follow_up_status(sale) %}
+            {% for row in sales %}
+            {% set sale = row.sale %}
             <tr>
-                <td data-label="{{ t.sales }}"><a href="/sales/{{ sale.id }}">#{{ sale.id }}</a></td>
-                <td data-label="{{ t.customer }}">{{ sale.work_order.customer.name if sale.work_order and sale.work_order.customer else "-" }}</td>
-                <td data-label="{{ t.external_invoice_number }}">{{ sale.external_invoice_number or "-" }}</td>
-                <td data-label="{{ t.due_date }}">{{ sale.due_date or "-" }}</td>
-                <td data-label="{{ t.next_follow_up }}">{{ sale.next_follow_up_at.date() if sale.next_follow_up_at else "-" }}</td>
+                <td data-label="{{ t.document }}"><a href="/sales/{{ sale.id }}">{{ sale.document_number or ("#" ~ sale.id) }}</a></td>
+                <td data-label="{{ t.customer }}">{{ sale.customer.name if sale.customer else (sale.customer_name_snapshot or (sale.work_order.customer.name if sale.work_order and sale.work_order.customer else "-")) }}</td>
                 <td data-label="{{ t.total }}">{{ sale.total }}</td>
-                <td data-label="{{ t.paid }}">{{ sale.payments|sum(attribute='amount') }}</td>
-                <td data-label="{{ t.balance_due }}">{{ sale.total - sale.payments|sum(attribute='amount') }}</td>
-                <td data-label="{{ t.status }}"><span class="status-badge {% if derived_status in ['payment_check_due', 'reminder_due'] %}status-warning{% elif derived_status == 'paid' %}status-success{% else %}status-info{% endif %}">{{ t[derived_status] }}</span></td>
+                <td data-label="{{ t.time }}">{{ sale.sold_at }}</td>
+                <td data-label="{{ t.due_date }}">{{ sale.due_date or "-" }}</td>
+                <td data-label="{{ t.settlement }}">
+                    <span class="status-badge {% if row.derived_status in ['payment_check_due', 'reminder_due', 'unpaid'] %}status-warning{% elif row.derived_status == 'paid' %}status-success{% elif row.derived_status == 'cancelled' %}status-secondary{% else %}status-info{% endif %}">
+                        {{ t[row.derived_status] }}
+                    </span>
+                </td>
+                <td data-label="{{ t.external_invoice_number }}">{{ sale.external_invoice_number or "-" }}</td>
+                <td data-label="{{ t.source_document }}">
+                    {% if sale.work_order %}
+                    <a href="/work-orders/{{ sale.work_order.id }}">{{ sale.work_order.receipt_number or sale.work_order.title }}</a>
+                    {% else %}
+                    -
+                    {% endif %}
+                </td>
+                <td data-label="{{ t.balance_due }}">{{ row.balance_due }}</td>
+                <td data-label="{{ t.action }}"><a href="/sales/{{ sale.id }}">{{ t.view }}</a></td>
             </tr>
             {% else %}
-            <tr><td colspan="9" class="text-muted">{{ t.no_invoice_followups }}</td></tr>
+            <tr><td colspan="10" class="text-muted">{{ t.no_invoice_followups }}</td></tr>
             {% endfor %}
             </tbody>
         </table>

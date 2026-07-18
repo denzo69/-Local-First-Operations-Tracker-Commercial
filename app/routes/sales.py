@@ -30,6 +30,13 @@ from app.services.sales_service import (
     transfer_sale_to_invoicing,
     user_can_override_sale_seller,
 )
+from app.services.invoice_query_service import (
+    INVOICE_QUEUE_VIEWS,
+    build_invoice_tabs,
+    filter_invoice_sales,
+    invoice_related_sales,
+    invoice_row,
+)
 from app.template_context import templates
 
 router = APIRouter(prefix="/sales", tags=["sales"])
@@ -187,26 +194,19 @@ async def create_quick_sale(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/invoice-queue", response_class=HTMLResponse)
-def invoice_queue(request: Request, db: Session = Depends(get_db)):
-    sales = (
-        db.query(Sale)
-        .filter(
-            or_(
-                Sale.settlement_status.in_(list(INVOICE_ACTIVE_STATUSES)),
-                Sale.payment_method == "invoice",
-                Sale.external_invoice_number.is_not(None),
-            )
-        )
-        .order_by(Sale.due_date.asc(), Sale.next_follow_up_at.asc(), Sale.sold_at.desc())
-        .all()
-    )
+def invoice_queue(request: Request, view: str = "action_required", db: Session = Depends(get_db)):
+    selected_view = view if view in INVOICE_QUEUE_VIEWS else "action_required"
+    all_invoice_sales = invoice_related_sales(db)
+    sales = filter_invoice_sales(all_invoice_sales, selected_view)
     return templates.TemplateResponse(
         "sales/invoice_queue.html",
         {
             "request": request,
             "app_name": settings.app_name,
             "active_page": "sales",
-            "sales": sales,
+            "view": selected_view,
+            "sales": [invoice_row(sale) for sale in sales],
+            "tabs": build_invoice_tabs(all_invoice_sales, active_view=selected_view),
             "follow_up_status": invoice_follow_up_status,
         },
     )
