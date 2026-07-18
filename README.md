@@ -14,7 +14,7 @@ The goal is not to imitate a heavyweight enterprise suite or a polished SaaS lan
 
 ## UI Preview
 
-The current dashboard is designed as an operations view rather than a marketing page. It shows daily work order pressure, shift status, daily closing state, recent activity, and upcoming work in one browser screen.
+The application is designed for a first-time small-business user: start from a customer or work order, complete a sale only when the transaction is final, follow invoicing separately, and close the business day from one calm operations dashboard. Quotes and delivery notes remain non-stock-affecting until converted into a finalized sale.
 
 More UI screenshots are available in [`docs/UI/Screenshots.md`](docs/UI/Screenshots.md).
 
@@ -27,6 +27,14 @@ More UI screenshots are available in [`docs/UI/Screenshots.md`](docs/UI/Screensh
 The mobile layout uses the same server-rendered UI with a single-column dashboard suitable for phone use over LAN or Tailscale.
 
 ![Mobile dashboard](docs/UI/screenshots/dashboard-mobile.png)
+
+### Settings, Help, And Permissions
+
+Admin users can add employees and assign operational roles from Settings. The same page includes an in-app getting-started guide explaining the customer, document, sale/invoicing, inventory, and daily-closing workflow.
+
+![Settings and getting started](docs/UI/screenshots/settings-help-desktop.png)
+
+![Employee permissions](docs/UI/screenshots/employee-permissions-desktop.png)
 
 ## Current MVP Status
 
