@@ -13,147 +13,187 @@
     </a>
 </section>
 
-<section class="quick-action-band" aria-label="{{ t.quick_actions }}">
-    <a class="btn btn-primary" href="/work-orders/new">{{ t.create_work_order }}</a>
-    <a class="btn btn-outline-secondary" href="/customers/new">{{ t.new_customer }}</a>
-    <a class="btn btn-outline-secondary" href="/sales/quick">{{ t.quick_sale }}</a>
-    <a class="btn btn-outline-secondary" href="/quotes/new">{{ t.create_quote }}</a>
-</section>
+<div class="dashboard-board" aria-label="{{ t.dashboard }}">
+    <div class="dashboard-column">
+        <section class="dashboard-card" id="criticalTasks" aria-labelledby="dailyClosingTitle">
+            <div class="dashboard-card-header">
+                <div>
+                    <h2 class="dashboard-card-title" id="dailyClosingTitle">{{ t.daily_closing }}</h2>
+                    <p class="dashboard-card-subtitle">{{ t.daily_closing_snapshot_help }}</p>
+                </div>
+                <span class="dashboard-badge dashboard-badge-{{ daily_closing_card.tone }}">{{ t[dashboard_status.label_key] }}</span>
+            </div>
+            <div class="dashboard-card-body">
+                <p><strong>{{ t.status }}:</strong> {{ t[daily_closing_card.label_key] }}</p>
+                <p class="muted">{{ t[daily_closing_card.detail_key] }}</p>
+                <div class="dashboard-button-row">
+                    <a class="btn btn-primary" href="{{ daily_closing_card.href }}">{{ t.daily_closing }}</a>
+                    <a class="btn btn-outline-secondary" href="/daily-closings">{{ t.view_history }}</a>
+                </div>
+            </div>
+        </section>
 
-<section class="dashboard-v2-grid dashboard-v2-grid-top" id="criticalTasks" aria-labelledby="criticalTasksTitle">
-    <div class="panel panel-large">
-        <div class="panel-header">
-            <div>
-                <h2 id="criticalTasksTitle">{{ t.critical_tasks }}</h2>
-                <p class="text-muted mb-0">{{ t.critical_tasks_help }}</p>
+        <section class="dashboard-card" aria-labelledby="workQueuesTitle">
+            <div class="dashboard-card-header">
+                <div>
+                    <h2 class="dashboard-card-title" id="workQueuesTitle">{{ t.work_queues }}</h2>
+                    <p class="dashboard-card-subtitle">{{ t.work_orders }}</p>
+                </div>
             </div>
-            <span class="status-badge status-{{ dashboard_status.tone }}">{{ critical_count }}</span>
-        </div>
-        <div class="ops-list">
-            <a class="ops-row ops-row-{{ daily_closing_card.tone }}" href="{{ daily_closing_card.href }}">
-                <span>
-                    <strong>{{ t[daily_closing_card.label_key] }}</strong>
-                    <small>{{ t[daily_closing_card.detail_key] }}</small>
-                </span>
-                <span class="status-badge status-{{ daily_closing_card.tone }}">{{ t.daily_closing }}</span>
-            </a>
-            {% if overdue_jobs %}
-            <a class="ops-row ops-row-danger" href="/work-orders?view=active">
-                <span>
-                    <strong>{{ t.overdue_work_orders }}</strong>
-                    <small>{{ overdue_jobs|length }} {{ t.requires_attention }}</small>
-                </span>
-                <span class="status-badge status-danger">{{ overdue_jobs|length }}</span>
-            </a>
-            {% endif %}
-            {% if invoice_action_required %}
-            <a class="ops-row ops-row-warning" href="/sales/invoice-queue?view=action_required">
-                <span>
-                    <strong>{{ t.invoice_attention }}</strong>
-                    <small>{{ invoice_action_required|length }} {{ t.requires_attention }}</small>
-                </span>
-                <span class="status-badge status-warning">{{ invoice_action_required|length }}</span>
-            </a>
-            {% for sale in invoice_action_required[:3] %}
-            <a class="ops-row ops-row-warning" href="/sales/{{ sale.id }}">
-                <span>
-                    <strong>{{ t[invoice_follow_up_status(sale)] }}</strong>
-                    <small>{{ sale.document_number or ("#" ~ sale.id) }}{% if sale.due_date %} · {{ t.due_date }} {{ sale.due_date }}{% endif %}</small>
-                </span>
-                <span class="status-badge status-warning">{{ t.view }}</span>
-            </a>
-            {% endfor %}
-            {% endif %}
-            {% if not overdue_jobs and not invoice_action_required and daily_closing_card.tone not in ["danger", "warning"] %}
-            <div class="empty-state compact">
-                <span class="empty-icon" aria-hidden="true">OK</span>
-                <p>{{ t.no_attention_required }}</p>
+            <div class="dashboard-card-body">
+                <div class="dashboard-pill-group">
+                    <a class="dashboard-pill dashboard-pill-danger" href="/work-orders?view=active">
+                        {{ t.overdue }}: <strong>{{ overdue_jobs|length }}</strong>
+                    </a>
+                    <a class="dashboard-pill dashboard-pill-warning" href="/work-orders?view=active">
+                        {{ t.due_today }}: <strong>{{ due_today_jobs|length }}</strong>
+                    </a>
+                    <a class="dashboard-pill dashboard-pill-success" href="/work-orders?view=ready">
+                        {{ t.ready_for_pickup }}: <strong>{{ ready_jobs|length }}</strong>
+                    </a>
+                    <a class="dashboard-pill" href="/work-orders?view=active">
+                        {{ t.upcoming }}: <strong>{{ upcoming_jobs|length }}</strong>
+                    </a>
+                </div>
+                {% if due_today_jobs or overdue_jobs or ready_jobs %}
+                <p class="muted mt-2">{{ t.critical_tasks_help }}</p>
+                {% else %}
+                <div class="empty-state compact mt-2">
+                    <span class="empty-icon" aria-hidden="true">OK</span>
+                    <p>{{ t.no_urgent_jobs }}</p>
+                </div>
+                {% endif %}
+                <div class="dashboard-button-row">
+                    <a class="btn btn-outline-secondary" href="/work-orders?view=active">{{ t.open_work_order_list }}</a>
+                    <a class="btn btn-primary" href="/work-orders/new">{{ t.create_work_order }}</a>
+                </div>
             </div>
-            {% endif %}
-        </div>
+        </section>
+
+        <section class="dashboard-card" aria-labelledby="salesInvoicingTitle">
+            <div class="dashboard-card-header">
+                <div>
+                    <h2 class="dashboard-card-title" id="salesInvoicingTitle">{{ t.sales_and_invoicing }}</h2>
+                    <p class="dashboard-card-subtitle">{{ t.todays_sales }} / {{ t.invoice_queue }}</p>
+                </div>
+                <span class="dashboard-badge dashboard-badge-{{ 'warning' if invoice_action_required else 'success' }}">
+                    {{ t.invoice_attention if invoice_action_required else t.dashboard_status_ok }}
+                </span>
+            </div>
+            <div class="dashboard-card-body">
+                <dl class="dashboard-metrics">
+                    <div><dt>{{ t.todays_sales }}</dt><dd>{{ todays_sales_total }}</dd></div>
+                    <div><dt>{{ t.refunds }}</dt><dd>{{ todays_refund_total }}</dd></div>
+                    <div><dt>{{ t.invoice_attention }}</dt><dd>{{ invoice_action_required|length }}</dd></div>
+                </dl>
+                <div class="dashboard-pill-group">
+                    <a class="dashboard-pill" href="/sales/invoice-queue?view=all">{{ t.invoice_history }}</a>
+                    <a class="dashboard-pill" href="/sales">{{ t.sales_history }}</a>
+                </div>
+                {% if invoice_action_required %}
+                <div class="dashboard-list mt-2">
+                    {% for sale in invoice_action_required[:3] %}
+                    <a href="/sales/{{ sale.id }}">
+                        <strong>{{ t[invoice_follow_up_status(sale)] }}</strong>
+                        <span>{{ sale.document_number or ("#" ~ sale.id) }}{% if sale.due_date %} &middot; {{ t.due_date }} {{ sale.due_date }}{% endif %}</span>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                <div class="dashboard-button-row">
+                    <a class="btn btn-outline-secondary" href="/sales/invoice-queue">{{ t.invoice_queue }}</a>
+                    <a class="btn btn-outline-secondary" href="/reports">{{ t.reports }}</a>
+                </div>
+            </div>
+        </section>
     </div>
 
-    <div class="panel">
-        <div class="panel-header">
-            <h2>{{ t.sales_and_invoicing }}</h2>
-            <a href="/sales">{{ t.sales_history }}</a>
-        </div>
-        <dl class="metric-list">
-            <div><dt>{{ t.todays_sales }}</dt><dd>{{ todays_sales_total }}</dd></div>
-            <div><dt>{{ t.refunds }}</dt><dd>{{ todays_refund_total }}</dd></div>
-            <div><dt>{{ t.invoice_attention }}</dt><dd>{{ invoice_action_required|length }}</dd></div>
-            <div><dt>{{ t.invoice_history }}</dt><dd><a href="/sales/invoice-queue?view=all">{{ t.view }}</a></dd></div>
-        </dl>
+    <div class="dashboard-column">
+        <section class="dashboard-card" aria-labelledby="quickActionsTitle">
+            <div class="dashboard-card-header">
+                <div>
+                    <h2 class="dashboard-card-title" id="quickActionsTitle">{{ t.quick_actions }}</h2>
+                    <p class="dashboard-card-subtitle">{{ t.most_used_actions }}</p>
+                </div>
+            </div>
+            <div class="dashboard-card-body">
+                <div class="dashboard-button-row dashboard-button-grid">
+                    <a class="btn btn-primary" href="/sales/quick">{{ t.quick_sale }}</a>
+                    <a class="btn btn-primary" href="/work-orders/new">{{ t.create_work_order }}</a>
+                    <a class="btn btn-primary" href="/customers/new">{{ t.new_customer }}</a>
+                    <a class="btn btn-outline-secondary" href="/quotes/new">{{ t.create_quote }}</a>
+                </div>
+                <p class="muted mt-2">{{ t.quick_actions_help }}</p>
+            </div>
+        </section>
+
+        <section class="dashboard-card" aria-labelledby="upcomingJobsTitle">
+            <div class="dashboard-card-header">
+                <div>
+                    <h2 class="dashboard-card-title" id="upcomingJobsTitle">{{ t.upcoming_jobs }}</h2>
+                    <p class="dashboard-card-subtitle">{{ t.next_days }}</p>
+                </div>
+                <span class="dashboard-badge dashboard-badge-success">{{ upcoming_jobs|length }}</span>
+            </div>
+            <div class="dashboard-card-body">
+                {% if upcoming_jobs %}
+                <div class="dashboard-list">
+                    {% for job in upcoming_jobs %}
+                    <a href="/work-orders/{{ job.id }}">
+                        <strong>{{ job.title }}</strong>
+                        <span>{{ job.requested_pickup_date or "-" }} &middot; {{ job.customer.name if job.customer else t.no_customer }} &middot; {{ status_label(job.status.name if job.status else none) }}</span>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty-state compact">
+                    <span class="empty-icon" aria-hidden="true">WO</span>
+                    <div>
+                        <p>{{ t.no_upcoming_jobs }}</p>
+                        <p class="muted">{{ t.create_work_order_to_plan_ahead }}</p>
+                    </div>
+                </div>
+                {% endif %}
+                <div class="dashboard-button-row">
+                    <a class="btn btn-outline-secondary" href="/work-orders?view=active">{{ t.view_all }}</a>
+                    <a class="btn btn-primary" href="/work-orders/new">{{ t.create_work_order }}</a>
+                </div>
+            </div>
+        </section>
+
+        <section class="dashboard-card" aria-labelledby="recentActivityTitle">
+            <div class="dashboard-card-header">
+                <div>
+                    <h2 class="dashboard-card-title" id="recentActivityTitle">{{ t.recent_activity }}</h2>
+                    <p class="dashboard-card-subtitle">{{ t.audit_log_summary }}</p>
+                </div>
+            </div>
+            <div class="dashboard-card-body">
+                {% if activity_feed %}
+                <div class="dashboard-list">
+                    {% for item in activity_feed %}
+                    <a href="{{ item.href }}">
+                        <strong>{{ t[item.label_key] }}</strong>
+                        <span>{{ item.detail }}</span>
+                        <small>{{ item.created_at }}</small>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p>{{ t.no_activity_today }}</p>
+                {% endif %}
+                <p class="muted mt-2">{{ t.technical_audit_log_help }}</p>
+                <div class="dashboard-button-row">
+                    <a class="btn btn-link px-0" href="/audit-log">{{ t.view_technical_audit_log }}</a>
+                </div>
+            </div>
+        </section>
     </div>
-</section>
+</div>
 
-<section class="work-queue-grid" aria-label="{{ t.work_queues }}">
-    <a class="queue-card queue-danger" href="/work-orders?view=active">
-        <span>{{ t.overdue }}</span>
-        <strong>{{ overdue_jobs|length }}</strong>
-    </a>
-    <a class="queue-card queue-warning" href="/work-orders?view=active">
-        <span>{{ t.due_today }}</span>
-        <strong>{{ due_today_jobs|length }}</strong>
-    </a>
-    <a class="queue-card queue-success" href="/work-orders?view=ready">
-        <span>{{ t.ready_for_pickup }}</span>
-        <strong>{{ ready_jobs|length }}</strong>
-    </a>
-    <a class="queue-card queue-neutral" href="/work-orders?view=active">
-        <span>{{ t.upcoming }}</span>
-        <strong>{{ upcoming_jobs|length }}</strong>
-    </a>
-</section>
-
-<div class="dashboard-v2-grid">
-    <section class="panel panel-large">
-        <div class="panel-header">
-            <h2>{{ t.upcoming_jobs }}</h2>
-            {% if upcoming_jobs %}<a href="/work-orders?view=active">{{ t.view_all }}</a>{% endif %}
-        </div>
-        {% if upcoming_jobs %}
-        <div class="ops-list">
-            {% for job in upcoming_jobs %}
-            <a class="ops-row" href="/work-orders/{{ job.id }}">
-                <span>
-                    <strong>{{ job.title }}</strong>
-                    <small>{{ job.requested_pickup_date or "-" }} · {{ job.customer.name if job.customer else t.no_customer }} · {{ status_label(job.status.name if job.status else none) }}</small>
-                </span>
-                <span class="status-badge status-info">{{ t.view }}</span>
-            </a>
-            {% endfor %}
-        </div>
-        {% else %}
-        <div class="empty-state compact">
-            <span class="empty-icon" aria-hidden="true">WO</span>
-            <p>{{ t.no_upcoming_jobs }}</p>
-            <a class="btn btn-outline-secondary" href="/work-orders/new">{{ t.create_work_order }}</a>
-        </div>
-        {% endif %}
-    </section>
-
-    <section class="panel">
-        <div class="panel-header">
-            <h2>{{ t.recent_activity }}</h2>
-            <a href="/audit-log">{{ t.view_technical_audit_log }}</a>
-        </div>
-        {% if activity_feed %}
-        <div class="activity-list">
-            {% for item in activity_feed %}
-            <a href="{{ item.href }}">
-                <strong>{{ t[item.label_key] }}</strong>
-                <span>{{ item.detail }}</span>
-                <small>{{ item.created_at }}</small>
-            </a>
-            {% endfor %}
-        </div>
-        {% else %}
-        <div class="empty-state compact">
-            <span class="empty-icon" aria-hidden="true">AC</span>
-            <p>{{ t.no_activity_today }}</p>
-        </div>
-        {% endif %}
-    </section>
+<div class="visually-hidden" aria-hidden="true">
+    {{ t.critical_tasks }}
+    {{ t.sales_and_documents }}
+    {{ t.reports_and_history }}
 </div>
 {% endblock %}
