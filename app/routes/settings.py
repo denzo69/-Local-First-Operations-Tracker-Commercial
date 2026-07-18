@@ -51,6 +51,7 @@ def update_settings(
     dashboard_show_quick_actions: bool = Form(False),
     dashboard_show_upcoming_jobs: bool = Form(False),
     dashboard_show_recent_activity: bool = Form(False),
+    ui_density: str = Form(DEFAULT_SETTINGS["ui_density"]),
     db: Session = Depends(get_db),
 ):
     current_language = get_current_language(db)
@@ -65,6 +66,7 @@ def update_settings(
         "default_vat_percent": default_vat_percent.strip() or "24",
         "receipt_prefix": receipt_prefix.strip(),
         "language": selected_language,
+        "ui_density": ui_density if ui_density in {"compact", "comfortable", "large"} else DEFAULT_SETTINGS["ui_density"],
     }
     if dashboard_settings_present is not None:
         settings_updates.update(

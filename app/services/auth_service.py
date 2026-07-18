@@ -22,7 +22,7 @@ AUTH_EXEMPT_PATHS = {
 ADMIN_PATH_PREFIXES = (
     "/users",
     "/cash-registers",
-    "/settings",
+    "/settings/statuses",
     "/backups",
     "/audit-log",
 )

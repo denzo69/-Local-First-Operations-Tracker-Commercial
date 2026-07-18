@@ -26,6 +26,7 @@ DEFAULT_SETTINGS = {
     "dashboard_show_quick_actions": "true",
     "dashboard_show_upcoming_jobs": "true",
     "dashboard_show_recent_activity": "true",
+    "ui_density": "comfortable",
     "language": "en",
 }
 

@@ -23,6 +23,14 @@ body {
     font-size: 15px;
 }
 
+body.density-compact {
+    font-size: 14px;
+}
+
+body.density-large {
+    font-size: 16px;
+}
+
 .card,
 .form-control,
 .form-select,
@@ -151,6 +159,16 @@ button:focus-visible,
     color: #dce5f2;
     text-decoration: none;
     font-weight: 600;
+}
+
+.density-compact .sidebar-link {
+    min-height: 34px;
+    padding-block: .38rem;
+}
+
+.density-large .sidebar-link {
+    min-height: 46px;
+    padding-block: .7rem;
 }
 
 .sidebar-link:hover,
@@ -435,6 +453,14 @@ button:focus-visible,
     box-shadow: var(--shadow);
 }
 
+.density-compact .dashboard-card {
+    padding: .75rem;
+}
+
+.density-large .dashboard-card {
+    padding: 1.25rem;
+}
+
 .dashboard-card-header {
     display: flex;
     justify-content: space-between;
@@ -508,6 +534,16 @@ button:focus-visible,
     text-decoration: none;
     font-size: .88rem;
     background: #fff;
+}
+
+.density-compact .dashboard-pill {
+    min-height: 1.75rem;
+    padding: .25rem .55rem;
+}
+
+.density-large .dashboard-pill {
+    min-height: 2.4rem;
+    padding: .55rem .9rem;
 }
 
 .dashboard-pill:hover {

@@ -20,6 +20,9 @@ def inject_global_template_context(request: Request) -> dict:
     try:
         app_settings = get_app_settings(db)
         language = app_settings.get("language", "en")
+        ui_density = app_settings.get("ui_density", "comfortable")
+        if ui_density not in {"compact", "comfortable", "large"}:
+            ui_density = "comfortable"
         current_user = getattr(request.state, "current_user", None)
         current_role_code = (
             current_user.role.code
@@ -28,6 +31,7 @@ def inject_global_template_context(request: Request) -> dict:
         )
         return {
             "language": language,
+            "ui_density": ui_density,
             "t": get_translations(language),
             "current_date": date.today(),
             "current_user": current_user,

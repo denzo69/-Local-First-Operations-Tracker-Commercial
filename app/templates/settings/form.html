@@ -6,9 +6,11 @@
         <p class="text-muted mb-0">{{ t.settings_subtitle }}</p>
 </div>
 
+{% if can_manage_administration %}
 <div class="mb-3">
     <a class="btn btn-outline-secondary" href="/settings/statuses">Workflow statuses</a>
 </div>
+{% endif %}
 
 <form class="card shadow-sm border-0" method="post" action="/settings">
     <input type="hidden" name="dashboard_settings_present" value="true">
@@ -49,6 +51,15 @@
                     <option value="{{ code }}" {% if settings_values.language == code %}selected{% endif %}>{{ label }}</option>
                     {% endfor %}
                 </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="ui_density">{{ t.display_size }}</label>
+                <select class="form-select" id="ui_density" name="ui_density">
+                    <option value="compact" {% if settings_values.ui_density == "compact" %}selected{% endif %}>{{ t.display_size_compact }}</option>
+                    <option value="comfortable" {% if settings_values.ui_density == "comfortable" %}selected{% endif %}>{{ t.display_size_comfortable }}</option>
+                    <option value="large" {% if settings_values.ui_density == "large" %}selected{% endif %}>{{ t.display_size_large }}</option>
+                </select>
+                <div class="form-text">{{ t.display_size_help }}</div>
             </div>
             <div class="col-12">
                 <hr>

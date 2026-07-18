@@ -137,13 +137,13 @@ def test_seller_navigation_shows_language_but_hides_restricted_admin_links_when_
     assert '<span class="nav-icon" aria-hidden="true">CR</span>' not in response.text
     assert '<span class="nav-icon" aria-hidden="true">AL</span>' not in response.text
     assert '<span class="nav-icon" aria-hidden="true">BU</span>' not in response.text
-    assert '<span class="nav-icon" aria-hidden="true">ST</span>' not in response.text
+    assert '<span class="nav-icon" aria-hidden="true">ST</span>' in response.text
     assert '<span class="nav-icon" aria-hidden="true">LA</span>' in response.text
     assert 'href="/settings/language"' in response.text
     assert "Settings" in response.text
 
 
-def test_seller_can_change_language_without_admin_settings_access():
+def test_seller_can_change_general_settings_and_language_without_admin_links():
     create_login_user("Language Seller", "seller", password="secret123")
 
     with TestClient(app) as client:
@@ -155,7 +155,8 @@ def test_seller_can_change_language_without_admin_settings_access():
                 "next_url": "/",
             },
         )
-        admin_settings = client.get("/settings", follow_redirects=False)
+        general_settings = client.get("/settings", follow_redirects=False)
+        protected_statuses = client.get("/settings/statuses", follow_redirects=False)
         language_page = client.get("/settings/language")
         language_update = client.post(
             "/settings/language",
@@ -164,7 +165,9 @@ def test_seller_can_change_language_without_admin_settings_access():
         )
         dashboard = client.get("/")
 
-    assert admin_settings.status_code == 403
+    assert general_settings.status_code == 200
+    assert "Dashboard visibility" in general_settings.text
+    assert protected_statuses.status_code == 403
     assert language_page.status_code == 200
     assert "Language" in language_page.text
     assert language_update.status_code == 303

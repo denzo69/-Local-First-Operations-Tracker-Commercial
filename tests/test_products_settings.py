@@ -42,6 +42,7 @@ def test_settings_control_dashboard_visible_cards():
                 "default_vat_percent": "24",
                 "receipt_prefix": "SALE-",
                 "language": "en",
+                "ui_density": "large",
                 "dashboard_settings_present": "true",
                 "dashboard_show_daily_closing": "true",
                 "dashboard_show_sales_invoicing": "true",
@@ -54,7 +55,9 @@ def test_settings_control_dashboard_visible_cards():
     assert settings_page.status_code == 200
     assert "Default VAT percent" in settings_page.text
     assert "Dashboard visibility" in settings_page.text
+    assert "Display size" in settings_page.text
     assert response.status_code == 303
+    assert 'class="density-large"' in dashboard.text
     assert "Daily closing" in dashboard.text
     assert "Sales and invoicing" in dashboard.text
     assert "Quick actions" in dashboard.text

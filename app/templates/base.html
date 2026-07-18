@@ -7,7 +7,7 @@
     <link href="{{ url_for('static', path='vendor/bootstrap/bootstrap.min.css') }}?v={{ asset_version }}" rel="stylesheet">
     <link href="{{ url_for('static', path='css/app.css') }}?v={{ asset_version }}" rel="stylesheet">
 </head>
-<body>
+<body class="density-{{ ui_density }}">
 <a class="visually-hidden-focusable skip-link" href="#mainContent">{{ t.view }} {{ page_title|default(t.dashboard) }}</a>
 
 <aside class="app-sidebar d-none d-lg-flex" aria-label="Primary navigation">
@@ -60,13 +60,13 @@
             {% set admin_group_open = active_page in ['language', 'users', 'cash_registers', 'audit_log', 'backups', 'settings'] %}
             <button class="sidebar-group-label sidebar-group-toggle-desktop" type="button" data-sidebar-group-toggle aria-expanded="{{ 'true' if admin_group_open else 'false' }}" aria-controls="desktopNavAdmin">{{ t.administration }}</button>
             <div class="sidebar-group-items" id="desktopNavAdmin" {% if not admin_group_open %}hidden{% endif %}>
+                <a class="sidebar-link {% if active_page == 'settings' %}active{% endif %}" href="/settings"><span class="nav-icon" aria-hidden="true">ST</span><span>{{ t.settings }}</span></a>
                 <a class="sidebar-link {% if active_page == 'language' %}active{% endif %}" href="/settings/language"><span class="nav-icon" aria-hidden="true">LA</span><span>{{ t.language }}</span></a>
                 {% if can_manage_administration %}
                 <a class="sidebar-link {% if active_page == 'users' %}active{% endif %}" href="/users"><span class="nav-icon" aria-hidden="true">US</span><span>{{ t.users }}</span></a>
                 <a class="sidebar-link {% if active_page == 'cash_registers' %}active{% endif %}" href="/cash-registers"><span class="nav-icon" aria-hidden="true">CR</span><span>{{ t.cash_registers }}</span></a>
                 <a class="sidebar-link {% if active_page == 'audit_log' %}active{% endif %}" href="/audit-log"><span class="nav-icon" aria-hidden="true">AL</span><span>{{ t.technical_audit_log }}</span></a>
                 <a class="sidebar-link {% if active_page == 'backups' %}active{% endif %}" href="/backups"><span class="nav-icon" aria-hidden="true">BU</span><span>{{ t.backups }}</span></a>
-                <a class="sidebar-link {% if active_page == 'settings' %}active{% endif %}" href="/settings"><span class="nav-icon" aria-hidden="true">ST</span><span>{{ t.settings }}</span></a>
                 {% endif %}
             </div>
         </div>
@@ -109,6 +109,7 @@
             </div>
             <button class="sidebar-group-toggle" type="button" data-mobile-nav-toggle aria-expanded="false" aria-controls="mobileNavAdmin">{{ t.administration }}</button>
             <div class="mobile-nav-section" id="mobileNavAdmin" hidden>
+                <a class="sidebar-link" href="/settings">{{ t.settings }}</a>
                 <a class="sidebar-link" href="/settings/language">{{ t.language }}</a>
                 {% if can_manage_administration %}
                 <a class="sidebar-link" href="/users">{{ t.users }}</a>
