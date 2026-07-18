@@ -286,6 +286,8 @@ def test_admin_can_manage_users_and_roles_from_settings():
     assert 'href="/users/new"' in settings_page.text
     assert new_user_page.status_code == 200
     assert "Role" in new_user_page.text
+    assert "The selected role controls which application functions the user may change." in new_user_page.text
+    assert "Full access, including Settings, users, roles" in new_user_page.text
     assert create_response.status_code == 303
     assert update_response.status_code == 303
     assert users_page.status_code == 200
