@@ -14,6 +14,10 @@ def test_dashboard_actions_are_links():
     assert response.status_code == 200
     assert 'href="/work-orders/new"' in response.text
     assert 'href="/customers/new"' in response.text
+    assert 'id="desktopNavSales"' in response.text
+    assert 'id="desktopNavStock"' in response.text
+    assert 'id="desktopNavSales" hidden' not in response.text
+    assert 'id="desktopNavStock" hidden' not in response.text
 
 
 def test_main_navigation_targets_load():
@@ -663,3 +667,26 @@ def test_product_detail_has_direct_stock_receiving_flow():
         assert service_detail.status_code == 200
         assert f'href="/products/{service_id}/receive"' not in service_detail.text
         assert client.get(f"/products/{service_id}/receive").status_code == 400
+
+
+def test_customer_pages_use_translated_first_time_guidance():
+    with TestClient(app) as client:
+        client.post(
+            "/settings",
+            data={
+                "company_name": "Test Company Oy",
+                "default_vat_percent": "24",
+                "receipt_prefix": "TEST-",
+                "language": "fi",
+            },
+            follow_redirects=False,
+        )
+        customers = client.get("/customers")
+        new_customer = client.get("/customers/new")
+
+    assert customers.status_code == 200
+    assert "Pidä asiakkaan tiedot yhdessä paikassa" in customers.text
+    assert "Luo ensimmäinen asiakas" in customers.text
+    assert new_customer.status_code == 200
+    assert "Lisää nyt tarvittavat tiedot" in new_customer.text
+    assert "Tallenna asiakas" in new_customer.text
