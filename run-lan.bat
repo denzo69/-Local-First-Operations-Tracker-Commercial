@@ -25,7 +25,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo Starting Local-First Operations Tracker for LAN access...
+echo Starting JEronAI Operations for LAN access...
 echo.
 echo Open this app on this computer:
 echo   http://127.0.0.1:8000

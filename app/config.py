@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Application settings loaded from environment variables and .env."""
 
-    app_name: str = "Local-First Operations Tracker"
+    app_name: str = "JEronAI Operations"
     app_env: str = "development"
     database_url: str = "sqlite:///./data/app.sqlite"
     backup_dir: str = "./backups"

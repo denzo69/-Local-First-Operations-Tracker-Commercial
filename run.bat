@@ -25,7 +25,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo Starting Local-First Operations Tracker...
+echo Starting JEronAI Operations...
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 
 endlocal

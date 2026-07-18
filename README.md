@@ -1,4 +1,6 @@
-# Local-First Operations Tracker
+# JEronAI Operations
+
+Local-first ERP & CRM for small businesses
 
 A lightweight local-first ERP and CRM workspace for small businesses, sole traders, and small teams.
 

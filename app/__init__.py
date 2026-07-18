@@ -1,1 +1,1 @@
-"""Local-First Operations Tracker application package."""
+"""JEronAI Operations application package."""
