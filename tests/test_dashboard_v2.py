@@ -171,6 +171,14 @@ def test_dashboard_cards_render_in_requested_operational_order():
     assert positions == sorted(positions)
 
 
+def test_upcoming_work_orders_card_sizes_to_its_content():
+    with TestClient(app) as client:
+        response = client.get("/")
+
+    assert response.status_code == 200
+    assert '<section class="dashboard-card dashboard-card-content-sized" aria-labelledby="upcomingJobsTitle">' in response.text
+
+
 def test_dashboard_work_queues_include_work_orders_only_not_quotes_or_delivery_notes():
     today = date.today()
     with SessionLocal() as db:
