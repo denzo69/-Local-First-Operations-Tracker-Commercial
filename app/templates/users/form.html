@@ -22,6 +22,13 @@
             <option value="{{ role.id }}" {% if user and user.role_id == role.id %}selected{% endif %}>{{ role.name }}</option>
             {% endfor %}
         </select>
+        <div class="form-text">{{ t.role_permissions_help }}</div>
+        <ul class="form-text mb-0" aria-label="{{ t.permissions }}">
+            <li><strong>{{ t.role_admin_label }}:</strong> {{ t.role_admin_permissions }}</li>
+            <li><strong>{{ t.role_manager_label }}:</strong> {{ t.role_manager_permissions }}</li>
+            <li><strong>{{ t.role_seller_label }}:</strong> {{ t.role_seller_permissions }}</li>
+            <li><strong>{{ t.role_read_only_label }}:</strong> {{ t.role_read_only_permissions }}</li>
+        </ul>
     </div>
     <div class="form-check mb-3">
         <input class="form-check-input" type="checkbox" id="is_active" name="is_active" {% if not user or user.is_active %}checked{% endif %}>
