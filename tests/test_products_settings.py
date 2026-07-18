@@ -32,6 +32,37 @@ def test_settings_can_be_updated():
     assert "Asetukset" in page_response.text
 
 
+def test_settings_control_dashboard_visible_cards():
+    with TestClient(app) as client:
+        settings_page = client.get("/settings")
+        response = client.post(
+            "/settings",
+            data={
+                "company_name": "JEronAI Operations",
+                "default_vat_percent": "24",
+                "receipt_prefix": "SALE-",
+                "language": "en",
+                "dashboard_settings_present": "true",
+                "dashboard_show_daily_closing": "true",
+                "dashboard_show_sales_invoicing": "true",
+                "dashboard_show_quick_actions": "true",
+            },
+            follow_redirects=False,
+        )
+        dashboard = client.get("/")
+
+    assert settings_page.status_code == 200
+    assert "Default VAT percent" in settings_page.text
+    assert "Dashboard visibility" in settings_page.text
+    assert response.status_code == 303
+    assert "Daily closing" in dashboard.text
+    assert "Sales and invoicing" in dashboard.text
+    assert "Quick actions" in dashboard.text
+    assert "Work queues" not in dashboard.text
+    assert "Upcoming work orders" not in dashboard.text
+    assert "Recent activity" not in dashboard.text
+
+
 def test_finnish_persists_after_redirect():
     with TestClient(app) as client:
         response = client.post(

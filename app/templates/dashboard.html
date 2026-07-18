@@ -14,6 +14,7 @@
 
 <div class="dashboard-board" aria-label="{{ t.dashboard }}">
     <div class="dashboard-column">
+        {% if dashboard_visibility.daily_closing %}
         <section class="dashboard-card" id="criticalTasks" aria-labelledby="dailyClosingTitle">
             <div class="dashboard-card-header">
                 <div>
@@ -31,7 +32,9 @@
                 </div>
             </div>
         </section>
+        {% endif %}
 
+        {% if dashboard_visibility.work_queues %}
         <section class="dashboard-card" aria-labelledby="workQueuesTitle">
             <div class="dashboard-card-header">
                 <div>
@@ -68,7 +71,9 @@
                 </div>
             </div>
         </section>
+        {% endif %}
 
+        {% if dashboard_visibility.sales_invoicing %}
         <section class="dashboard-card" aria-labelledby="salesInvoicingTitle">
             <div class="dashboard-card-header">
                 <div>
@@ -105,9 +110,11 @@
                 </div>
             </div>
         </section>
+        {% endif %}
     </div>
 
     <div class="dashboard-column">
+        {% if dashboard_visibility.quick_actions %}
         <section class="dashboard-card" aria-labelledby="quickActionsTitle">
             <div class="dashboard-card-header">
                 <div>
@@ -125,7 +132,9 @@
                 <p class="muted mt-2">{{ t.quick_actions_help }}</p>
             </div>
         </section>
+        {% endif %}
 
+        {% if dashboard_visibility.upcoming_jobs %}
         <section class="dashboard-card" aria-labelledby="upcomingJobsTitle">
             <div class="dashboard-card-header">
                 <div>
@@ -159,7 +168,9 @@
                 </div>
             </div>
         </section>
+        {% endif %}
 
+        {% if dashboard_visibility.recent_activity %}
         <section class="dashboard-card" aria-labelledby="recentActivityTitle">
             <div class="dashboard-card-header">
                 <div>
@@ -187,8 +198,16 @@
                 </div>
             </div>
         </section>
+        {% endif %}
     </div>
 </div>
+
+{% if not dashboard_visibility.daily_closing and not dashboard_visibility.work_queues and not dashboard_visibility.sales_invoicing and not dashboard_visibility.quick_actions and not dashboard_visibility.upcoming_jobs and not dashboard_visibility.recent_activity %}
+<div class="empty-state compact mt-3">
+    <span class="empty-icon" aria-hidden="true">DB</span>
+    <p>{{ t.dashboard_no_cards_selected }}</p>
+</div>
+{% endif %}
 
 <div class="visually-hidden" aria-hidden="true">
     {{ t.critical_tasks }}

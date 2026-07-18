@@ -14,6 +14,7 @@ from app.services.invoice_query_service import (
     invoice_sale_matches_view,
 )
 from app.services.money_service import sum_money
+from app.services.settings_service import get_app_settings
 
 
 @dataclass(frozen=True)
@@ -87,6 +88,7 @@ def daily_closing_state(db: Session, *, today: date, now: datetime | None = None
 
 def build_dashboard_context(db: Session, *, today: date | None = None, now: datetime | None = None) -> dict:
     business_date = today or date.today()
+    app_settings = get_app_settings(db)
     tomorrow = business_date + timedelta(days=1)
     today_start = datetime.combine(business_date, time.min, tzinfo=UTC)
     tomorrow_start = datetime.combine(tomorrow, time.min, tzinfo=UTC)
@@ -161,6 +163,14 @@ def build_dashboard_context(db: Session, *, today: date | None = None, now: date
 
     return {
         "today": business_date,
+        "dashboard_visibility": {
+            "daily_closing": app_settings.get("dashboard_show_daily_closing", "true").lower() == "true",
+            "work_queues": app_settings.get("dashboard_show_work_queues", "true").lower() == "true",
+            "sales_invoicing": app_settings.get("dashboard_show_sales_invoicing", "true").lower() == "true",
+            "quick_actions": app_settings.get("dashboard_show_quick_actions", "true").lower() == "true",
+            "upcoming_jobs": app_settings.get("dashboard_show_upcoming_jobs", "true").lower() == "true",
+            "recent_activity": app_settings.get("dashboard_show_recent_activity", "true").lower() == "true",
+        },
         "dashboard_status": status,
         "critical_count": critical_count,
         "daily_closing_card": closing_card,

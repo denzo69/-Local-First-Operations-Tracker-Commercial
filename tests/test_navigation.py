@@ -157,10 +157,10 @@ def test_new_navigation_labels_render_in_finnish_and_english():
         english = client.get("/")
 
     assert "Myyntihistoria" in finnish.text
-    assert "Hallinta" in finnish.text
+    assert "Asetukset" in finnish.text
     assert "Tekninen audit-loki" in finnish.text
     assert "Sales history" in english.text
-    assert "Administration" in english.text
+    assert "Settings" in english.text
     assert "Technical audit log" in english.text
 
 
@@ -168,11 +168,11 @@ def test_every_main_navigation_label_renders_in_both_languages():
     english_labels = [
         "Dashboard", "Sales and documents", "Customers and stock", "Reports and history",
         "Customers", "Work orders", "Sales", "Quick sale", "Sales history", "Products",
-        "Sales reports", "Inventory reports", "Seller reports", "Administration", "Users",
+        "Sales reports", "Inventory reports", "Seller reports", "Users",
         "Cash registers", "Technical audit log", "Backups", "Settings",
     ]
     finnish_labels = [
-        "Myyntihistoria", "Hallinta", "Asiakkaat", "Tuotteet", "Kassat",
+        "Myyntihistoria", "Asiakkaat", "Tuotteet", "Kassat",
         "Tekninen audit-loki", "Asetukset", "Myynti ja dokumentit",
         "Asiakkaat ja varasto", "Raportit ja historia",
     ]

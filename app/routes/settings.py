@@ -44,24 +44,41 @@ def update_settings(
     default_vat_percent: str = Form(DEFAULT_SETTINGS["default_vat_percent"]),
     receipt_prefix: str = Form(DEFAULT_SETTINGS["receipt_prefix"]),
     language: str | None = Form(None),
+    dashboard_settings_present: str | None = Form(None),
+    dashboard_show_daily_closing: bool = Form(False),
+    dashboard_show_work_queues: bool = Form(False),
+    dashboard_show_sales_invoicing: bool = Form(False),
+    dashboard_show_quick_actions: bool = Form(False),
+    dashboard_show_upcoming_jobs: bool = Form(False),
+    dashboard_show_recent_activity: bool = Form(False),
     db: Session = Depends(get_db),
 ):
     current_language = get_current_language(db)
     selected_language = language if language in SUPPORTED_LANGUAGES else current_language
 
-    set_app_settings(
-        db,
-        {
-            "company_name": company_name.strip(),
-            "company_business_id": company_business_id.strip(),
-            "company_address": company_address.strip(),
-            "company_phone": company_phone.strip(),
-            "company_email": company_email.strip(),
-            "default_vat_percent": default_vat_percent.strip() or "24",
-            "receipt_prefix": receipt_prefix.strip(),
-            "language": selected_language,
-        },
-    )
+    settings_updates = {
+        "company_name": company_name.strip(),
+        "company_business_id": company_business_id.strip(),
+        "company_address": company_address.strip(),
+        "company_phone": company_phone.strip(),
+        "company_email": company_email.strip(),
+        "default_vat_percent": default_vat_percent.strip() or "24",
+        "receipt_prefix": receipt_prefix.strip(),
+        "language": selected_language,
+    }
+    if dashboard_settings_present is not None:
+        settings_updates.update(
+            {
+                "dashboard_show_daily_closing": str(dashboard_show_daily_closing).lower(),
+                "dashboard_show_work_queues": str(dashboard_show_work_queues).lower(),
+                "dashboard_show_sales_invoicing": str(dashboard_show_sales_invoicing).lower(),
+                "dashboard_show_quick_actions": str(dashboard_show_quick_actions).lower(),
+                "dashboard_show_upcoming_jobs": str(dashboard_show_upcoming_jobs).lower(),
+                "dashboard_show_recent_activity": str(dashboard_show_recent_activity).lower(),
+            }
+        )
+
+    set_app_settings(db, settings_updates)
     log_audit_event(
         db,
         event_type="settings_changed",

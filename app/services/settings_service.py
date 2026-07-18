@@ -20,6 +20,12 @@ DEFAULT_SETTINGS = {
     "next_sale_document_sequence": "1",
     "sale_document_sequence_year": "",
     "require_cashier_shift": "false",
+    "dashboard_show_daily_closing": "true",
+    "dashboard_show_work_queues": "true",
+    "dashboard_show_sales_invoicing": "true",
+    "dashboard_show_quick_actions": "true",
+    "dashboard_show_upcoming_jobs": "true",
+    "dashboard_show_recent_activity": "true",
     "language": "en",
 }
 

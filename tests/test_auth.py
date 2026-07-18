@@ -140,7 +140,7 @@ def test_seller_navigation_shows_language_but_hides_restricted_admin_links_when_
     assert '<span class="nav-icon" aria-hidden="true">ST</span>' not in response.text
     assert '<span class="nav-icon" aria-hidden="true">LA</span>' in response.text
     assert 'href="/settings/language"' in response.text
-    assert "Administration" in response.text
+    assert "Settings" in response.text
 
 
 def test_seller_can_change_language_without_admin_settings_access():
