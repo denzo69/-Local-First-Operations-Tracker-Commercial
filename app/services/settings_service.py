@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.models import Setting
 
 DEFAULT_SETTINGS = {
-    "company_name": "Local-First Operations Tracker",
+    "company_name": "JEronAI Operations",
     "company_business_id": "",
     "company_address": "",
     "company_phone": "",
