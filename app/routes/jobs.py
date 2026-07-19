@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.models import AuditLog, Customer, Job, JobItem, JobStatus, Product, Sale, utc_now
+from app.models import AuditLog, Customer, Job, JobItem, JobStatus, Product, Role, Sale, User, utc_now
 from app.services.auth_service import request_current_user
 from app.services.audit_service import log_audit_event
 from app.services.money_service import line_total as calculate_line_total
@@ -15,6 +15,7 @@ from app.services.money_service import sum_money
 from app.services.print_service import build_print_context
 from app.services.receipt_number_service import allocate_receipt_number
 from app.services.sales_service import PaymentInput, create_sale_from_work_order
+from app.services.inventory_service import issue_stock_for_delivery_note, reverse_delivery_note_item_issue
 from app.template_context import templates
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -140,6 +141,50 @@ def optional_form_int(value: str | int | None, field_name: str) -> int | None:
         return int(value)
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=f"{field_name} must be a valid number") from exc
+
+
+def inventory_actor_id_for_request(request: Request, db: Session) -> int:
+    current_user = request_current_user(request)
+    if current_user is not None:
+        return current_user.id
+    fallback = (
+        db.query(User)
+        .join(Role, User.role_id == Role.id)
+        .filter(User.is_active.is_(True), Role.code.in_(["admin", "manager", "seller"]))
+        .order_by(User.id.asc())
+        .first()
+    )
+    if fallback is None:
+        raise HTTPException(status_code=400, detail="Active operator is required for inventory changes")
+    return fallback.id
+
+
+def apply_delivery_note_stock_issue(db: Session, *, request: Request, job: Job, item: JobItem) -> None:
+    if job.document_type != "delivery_note" or item.product is None or not item.product.is_stock_item:
+        return
+    issue_stock_for_delivery_note(
+        db,
+        product_id=item.product.id,
+        quantity_value=item.quantity,
+        work_order_id=job.id,
+        job_item_id=item.id,
+        created_by_user_id=inventory_actor_id_for_request(request, db),
+        delivery_note_number=job.receipt_number,
+        commit=False,
+    )
+
+
+def reverse_delivery_note_stock_issue(db: Session, *, request: Request, job: Job, item: JobItem, reason: str) -> None:
+    if job.document_type != "delivery_note" or item.product is None or not item.product.is_stock_item:
+        return
+    reverse_delivery_note_item_issue(
+        db,
+        work_order_id=job.id,
+        job_item_id=item.id,
+        created_by_user_id=inventory_actor_id_for_request(request, db),
+        reason=reason,
+        commit=False,
+    )
 
 
 @router.get("", response_class=HTMLResponse)
@@ -463,14 +508,20 @@ def add_job_item(
         line_total=line_total,
     )
     db.add(item)
-    log_audit_event(
-        db,
-        event_type="job_item_added",
-        entity_type="job",
-        entity_id=job.id,
-        description=f"Item added: {item_description} x {parsed_quantity}.",
-    )
-    db.commit()
+    try:
+        db.flush()
+        apply_delivery_note_stock_issue(db, request=request, job=job, item=item)
+        log_audit_event(
+            db,
+            event_type="job_item_added",
+            entity_type="job",
+            entity_id=job.id,
+            description=f"Item added: {item_description} x {parsed_quantity}.",
+        )
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return RedirectResponse(url=f"{route_base_for(request)}/{job.id}", status_code=303)
 
 
@@ -485,15 +536,26 @@ def delete_job_item(
     if item is None or item.job_id != job_id:
         raise HTTPException(status_code=404, detail="Item not found")
 
-    db.delete(item)
-    log_audit_event(
-        db,
-        event_type="job_item_deleted",
-        entity_type="job",
-        entity_id=job_id,
-        description=f"Item removed: {item.description}.",
-    )
-    db.commit()
+    try:
+        reverse_delivery_note_stock_issue(
+            db,
+            request=request,
+            job=item.job,
+            item=item,
+            reason=f"Delivery note item {item.id} removed.",
+        )
+        db.delete(item)
+        log_audit_event(
+            db,
+            event_type="job_item_deleted",
+            entity_type="job",
+            entity_id=job_id,
+            description=f"Item removed: {item.description}.",
+        )
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return RedirectResponse(url=f"{route_base_for(request)}/{job_id}", status_code=303)
 
 
@@ -532,21 +594,32 @@ def delete_job(request: Request, job_id: int, db: Session = Depends(get_db)):
     if job is None:
         raise HTTPException(status_code=404, detail="Work order not found")
 
-    for item in list(job.items):
-        db.delete(item)
-    log_audit_event(
-        db,
-        event_type="job_deleted",
-        entity_type="job",
-        entity_id=job.id,
-        description="Work order deleted.",
-    )
-    db.delete(job)
-    db.commit()
+    try:
+        for item in list(job.items):
+            reverse_delivery_note_stock_issue(
+                db,
+                request=request,
+                job=job,
+                item=item,
+                reason=f"Delivery note {job.id} deleted.",
+            )
+            db.delete(item)
+        log_audit_event(
+            db,
+            event_type="job_deleted",
+            entity_type="job",
+            entity_id=job.id,
+            description="Work order deleted.",
+        )
+        db.delete(job)
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return RedirectResponse(url=route_base_for(request), status_code=303)
 
 
-def clone_job_as_type(db: Session, *, source_job: Job, target_type: str) -> Job:
+def clone_job_as_type(db: Session, *, source_job: Job, target_type: str, request: Request | None = None) -> Job:
     if target_type not in DOCUMENT_TYPES:
         raise HTTPException(status_code=400, detail="Invalid target document type")
     existing = (
@@ -571,9 +644,9 @@ def clone_job_as_type(db: Session, *, source_job: Job, target_type: str) -> Job:
     )
     db.add(cloned)
     db.flush()
-    for item in source_job.items:
-        db.add(
-            JobItem(
+    try:
+        for item in source_job.items:
+            cloned_item = JobItem(
                 job=cloned,
                 product=item.product,
                 description=item.description,
@@ -582,7 +655,15 @@ def clone_job_as_type(db: Session, *, source_job: Job, target_type: str) -> Job:
                 vat_percent=item.vat_percent,
                 line_total=item.line_total,
             )
-        )
+            db.add(cloned_item)
+            db.flush()
+            if target_type == "delivery_note":
+                if request is None:
+                    raise ValueError("Request context is required to reserve delivery note stock.")
+                apply_delivery_note_stock_issue(db, request=request, job=cloned, item=cloned_item)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     source_job.converted_at = utc_now()
     db.flush()
     ensure_receipt_number(db, cloned)
@@ -610,7 +691,7 @@ def convert_job_document(
     if job is None:
         raise HTTPException(status_code=404, detail="Document not found")
     if target_type in {"work_order", "delivery_note", "quote"}:
-        converted = clone_job_as_type(db, source_job=job, target_type=target_type)
+        converted = clone_job_as_type(db, source_job=job, target_type=target_type, request=request)
         return RedirectResponse(url=f"/{target_type.replace('_', '-') + 's' if target_type != 'work_order' else 'work-orders'}/{converted.id}", status_code=303)
     if target_type in {"sale", "invoice"}:
         current_user = request_current_user(request)

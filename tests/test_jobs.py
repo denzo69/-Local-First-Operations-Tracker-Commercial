@@ -1,8 +1,63 @@
+from datetime import date
+
 from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import AuditLog, InventoryTransaction, Job, Product, Receipt, Sale, Setting
+from app.models import AuditLog, InventoryBalance, InventoryTransaction, Job, Product, Receipt, Role, Sale, Setting, Supplier, User
+from app.services.inventory_service import (
+    add_goods_receipt_line,
+    create_default_warehouse,
+    create_goods_receipt,
+    post_goods_receipt,
+)
+from app.services.sales_service import ensure_default_roles
+
+
+def create_inventory_user(db):
+    ensure_default_roles(db)
+    role = db.query(Role).filter(Role.code == "manager").one()
+    user = User(
+        name="Inventory Operator",
+        login_name="inventory.operator",
+        role=role,
+        is_active=True,
+        can_receive_sales_credit=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def seed_stock(db, *, product_name="Delivery stock product", quantity="5", unit_cost="10"):
+    user = create_inventory_user(db)
+    supplier = Supplier(name="Delivery Supplier", is_active=True)
+    db.add(supplier)
+    db.flush()
+    product = Product(name=product_name, unit_price="25", vat_percent="24", is_stock_item=True, is_active=True)
+    db.add(product)
+    db.flush()
+    _, location = create_default_warehouse(db)
+    db.commit()
+    receipt = create_goods_receipt(
+        db,
+        supplier_id=supplier.id,
+        receipt_date=date(2026, 7, 19),
+        received_by_user_id=user.id,
+        delivery_number=f"STOCK-{product_name}",
+    )
+    add_goods_receipt_line(
+        db,
+        goods_receipt_id=receipt.id,
+        product_id=product.id,
+        destination_location_id=location.id,
+        quantity_value=quantity,
+        purchase_unit_price_ex_vat=unit_cost,
+    )
+    post_goods_receipt(db, goods_receipt_id=receipt.id, posted_by_user_id=user.id)
+    db.refresh(product)
+    return product
 
 
 def test_new_job_page_has_customer_select():
@@ -63,14 +118,12 @@ def test_work_order_routes_create_and_redirect_to_work_order_detail():
     assert response.headers["location"].startswith("/work-orders/")
 
 
-def test_quote_and_delivery_note_workflow_converts_without_stock_until_sale():
+def test_quote_does_not_reduce_stock_delivery_note_reduces_once_and_sale_reuses_issue():
     with TestClient(app) as client:
         customer_response = client.post("/customers", data={"name": "Document Customer"}, follow_redirects=False)
         customer_id = customer_response.headers["location"].rsplit("/", 1)[-1]
         with SessionLocal() as db:
-            product = Product(name="Document Service", unit_price="25", vat_percent="24", is_stock_item=False)
-            db.add(product)
-            db.commit()
+            product = seed_stock(db, product_name="Document Stock")
             product_id = product.id
 
         quote_response = client.post(
@@ -84,13 +137,25 @@ def test_quote_and_delivery_note_workflow_converts_without_stock_until_sale():
             data={"product_id": str(product_id), "quantity": "2", "unit_price": "25", "vat_percent": "24"},
             follow_redirects=False,
         )
+        with SessionLocal() as db:
+            stock_after_quote = db.get(Product, product_id).current_inventory_quantity
+            quote_issue_count = db.query(InventoryTransaction).filter(InventoryTransaction.product_id == product_id).count()
         delivery_response = client.post(f"/quotes/{quote_id}/convert/delivery_note", follow_redirects=False)
-        sale_response = client.post(f"/quotes/{quote_id}/convert/sale", follow_redirects=False)
+        with SessionLocal() as db:
+            delivery = db.query(Job).filter(Job.source_job_id == int(quote_id), Job.document_type == "delivery_note").one()
+            stock_after_delivery = db.get(Product, product_id).current_inventory_quantity
+            delivery_issue_count = (
+                db.query(InventoryTransaction)
+                .filter(InventoryTransaction.transaction_type == "delivery_note_issue", InventoryTransaction.work_order_id == delivery.id)
+                .count()
+            )
+            delivery_id = delivery.id
+        sale_response = client.post(f"/delivery-notes/{delivery_id}/convert/sale", follow_redirects=False)
 
     with SessionLocal() as db:
         quote = db.get(Job, int(quote_id))
-        delivery = db.query(Job).filter(Job.source_job_id == quote.id, Job.document_type == "delivery_note").one()
-        sale = db.query(Sale).filter(Sale.work_order_id == quote.id).one()
+        delivery = db.get(Job, delivery_id)
+        sale = db.query(Sale).filter(Sale.work_order_id == delivery.id).one()
         inventory_transactions = db.query(InventoryTransaction).filter(InventoryTransaction.sale_id == sale.id).count()
 
     assert quote_response.status_code == 303
@@ -100,7 +165,87 @@ def test_quote_and_delivery_note_workflow_converts_without_stock_until_sale():
     assert quote.document_type == "quote"
     assert delivery.document_type == "delivery_note"
     assert sale.total == 50
+    assert stock_after_quote == 5
+    assert quote_issue_count == 1
+    assert stock_after_delivery == 3
+    assert delivery_issue_count == 1
     assert inventory_transactions == 0
+    assert sale.cost_of_goods_sold_ex_vat == 20
+
+
+def test_delivery_note_item_reduces_stock_and_deleting_item_restores_stock_with_reversal():
+    with TestClient(app) as client:
+        with SessionLocal() as db:
+            product = seed_stock(db, product_name="Delivery Delete Stock")
+            product_id = product.id
+
+        delivery_response = client.post("/delivery-notes", data={"title": "Delivery stock reservation"}, follow_redirects=False)
+        delivery_id = int(delivery_response.headers["location"].rsplit("/", 1)[-1])
+        item_response = client.post(
+            f"/delivery-notes/{delivery_id}/items",
+            data={"product_id": str(product_id), "quantity": "2"},
+            follow_redirects=False,
+        )
+
+        with SessionLocal() as db:
+            item = db.get(Job, delivery_id).items[0]
+            stock_after_item = db.get(Product, product_id).current_inventory_quantity
+            balance_after_item = db.query(InventoryBalance).filter(InventoryBalance.product_id == product_id).one().quantity_on_hand
+            issue_count = (
+                db.query(InventoryTransaction)
+                .filter(InventoryTransaction.transaction_type == "delivery_note_issue", InventoryTransaction.work_order_id == delivery_id)
+                .count()
+            )
+            item_id = item.id
+
+        delete_response = client.post(f"/delivery-notes/{delivery_id}/items/{item_id}/delete", follow_redirects=False)
+
+    with SessionLocal() as db:
+        product = db.get(Product, product_id)
+        reversal = (
+            db.query(InventoryTransaction)
+            .filter(InventoryTransaction.transaction_type == "delivery_note_reversal", InventoryTransaction.work_order_id == delivery_id)
+            .one()
+        )
+
+    assert delivery_response.status_code == 303
+    assert item_response.status_code == 303
+    assert delete_response.status_code == 303
+    assert stock_after_item == 3
+    assert balance_after_item == 3
+    assert issue_count == 1
+    assert product.current_inventory_quantity == 5
+    assert reversal.quantity_change == 2
+
+
+def test_delivery_note_service_row_does_not_reduce_stock():
+    with TestClient(app) as client:
+        with SessionLocal() as db:
+            user = create_inventory_user(db)
+            product = Product(name="Delivery service row", unit_price="75", vat_percent="24", is_stock_item=False, is_active=True)
+            db.add(product)
+            db.commit()
+            product_id = product.id
+            user_id = user.id
+
+        delivery_response = client.post("/delivery-notes", data={"title": "Delivery service"}, follow_redirects=False)
+        delivery_id = int(delivery_response.headers["location"].rsplit("/", 1)[-1])
+        item_response = client.post(
+            f"/delivery-notes/{delivery_id}/items",
+            data={"product_id": str(product_id), "quantity": "2"},
+            follow_redirects=False,
+        )
+
+    with SessionLocal() as db:
+        product = db.get(Product, product_id)
+        transactions = db.query(InventoryTransaction).filter(InventoryTransaction.product_id == product_id).count()
+        user_exists = db.get(User, user_id) is not None
+
+    assert delivery_response.status_code == 303
+    assert item_response.status_code == 303
+    assert product.current_inventory_quantity in (None, 0)
+    assert transactions == 0
+    assert user_exists is True
 
 
 def test_work_order_can_be_created_with_empty_customer_selection():

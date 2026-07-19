@@ -14,7 +14,7 @@ The goal is not to imitate a heavyweight enterprise suite or a polished SaaS lan
 
 ## UI Preview
 
-The application is designed for a first-time small-business user: start from a customer or work order, complete a sale only when the transaction is final, follow invoicing separately, and close the business day from one calm operations dashboard. Quotes and delivery notes remain non-stock-affecting until converted into a finalized sale.
+The application is designed for a first-time small-business user: start from a customer or work order, complete a sale only when the transaction is final, follow invoicing separately, and close the business day from one calm operations dashboard. Quotes do not affect stock. Delivery notes reserve and reduce stock products for the customer, while services and work rows remain non-stock-affecting.
 
 The current dashboard is designed as an operations view rather than a marketing page. It prioritizes quick actions, work queues, upcoming work orders, recent activity, sales and invoicing, and daily closing status in one browser screen.
 
@@ -31,7 +31,7 @@ The app is not intended to be exposed directly to the public internet.
 - Dashboard with real work order counts and attention lists
 - Customer CRUD and customer work order history
 - Work Order CRUD through `/work-orders`
-- Delivery notes through `/delivery-notes` for customer-specific product handoff and invoicing handoff workflows
+- Delivery notes through `/delivery-notes` for customer-specific reservations, deliveries, and invoicing handoff workflows that reserve and reduce stock products
 - Quotes through `/quotes` for pricing products and work without reducing inventory
 - Legacy `/jobs` routes kept for backwards compatibility
 - Configurable work order statuses in Settings
@@ -88,7 +88,7 @@ Work Orders, Sales, Payments, and Refunds are separate business objects. A Sale 
 
 A Work Order is operational, not financial. When it becomes billable, it is converted into a Sale. That Sale stores immutable line snapshots, credited seller, operator, shift, cash register, VAT totals, inventory COGS snapshots, and settlement status.
 
-The operational document family now includes Work Orders, Delivery Notes, and Quotes. A Quote can be used to price products or work without reducing inventory. A Delivery Note can represent products reserved, delivered, or prepared for a customer before final settlement. Quotes and Delivery Notes can be converted into Work Orders, Sales, or invoice handoff records. Inventory is not reduced by a Quote or Delivery Note by itself; stock is issued only when a Sale is finalized through the shared sales flow.
+The operational document family now includes Work Orders, Delivery Notes, and Quotes. A Quote can be used to price products or work without reducing inventory. A Delivery Note represents products reserved, delivered, or prepared for a customer before final settlement and therefore reserves and reduces stock products immediately. Service and manual work rows do not reduce stock. Quotes and Delivery Notes can be converted into Work Orders, Sales, or invoice handoff records. When a Delivery Note is converted to a Sale, the already recorded delivery-note stock issue is reused for sale cost reporting and stock is not reduced a second time.
 
 Cashier shifts are optional by default. Small businesses, sole traders, and mobile workers can complete Sales without opening a shift. When a shift is selected, the Sale uses the shift business date and cash register and is included in shift closing. When no shift is selected, the Sale stores its own business date, may optionally reference a cash register, and remains visible in sales reports, daily totals, inventory reports, and seller reports without appearing in a shift closing. A future configuration flag, `require_cashier_shift`, can make active shifts mandatory for installations that need stricter cashier control.
 

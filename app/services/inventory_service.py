@@ -941,6 +941,193 @@ def issue_stock_for_sale_from_available_locations(
     return transactions
 
 
+def issue_stock_for_delivery_note(
+    db: Session,
+    *,
+    product_id: int,
+    quantity_value,
+    work_order_id: int,
+    job_item_id: int,
+    created_by_user_id: int,
+    delivery_note_number: str | None = None,
+    commit: bool = True,
+) -> list[InventoryTransaction]:
+    qty_remaining = require_positive_quantity(quantity_value)
+    transactions: list[InventoryTransaction] = []
+    balances = (
+        db.query(InventoryBalance)
+        .filter(InventoryBalance.product_id == product_id, InventoryBalance.quantity_on_hand > 0)
+        .order_by(InventoryBalance.warehouse_location_id.asc())
+        .all()
+    )
+    total_available = quantity(
+        sum((parse_decimal(balance.quantity_on_hand or 0) for balance in balances), Decimal("0"))
+    )
+    if total_available < qty_remaining:
+        raise ValueError("Negative stock is not allowed.")
+    user = require_inventory_operational_user(db.get(User, created_by_user_id))
+    product = db.get(Product, product_id)
+    if product is None or not product.is_stock_item:
+        raise ValueError("Stock product is required.")
+    assert_inventory_cache_consistent(db, product_ids={product_id})
+
+    for balance in balances:
+        if qty_remaining <= 0:
+            break
+        issue_qty = min(qty_remaining, quantity(parse_decimal(balance.quantity_on_hand)))
+        location = _location(db, balance.warehouse_location_id)
+        old_qty = quantity(parse_decimal(product.current_inventory_quantity or 0))
+        old_avg = cost(parse_decimal(product.current_weighted_average_cost_ex_vat or 0))
+        old_value = money(parse_decimal(product.current_inventory_value_ex_vat or 0))
+        total_cost = money(issue_qty * old_avg)
+        new_qty = quantity(old_qty - issue_qty)
+        new_value = money(old_value - total_cost)
+        new_avg = old_avg if new_qty > 0 else None
+
+        balance_qty = quantity(parse_decimal(balance.quantity_on_hand or 0))
+        balance_value = money(parse_decimal(balance.inventory_value_ex_vat or 0))
+        balance.quantity_on_hand = quantity(balance_qty - issue_qty)
+        balance.quantity_available = quantity(parse_decimal(balance.quantity_on_hand) - parse_decimal(balance.quantity_reserved or 0))
+        balance.inventory_value_ex_vat = money(balance_value - total_cost)
+        balance.weighted_average_cost_ex_vat = (
+            cost(parse_decimal(balance.inventory_value_ex_vat) / parse_decimal(balance.quantity_on_hand))
+            if parse_decimal(balance.quantity_on_hand) > 0
+            else None
+        )
+        _sync_product_cache(product, stock=new_qty, value=new_value, average_cost=new_avg)
+        transaction = _create_transaction(
+            db,
+            product=product,
+            location=location,
+            transaction_type="delivery_note_issue",
+            quantity_change=quantity(-issue_qty),
+            unit_cost_ex_vat=old_avg,
+            total_inventory_cost=money(-total_cost),
+            inventory_value_before=old_value,
+            inventory_value_after=new_value,
+            stock_before=old_qty,
+            stock_after=new_qty,
+            weighted_average_cost_before=old_avg,
+            weighted_average_cost_after=new_avg,
+            delivery_note_number=delivery_note_number,
+            work_order_id=work_order_id,
+            reference=f"job_item:{job_item_id}",
+            created_by_user_id=user.id,
+        )
+        transactions.append(transaction)
+        qty_remaining = quantity(qty_remaining - issue_qty)
+
+    if qty_remaining > 0:
+        raise ValueError("Negative stock is not allowed.")
+    db.flush()
+    for transaction in transactions:
+        log_audit_event(
+            db,
+            event_type="inventory.delivery_note_issue",
+            entity_type="inventory_transaction",
+            entity_id=transaction.id,
+            description=f"Delivery note stock issue recorded for product {product.name}: {-transaction.quantity_change}.",
+        )
+    if commit:
+        db.commit()
+        for transaction in transactions:
+            db.refresh(transaction)
+    return transactions
+
+
+def reverse_delivery_note_item_issue(
+    db: Session,
+    *,
+    work_order_id: int,
+    job_item_id: int,
+    created_by_user_id: int,
+    reason: str,
+    commit: bool = True,
+) -> list[InventoryTransaction]:
+    user = require_inventory_operational_user(db.get(User, created_by_user_id))
+    original_transactions = (
+        db.query(InventoryTransaction)
+        .filter(
+            InventoryTransaction.work_order_id == work_order_id,
+            InventoryTransaction.reference == f"job_item:{job_item_id}",
+            InventoryTransaction.transaction_type == "delivery_note_issue",
+            InventoryTransaction.reversal_of_transaction_id.is_(None),
+        )
+        .order_by(InventoryTransaction.id.asc())
+        .all()
+    )
+    reversals: list[InventoryTransaction] = []
+    for original in original_transactions:
+        already_reversed = (
+            db.query(InventoryTransaction)
+            .filter(InventoryTransaction.reversal_of_transaction_id == original.id)
+            .first()
+        )
+        if already_reversed is not None:
+            continue
+        product = original.product
+        location = _location(db, original.shelf_location_id)
+        balance = _get_or_create_balance(db, product_id=original.product_id, location_id=location.id)
+        return_qty = quantity(-parse_decimal(original.quantity_change))
+        return_value = money(-parse_decimal(original.total_inventory_cost))
+        old_qty = quantity(parse_decimal(product.current_inventory_quantity or 0))
+        old_value = money(parse_decimal(product.current_inventory_value_ex_vat or 0))
+        old_avg = cost(parse_decimal(product.current_weighted_average_cost_ex_vat or 0))
+        new_qty = quantity(old_qty + return_qty)
+        new_value = money(old_value + return_value)
+        new_avg = cost(new_value / new_qty) if new_qty > 0 else None
+
+        balance_qty = quantity(parse_decimal(balance.quantity_on_hand or 0))
+        balance_value = money(parse_decimal(balance.inventory_value_ex_vat or 0))
+        balance.quantity_on_hand = quantity(balance_qty + return_qty)
+        balance.quantity_available = quantity(parse_decimal(balance.quantity_on_hand) - parse_decimal(balance.quantity_reserved or 0))
+        balance.inventory_value_ex_vat = money(balance_value + return_value)
+        balance.weighted_average_cost_ex_vat = (
+            cost(parse_decimal(balance.inventory_value_ex_vat) / parse_decimal(balance.quantity_on_hand))
+            if parse_decimal(balance.quantity_on_hand) > 0
+            else None
+        )
+        balance.updated_at = utc_now()
+        _sync_product_cache(product, stock=new_qty, value=new_value, average_cost=new_avg)
+        reversals.append(
+            _create_transaction(
+                db,
+                product=product,
+                location=location,
+                transaction_type="delivery_note_reversal",
+                quantity_change=return_qty,
+                unit_cost_ex_vat=original.unit_cost_ex_vat,
+                total_inventory_cost=return_value,
+                inventory_value_before=old_value,
+                inventory_value_after=new_value,
+                stock_before=old_qty,
+                stock_after=new_qty,
+                weighted_average_cost_before=old_avg,
+                weighted_average_cost_after=new_avg,
+                delivery_note_number=original.delivery_note_number,
+                work_order_id=work_order_id,
+                adjustment_reason=reason,
+                reference=f"job_item:{job_item_id}:reversal",
+                created_by_user_id=user.id,
+                reversal_of_transaction_id=original.id,
+            )
+        )
+    db.flush()
+    for reversal in reversals:
+        log_audit_event(
+            db,
+            event_type="inventory.delivery_note_reversal",
+            entity_type="inventory_transaction",
+            entity_id=reversal.id,
+            description=f"Delivery note stock issue reversed: {reason}.",
+        )
+    if commit:
+        db.commit()
+        for reversal in reversals:
+            db.refresh(reversal)
+    return reversals
+
+
 def transfer_stock(
     db: Session,
     *,

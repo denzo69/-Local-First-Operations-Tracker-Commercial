@@ -40,7 +40,10 @@
             <div class="col-12">
                 <div class="form-check">
                     <input class="form-check-input" id="is_stock_item" name="is_stock_item" type="checkbox" {% if product and product.is_stock_item %}checked{% endif %}>
-                    <label class="form-check-label" for="is_stock_item">Stock item</label>
+                    <label class="form-check-label" for="is_stock_item">{{ t.stock_item }}</label>
+                </div>
+                <div class="form-text">
+                    {{ t.stock_item_help }}
                 </div>
             </div>
         </div>

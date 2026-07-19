@@ -12,6 +12,7 @@ from app.models import (
     CashMovement,
     DailyClosing,
     DailyClosingSnapshot,
+    InventoryTransaction,
     Job,
     JobItem,
     JobStatus,
@@ -452,6 +453,25 @@ def _mark_work_order_completed_by_sale(db: Session, *, work_order: Job, sale_id:
         )
 
 
+def _delivery_note_line_cogs(db: Session, *, work_order: Job | None, work_order_item_id: int | None, product_id: int) -> Decimal | None:
+    if work_order is None or work_order.document_type != "delivery_note" or work_order_item_id is None:
+        return None
+    transactions = (
+        db.query(InventoryTransaction)
+        .filter(
+            InventoryTransaction.work_order_id == work_order.id,
+            InventoryTransaction.product_id == product_id,
+            InventoryTransaction.transaction_type == "delivery_note_issue",
+            InventoryTransaction.reference == f"job_item:{work_order_item_id}",
+            InventoryTransaction.reversal_of_transaction_id.is_(None),
+        )
+        .all()
+    )
+    if not transactions:
+        return None
+    return money(sum((-parse_decimal(transaction.total_inventory_cost) for transaction in transactions), Decimal("0")))
+
+
 def create_sale_from_lines(
     db: Session,
     *,
@@ -658,19 +678,28 @@ def create_sale_from_lines(
             line_cogs = Decimal("0.00")
             product = payload["product"]
             if product is not None and product.is_stock_item:
-                from app.services.inventory_service import issue_stock_for_sale_from_available_locations
-
-                transactions = issue_stock_for_sale_from_available_locations(
+                delivery_note_cogs = _delivery_note_line_cogs(
                     db,
+                    work_order=work_order,
+                    work_order_item_id=source_line.work_order_item_id,
                     product_id=product.id,
-                    quantity_value=payload["quantity"],
-                    sale_id=sale.id,
-                    created_by_user_id=operator_id,
-                    commit=False,
                 )
-                line_cogs = money(
-                    sum((-parse_decimal(transaction.total_inventory_cost) for transaction in transactions), Decimal("0"))
-                )
+                if delivery_note_cogs is not None:
+                    line_cogs = delivery_note_cogs
+                else:
+                    from app.services.inventory_service import issue_stock_for_sale_from_available_locations
+
+                    transactions = issue_stock_for_sale_from_available_locations(
+                        db,
+                        product_id=product.id,
+                        quantity_value=payload["quantity"],
+                        sale_id=sale.id,
+                        created_by_user_id=operator_id,
+                        commit=False,
+                    )
+                    line_cogs = money(
+                        sum((-parse_decimal(transaction.total_inventory_cost) for transaction in transactions), Decimal("0"))
+                    )
             line_profit = money(payload["net"] - line_cogs)
             line_margin = (line_profit / payload["net"] * Decimal("100")).quantize(Decimal("0.001")) if payload["net"] > 0 else None
             sale_line.cost_of_goods_sold_ex_vat = line_cogs
