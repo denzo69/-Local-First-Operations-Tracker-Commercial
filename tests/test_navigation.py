@@ -14,6 +14,10 @@ def test_dashboard_actions_are_links():
     assert response.status_code == 200
     assert 'href="/work-orders/new"' in response.text
     assert 'href="/customers/new"' in response.text
+    assert 'id="desktopNavSales"' in response.text
+    assert 'id="desktopNavStock"' in response.text
+    assert 'id="desktopNavSales" hidden' not in response.text
+    assert 'id="desktopNavStock" hidden' not in response.text
 
 
 def test_main_navigation_targets_load():
@@ -157,23 +161,24 @@ def test_new_navigation_labels_render_in_finnish_and_english():
         english = client.get("/")
 
     assert "Myyntihistoria" in finnish.text
-    assert "Hallinta" in finnish.text
-    assert "Audit-loki" in finnish.text
+    assert "Asetukset" in finnish.text
+    assert "Tekninen audit-loki" in finnish.text
     assert "Sales history" in english.text
-    assert "Administration" in english.text
-    assert "Audit log" in english.text
+    assert "Settings" in english.text
+    assert "Technical audit log" in english.text
 
 
 def test_every_main_navigation_label_renders_in_both_languages():
     english_labels = [
-        "Dashboard", "Operations", "Customers", "Work orders", "Sales",
-        "Quick sale", "Sales history", "Daily closing", "Catalog", "Products",
-        "Reports", "Seller reports", "Administration", "Users",
-        "Cash registers", "Audit log", "Backups", "Settings",
+        "Dashboard", "Sales and documents", "Customers and stock", "Reports and history",
+        "Customers", "Work orders", "Sales", "Quick sale", "Sales history", "Products",
+        "Sales reports", "Inventory reports", "Seller reports", "Users",
+        "Cash registers", "Technical audit log", "Backups", "Settings",
     ]
     finnish_labels = [
-        "Myyntihistoria", "Hallinta", "Asiakkaat", "Tuotteet", "Kassat",
-        "Audit-loki", "Asetukset",
+        "Myyntihistoria", "Asiakkaat", "Tuotteet", "Kassat",
+        "Tekninen audit-loki", "Asetukset", "Myynti ja dokumentit",
+        "Asiakkaat ja varasto", "Raportit ja historia",
     ]
     with TestClient(app) as client:
         english = client.get("/")
@@ -246,8 +251,11 @@ def test_mobile_navigation_markup_is_present():
     assert 'id="mobileNav"' in response.text
     assert 'aria-label="Mobile navigation"' in response.text
     assert 'data-mobile-nav-toggle' in response.text
-    assert 'aria-controls="mobileNavOperations"' in response.text
-    assert 'id="mobileNavSales" hidden' in response.text
+    assert 'data-sidebar-shell-toggle' in response.text
+    assert 'aria-controls="mobileNavSales"' in response.text
+    assert 'aria-controls="mobileNavStock"' in response.text
+    assert 'id="mobileNavSales"' in response.text
+    assert 'id="mobileNavStock" hidden' in response.text
 
 
 def test_administration_tables_have_responsive_markup():
@@ -283,6 +291,8 @@ def test_static_stylesheets_are_served():
     assert ".d-none" in bootstrap.text
     assert app_css.status_code == 200
     assert ".app-sidebar" in app_css.text
+    assert "body.sidebar-collapsed .app-sidebar" in app_css.text
+    assert ".sidebar-shell-toggle" in app_css.text
     assert ".offcanvas .sidebar-link" in app_css.text
     assert ".offcanvas .sidebar-nav {\n    display: grid;" in app_css.text
     assert ".offcanvas .sidebar-group-toggle {\n    display: flex;" in app_css.text
@@ -302,6 +312,8 @@ def test_static_scripts_are_served():
     assert "Offcanvas" in bootstrap.text
     assert app_js.status_code == 200
     assert "data-mobile-nav-toggle" in app_js.text
+    assert "data-sidebar-shell-toggle" in app_js.text
+    assert "opsTrackerSidebarCollapsed" in app_js.text
     assert "target.hidden = expanded;" in app_js.text
     assert "data-live-filter-form" in app_js.text
     assert "data-search-text" in app_js.text
@@ -366,7 +378,7 @@ def test_dashboard_compact_empty_and_operational_panels_render():
     assert response.status_code == 200
     assert "Current shift" not in response.text
     assert "No open shift." not in response.text
-    assert "Daily closing not completed" in response.text
+    assert "Business day open" in response.text
     assert "empty-state compact" in response.text
 
 
@@ -655,3 +667,26 @@ def test_product_detail_has_direct_stock_receiving_flow():
         assert service_detail.status_code == 200
         assert f'href="/products/{service_id}/receive"' not in service_detail.text
         assert client.get(f"/products/{service_id}/receive").status_code == 400
+
+
+def test_customer_pages_use_translated_first_time_guidance():
+    with TestClient(app) as client:
+        client.post(
+            "/settings",
+            data={
+                "company_name": "Test Company Oy",
+                "default_vat_percent": "24",
+                "receipt_prefix": "TEST-",
+                "language": "fi",
+            },
+            follow_redirects=False,
+        )
+        customers = client.get("/customers")
+        new_customer = client.get("/customers/new")
+
+    assert customers.status_code == 200
+    assert "Pidä asiakkaan tiedot yhdessä paikassa" in customers.text
+    assert "Luo ensimmäinen asiakas" in customers.text
+    assert new_customer.status_code == 200
+    assert "Lisää nyt tarvittavat tiedot" in new_customer.text
+    assert "Tallenna asiakas" in new_customer.text

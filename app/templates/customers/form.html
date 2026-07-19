@@ -3,45 +3,45 @@
 {% block content %}
 <div class="mb-4">
     <h1 class="h3 mb-1">{{ page_title }}</h1>
-    <p class="text-muted mb-0">Save the customer details needed for work orders and receipts.</p>
+    <p class="text-muted mb-0">{{ t.customer_form_help }}</p>
 </div>
 
 <form class="card shadow-sm border-0" method="post" action="{{ form_action }}">
     <div class="card-body">
         <div class="row g-3">
             <div class="col-12">
-                <label class="form-label" for="name">Name</label>
+                <label class="form-label" for="name">{{ t.user_name }}</label>
                 <input class="form-control" id="name" name="name" required value="{{ customer.name if customer else '' }}">
             </div>
             <div class="col-md-6">
-                <label class="form-label" for="phone">Phone</label>
+                <label class="form-label" for="phone">{{ t.phone }}</label>
                 <input class="form-control" id="phone" name="phone" value="{{ customer.phone if customer and customer.phone else '' }}">
             </div>
             <div class="col-md-6">
-                <label class="form-label" for="email">Email</label>
+                <label class="form-label" for="email">{{ t.email }}</label>
                 <input class="form-control" id="email" name="email" type="email" value="{{ customer.email if customer and customer.email else '' }}">
             </div>
             <div class="col-12">
-                <label class="form-label" for="address">Address</label>
+                <label class="form-label" for="address">{{ t.address }}</label>
                 <textarea class="form-control" id="address" name="address" rows="2">{{ customer.address if customer and customer.address else '' }}</textarea>
             </div>
             <div class="col-md-6">
-                <label class="form-label" for="company_name">Company name</label>
+                <label class="form-label" for="company_name">{{ t.company_name }}</label>
                 <input class="form-control" id="company_name" name="company_name" value="{{ customer.company_name if customer and customer.company_name else '' }}">
             </div>
             <div class="col-md-6">
-                <label class="form-label" for="business_id">Business ID</label>
+                <label class="form-label" for="business_id">{{ t.business_id }}</label>
                 <input class="form-control" id="business_id" name="business_id" value="{{ customer.business_id if customer and customer.business_id else '' }}">
             </div>
             <div class="col-12">
-                <label class="form-label" for="notes">Notes</label>
+                <label class="form-label" for="notes">{{ t.notes }}</label>
                 <textarea class="form-control" id="notes" name="notes" rows="3">{{ customer.notes if customer and customer.notes else '' }}</textarea>
             </div>
         </div>
     </div>
     <div class="card-footer bg-white d-flex gap-2 justify-content-end">
-        <a class="btn btn-outline-secondary" href="/customers">Cancel</a>
-        <button class="btn btn-primary" type="submit">Save customer</button>
+        <a class="btn btn-outline-secondary" href="/customers">{{ t.cancel }}</a>
+        <button class="btn btn-primary" type="submit">{{ t.save_customer }}</button>
     </div>
 </form>
 {% endblock %}
