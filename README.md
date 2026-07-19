@@ -30,14 +30,6 @@ The mobile layout uses the same server-rendered UI with a single-column dashboar
 
 ![Mobile dashboard](docs/UI/screenshots/dashboard-mobile.png)
 
-### Settings, Help, And Permissions
-
-Admin users can add employees and assign operational roles from Settings. The same page includes an in-app getting-started guide explaining the customer, document, sale/invoicing, inventory, and daily-closing workflow.
-
-![Settings and getting started](docs/UI/screenshots/settings-help-desktop.png)
-
-![Employee permissions](docs/UI/screenshots/employee-permissions-desktop.png)
-
 ## Current MVP Status
 
 This repository contains an early but usable FastAPI MVP. It is intended to run on one company-owned Windows computer and serve other computers, tablets, and phones through a browser on the local network or through Tailscale.
