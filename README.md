@@ -22,13 +22,13 @@ More UI screenshots are available in [`docs/UI/Screenshots.md`](docs/UI/Screensh
 
 ### Browser Dashboard
 
-![Browser dashboard](docs/UI/screenshots/dashboard-desktop.png)
+![Browser dashboard](docs/UI/screenshots/dashboard-v2-desktop.png)
 
 ### Mobile Dashboard
 
 The mobile layout uses the same server-rendered UI with a single-column dashboard suitable for phone use over LAN or Tailscale.
 
-![Mobile dashboard](docs/UI/screenshots/dashboard-mobile.png)
+![Mobile dashboard](docs/UI/screenshots/dashboard-v2-mobile.png)
 
 ## Current MVP Status
 
