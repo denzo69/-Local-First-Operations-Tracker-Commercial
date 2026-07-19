@@ -18,7 +18,15 @@ The application is designed for a first-time small-business user: start from a c
 
 The current dashboard is designed as an operations view rather than a marketing page. It prioritizes quick actions, work queues, upcoming work orders, recent activity, sales and invoicing, and daily closing status in one browser screen.
 
-Current UI screenshots are intentionally not shown here until the refreshed visual design screenshots are recaptured.
+The screenshots below were captured from the current JEronAI Operations visual design.
+
+### Desktop Dashboard
+
+![Desktop dashboard](docs/UI/screenshots/dashboard-desktop.png)
+
+### Mobile Dashboard
+
+![Mobile dashboard](docs/UI/screenshots/dashboard-mobile.png)
 
 ## Current MVP Status
 
