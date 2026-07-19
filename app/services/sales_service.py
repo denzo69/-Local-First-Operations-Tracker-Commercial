@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -1644,18 +1644,32 @@ def reopen_daily_closing(db: Session, *, closing_id: int, user_id: int, reason: 
 def seller_report(db: Session, *, seller_id: int, start_date: date, end_date: date) -> dict:
     start_at = datetime.combine(start_date, time.min, tzinfo=UTC)
     end_at = datetime.combine(end_date, time.min, tzinfo=UTC)
+    sale_date_filter = or_(
+        and_(Sale.business_date >= start_date, Sale.business_date < end_date),
+        and_(
+            Sale.business_date.is_(None),
+            Sale.sold_at >= start_at,
+            Sale.sold_at < end_at,
+        ),
+    )
+    refund_date_filter = or_(
+        and_(Refund.business_date >= start_date, Refund.business_date < end_date),
+        and_(
+            Refund.business_date.is_(None),
+            Refund.refunded_at >= start_at,
+            Refund.refunded_at < end_at,
+        ),
+    )
     sales = (
         db.query(Sale)
         .filter(((Sale.sold_by_user_id == seller_id) | ((Sale.sold_by_user_id.is_(None)) & (Sale.seller_id == seller_id))))
-        .filter(Sale.sold_at >= start_at)
-        .filter(Sale.sold_at < end_at)
+        .filter(sale_date_filter)
         .all()
     )
     refunds = (
         db.query(Refund)
         .filter(Refund.seller_id == seller_id)
-        .filter(Refund.refunded_at >= start_at)
-        .filter(Refund.refunded_at < end_at)
+        .filter(refund_date_filter)
         .all()
     )
     payment_totals = defaultdict(lambda: Decimal("0"))

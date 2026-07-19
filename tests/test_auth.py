@@ -43,6 +43,19 @@ def test_first_admin_setup_enables_login_and_redirects_home():
     assert "First Admin" in home.text
 
 
+def test_first_admin_setup_uses_translated_name_label():
+    with TestClient(app) as client:
+        client.post(
+            "/settings",
+            data={"company_name": "Test", "default_vat_percent": "24", "receipt_prefix": "T-", "language": "fi"},
+            follow_redirects=False,
+        )
+        response = client.get("/setup")
+
+    assert response.status_code == 200
+    assert '<label class="form-label" for="name">Nimi</label>' in response.text
+
+
 def test_setup_remains_available_when_only_seller_users_exist():
     create_login_user("Existing Seller", "seller", password="secret123")
 
@@ -281,14 +294,48 @@ def test_admin_can_manage_users_and_roles_from_settings():
         updated_user = db.get(User, created_user.id)
 
     assert settings_page.status_code == 200
-    assert "User management" in settings_page.text
+    assert "Employees and permissions" in settings_page.text
+    assert "Add employee" in settings_page.text
+    assert "Manage permissions" in settings_page.text
+    assert "Help and getting started" in settings_page.text
+    assert "Quotes and delivery notes do not reduce stock" in settings_page.text
     assert 'href="/users"' in settings_page.text
     assert 'href="/users/new"' in settings_page.text
     assert new_user_page.status_code == 200
     assert "Role" in new_user_page.text
+    assert "The selected role controls which application functions the user may change." in new_user_page.text
+    assert "Full access, including Settings, users, roles" in new_user_page.text
     assert create_response.status_code == 303
     assert update_response.status_code == 303
     assert users_page.status_code == 200
     assert "Role User" in users_page.text
     assert updated_user.role_id == manager_role_id
     assert updated_user.can_receive_sales_credit is True
+
+
+def test_last_active_admin_cannot_be_demoted():
+    admin = create_login_user("Only Admin", "admin", password="secret123")
+    with SessionLocal() as db:
+        ensure_default_roles(db)
+        seller_role_id = db.query(Role).filter(Role.code == "seller").one().id
+
+    with TestClient(app) as client:
+        client.post(
+            "/login",
+            data={"login_name": "only.admin", "password": "secret123", "next_url": "/"},
+        )
+        response = client.post(
+            f"/users/{admin.id}",
+            data={
+                "name": "Only Admin",
+                "login_name": "only.admin",
+                "password": "",
+                "role_id": str(seller_role_id),
+                "is_active": "on",
+            },
+        )
+
+    assert response.status_code == 400
+    assert "Create another active Admin" in response.text
+    with SessionLocal() as db:
+        assert db.get(User, admin.id).role.code == "admin"

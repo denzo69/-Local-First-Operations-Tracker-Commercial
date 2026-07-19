@@ -114,3 +114,39 @@ def test_customer_with_job_history_cannot_be_deleted():
         response = client.post(f"{customer_url}/delete")
 
     assert response.status_code == 400
+
+
+def test_customer_can_be_updated_and_disposable_customer_deleted():
+    with TestClient(app) as client:
+        created = client.post("/customers", data={"name": "Original"}, follow_redirects=False)
+        customer_url = created.headers["location"]
+        updated = client.post(
+            customer_url,
+            data={
+                "name": "Updated Customer",
+                "phone": "040 000 0000",
+                "email": "updated@example.com",
+                "address": "Updated Street 1",
+                "company_name": "Updated Company",
+                "business_id": "7654321-0",
+                "notes": "Updated notes",
+            },
+            follow_redirects=False,
+        )
+        detail = client.get(customer_url)
+        deleted = client.post(f"{customer_url}/delete", follow_redirects=False)
+
+    assert updated.status_code == 303
+    assert updated.headers["location"] == customer_url
+    assert "Updated Customer" in detail.text
+    assert deleted.status_code == 303
+    assert deleted.headers["location"] == "/customers"
+
+
+def test_customer_update_and_delete_report_missing_customer():
+    with TestClient(app) as client:
+        update = client.post("/customers/999999", data={"name": "Missing"})
+        delete = client.post("/customers/999999/delete")
+
+    assert update.status_code == 404
+    assert delete.status_code == 404

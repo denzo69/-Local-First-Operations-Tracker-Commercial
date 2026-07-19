@@ -465,6 +465,10 @@ button:focus-visible,
     box-shadow: var(--shadow);
 }
 
+.dashboard-card-content-sized {
+    align-self: start;
+}
+
 .density-compact .dashboard-card {
     padding: .75rem;
 }

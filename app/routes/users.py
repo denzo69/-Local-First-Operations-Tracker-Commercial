@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.models import User
+from app.models import Role, User
 from app.services.audit_service import log_audit_event
 from app.services.auth_service import hash_password
 from app.services.sales_service import ensure_default_roles
@@ -123,6 +123,29 @@ def update_user(
     roles = ensure_default_roles(db)
     if role_id not in {role.id for role in roles}:
         raise HTTPException(status_code=400, detail="Selected role was not found")
+    selected_role = next(role for role in roles if role.id == role_id)
+    removing_admin_access = (
+        user.role is not None
+        and user.role.code == "admin"
+        and (selected_role.code != "admin" or is_active != "on")
+    )
+    if removing_admin_access:
+        other_active_admin = (
+            db.query(User)
+            .join(User.role)
+            .filter(
+                User.id != user.id,
+                User.is_active.is_(True),
+                User.password_hash.isnot(None),
+                Role.code == "admin",
+            )
+            .first()
+        )
+        if other_active_admin is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Create another active Admin before removing the last Admin's access.",
+            )
     login_value = login_name.strip() or None
     if login_value:
         existing = db.query(User).filter(User.login_name == login_value, User.id != user.id).first()

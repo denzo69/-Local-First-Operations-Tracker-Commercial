@@ -171,6 +171,26 @@ def test_dashboard_cards_render_in_requested_operational_order():
     assert positions == sorted(positions)
 
 
+def test_upcoming_work_orders_card_sizes_to_its_content():
+    with TestClient(app) as client:
+        response = client.get("/")
+
+    assert response.status_code == 200
+    assert '<section class="dashboard-card dashboard-card-content-sized" aria-labelledby="upcomingJobsTitle">' in response.text
+
+
+def test_dashboard_leads_with_work_orders_and_uses_natural_overview_copy():
+    with TestClient(app) as client:
+        response = client.get("/")
+
+    assert response.status_code == 200
+    assert "Today&#39;s operations overview" in response.text
+    quick_actions = response.text[response.text.index('id="quickActionsTitle"'):]
+    work_order_position = quick_actions.index('href="/work-orders/new"')
+    quick_sale_position = quick_actions.index('href="/sales/quick"')
+    assert work_order_position < quick_sale_position
+
+
 def test_dashboard_work_queues_include_work_orders_only_not_quotes_or_delivery_notes():
     today = date.today()
     with SessionLocal() as db:

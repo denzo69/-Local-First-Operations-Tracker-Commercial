@@ -23,8 +23,8 @@
         </div>
         <div class="dashboard-card-body">
             <div class="dashboard-button-row dashboard-button-grid">
-                <a class="btn btn-primary" href="/sales/quick">{{ t.quick_sale }}</a>
                 <a class="btn btn-primary" href="/work-orders/new">{{ t.create_work_order }}</a>
+                <a class="btn btn-primary" href="/sales/quick">{{ t.quick_sale }}</a>
                 <a class="btn btn-primary" href="/customers/new">{{ t.new_customer }}</a>
                 <a class="btn btn-outline-secondary" href="/quotes/new">{{ t.create_quote }}</a>
             </div>
@@ -73,7 +73,7 @@
     {% endif %}
 
     {% if dashboard_visibility.upcoming_jobs %}
-    <section class="dashboard-card" aria-labelledby="upcomingJobsTitle">
+    <section class="dashboard-card dashboard-card-content-sized" aria-labelledby="upcomingJobsTitle">
         <div class="dashboard-card-header">
             <div>
                 <h2 class="dashboard-card-title" id="upcomingJobsTitle">{{ t.upcoming_jobs }}</h2>

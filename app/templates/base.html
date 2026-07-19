@@ -20,7 +20,7 @@
             <span class="nav-icon" aria-hidden="true">DB</span><span>{{ t.dashboard }}</span>
         </a>
         <div class="sidebar-group">
-            {% set sales_group_open = active_page in ['quotes', 'delivery_notes', 'jobs'] %}
+            {% set sales_group_open = active_page in ['dashboard', 'quotes', 'delivery_notes', 'jobs'] %}
             <button class="sidebar-group-label sidebar-group-toggle-desktop" type="button" data-sidebar-group-toggle aria-expanded="{{ 'true' if sales_group_open else 'false' }}" aria-controls="desktopNavSales">{{ t.sales_and_documents }}</button>
             <div class="sidebar-group-items" id="desktopNavSales" {% if not sales_group_open %}hidden{% endif %}>
                 <a class="sidebar-link" href="/sales/quick"><span class="nav-icon" aria-hidden="true">QS</span><span>{{ t.quick_sale }}</span></a>
@@ -31,7 +31,7 @@
             </div>
         </div>
         <div class="sidebar-group">
-            {% set stock_group_open = active_page in ['customers', 'products'] %}
+            {% set stock_group_open = active_page in ['dashboard', 'customers', 'products'] %}
             <button class="sidebar-group-label sidebar-group-toggle-desktop" type="button" data-sidebar-group-toggle aria-expanded="{{ 'true' if stock_group_open else 'false' }}" aria-controls="desktopNavStock">{{ t.customers_and_stock }}</button>
             <div class="sidebar-group-items" id="desktopNavStock" {% if not stock_group_open %}hidden{% endif %}>
                 <a class="sidebar-link {% if active_page == 'customers' %}active{% endif %}" href="/customers"><span class="nav-icon" aria-hidden="true">CU</span><span>{{ t.customers }}</span></a>

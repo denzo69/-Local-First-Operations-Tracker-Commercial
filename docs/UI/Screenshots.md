@@ -6,7 +6,9 @@ These screenshots are included so the project is easier to understand from GitHu
 
 ## Browser Dashboard
 
-The browser layout uses a persistent left navigation with collapsible sections and a dense operations dashboard. The dashboard prioritizes quick actions, work queues, upcoming work orders, recent activity, sales and invoicing, and daily closing state.
+The desktop dashboard starts with the actions a small business uses most often. Work queues, upcoming work, recent activity, sales and invoicing, and daily closing remain visible without mixing operational documents with finalized financial transactions.
+
+The browser layout uses a persistent left navigation with collapsible sections and a dense operations dashboard.
 
 ![Browser dashboard](screenshots/dashboard-desktop.png)
 
@@ -15,6 +17,16 @@ The browser layout uses a persistent left navigation with collapsible sections a
 The mobile layout keeps the same operational information but stacks actions and dashboard panels into a single readable column for phone use over LAN or Tailscale.
 
 ![Mobile dashboard](screenshots/dashboard-mobile.png)
+
+## Settings, Help, And Employee Access
+
+Settings now starts with explicit administration and onboarding actions. Admin and Manager users can add employees, assign roles and change permissions, configure workflow statuses, and follow a concise day-to-day usage guide before editing company defaults.
+
+![Settings and getting started](screenshots/settings-help-desktop.png)
+
+The employee form explains the effective permissions of Admin, Manager, Seller, and Read only roles at the point where access is granted.
+
+![Employee permissions](screenshots/employee-permissions-desktop.png)
 
 ## Products Workspace
 
