@@ -307,6 +307,7 @@ def test_all_document_conversion_and_settlement_paths_across_two_closed_days(mon
         closing_user_id = _create_closing_user()
         closing_user_id = _create_closing_user()
         closing_user_id = _create_closing_user()
+        closing_user_id = _create_closing_user()
 
         _set_business_date(monkeypatch, day_one)
         day_one_sale_ids = _run_complete_day(
