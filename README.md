@@ -14,7 +14,7 @@ The goal is not to imitate a heavyweight enterprise suite or a polished SaaS lan
 
 ## UI Preview
 
-The current dashboard is designed as an operations view rather than a marketing page. It shows daily work order pressure, shift status, daily closing state, recent activity, and upcoming work in one browser screen.
+The current dashboard is designed as an operations view rather than a marketing page. It prioritizes quick actions, work queues, upcoming work orders, recent activity, sales and invoicing, and daily closing status in one browser screen.
 
 More UI screenshots are available in [`docs/UI/Screenshots.md`](docs/UI/Screenshots.md).
 
