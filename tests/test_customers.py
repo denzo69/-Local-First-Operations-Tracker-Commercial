@@ -30,6 +30,7 @@ def test_create_customer_redirects_to_detail():
                 "address": "Test Street 1",
                 "company_name": "Test Company",
                 "business_id": "1234567-8",
+                "default_discount_percent": "12.5",
                 "notes": "Created in test",
             },
             follow_redirects=False,
@@ -37,6 +38,32 @@ def test_create_customer_redirects_to_detail():
 
     assert response.status_code == 303
     assert response.headers["location"].startswith("/customers/")
+
+
+def test_customer_default_discount_percent_is_saved_and_shown():
+    with TestClient(app) as client:
+        response = client.post(
+            "/customers",
+            data={"name": "Discount Customer", "default_discount_percent": "7,5"},
+            follow_redirects=False,
+        )
+        detail = client.get(response.headers["location"])
+
+    assert response.status_code == 303
+    assert detail.status_code == 200
+    assert "Default discount %" in detail.text
+    assert "7.50 %" in detail.text
+
+
+def test_customer_default_discount_percent_must_be_valid():
+    with TestClient(app) as client:
+        response = client.post(
+            "/customers",
+            data={"name": "Invalid Discount Customer", "default_discount_percent": "125"},
+        )
+
+    assert response.status_code == 400
+    assert "between 0 and 100" in response.text
 
 
 def test_customer_detail_shows_work_history():

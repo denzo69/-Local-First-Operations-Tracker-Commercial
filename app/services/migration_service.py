@@ -83,6 +83,7 @@ def ensure_sqlite_schema_compatibility(engine: Engine) -> list[str]:
         _add_column_if_missing(connection, "sales", "business_date", "DATE")
         _add_column_if_missing(connection, "sales", "customer_id", "INTEGER")
         _add_column_if_missing(connection, "sales", "customer_name_snapshot", "VARCHAR(255)")
+        _add_column_if_missing(connection, "customers", "default_discount_percent", "NUMERIC(5, 2) DEFAULT 0 NOT NULL")
         _add_column_if_missing(connection, "jobs", "document_type", "VARCHAR(50)")
         _add_column_if_missing(connection, "jobs", "source_job_id", "INTEGER")
         _add_column_if_missing(connection, "jobs", "converted_at", "DATETIME")

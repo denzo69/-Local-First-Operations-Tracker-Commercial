@@ -497,6 +497,67 @@ def test_quick_sale_accepts_registered_or_manual_customer_name():
     assert "Walk-in Customer" in manual_receipt.text
 
 
+def test_quick_sale_applies_registered_customer_default_discount_percent():
+    with SessionLocal() as db:
+        registered = Customer(name="Discount Buyer", default_discount_percent=Decimal("10.00"))
+        db.add(registered)
+        db.commit()
+        customer_id = registered.id
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/sales/quick",
+            data={
+                "customer_id": str(customer_id),
+                "customer_name": "",
+                "product_id": [""],
+                "description": ["Default discounted service"],
+                "quantity": ["2"],
+                "unit_price": ["50"],
+                "vat_percent": ["24"],
+                "discount_percent": ["0"],
+                "payment_method": ["cash"],
+                "payment_amount": [""],
+                "idempotency_key": "route-quick-sale-default-discount",
+            },
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 303
+    with SessionLocal() as db:
+        sale = db.query(Sale).filter(Sale.idempotency_key == "route-quick-sale-default-discount").one()
+        assert sale.discount_total == Decimal("10.00")
+        assert sale.total == Decimal("90.00")
+        assert sale.lines[0].discount_amount == Decimal("10.00")
+
+
+def test_quick_sale_manual_discount_percent_creates_discounted_sale():
+    with TestClient(app) as client:
+        response = client.post(
+            "/sales/quick",
+            data={
+                "customer_id": "",
+                "customer_name": "",
+                "product_id": [""],
+                "description": ["Manual discounted service"],
+                "quantity": ["1"],
+                "unit_price": ["20"],
+                "vat_percent": ["24"],
+                "discount_percent": ["25"],
+                "payment_method": ["card"],
+                "payment_amount": [""],
+                "idempotency_key": "route-quick-sale-manual-discount",
+            },
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 303
+    with SessionLocal() as db:
+        sale = db.query(Sale).filter(Sale.idempotency_key == "route-quick-sale-manual-discount").one()
+        assert sale.discount_total == Decimal("5.00")
+        assert sale.total == Decimal("15.00")
+
+
 def test_work_order_invoice_post_route_and_invoice_queue_render():
     with SessionLocal() as db:
         seller = user(db, "Queue Seller")

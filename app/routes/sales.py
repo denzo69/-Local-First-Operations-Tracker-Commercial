@@ -1,5 +1,5 @@
 from collections import defaultdict
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -39,6 +39,7 @@ from app.services.invoice_query_service import (
     invoice_related_sales,
     invoice_row,
 )
+from app.services.money_service import money, parse_decimal
 from app.services.settings_service import get_app_settings
 from app.template_context import templates
 
@@ -231,25 +232,67 @@ def _optional_int(raw: str | None) -> int | None:
     return int(text)
 
 
-def _parse_sale_lines(form) -> list[SaleLineInput]:
+def _form_discount_percent(raw_value: str | None, customer_default_discount_percent: Decimal) -> Decimal:
+    text = str(raw_value or "").strip()
+    if text == "" or (customer_default_discount_percent > 0 and text.replace(",", ".") in {"0", "0.0", "0.00"}):
+        discount_percent = customer_default_discount_percent
+    else:
+        try:
+            discount_percent = parse_decimal(text)
+        except (InvalidOperation, ValueError) as exc:
+            raise ValueError("Discount percent must be a valid number.") from exc
+    if discount_percent < 0 or discount_percent > 100:
+        raise ValueError("Discount percent must be between 0 and 100.")
+    return discount_percent
+
+
+def _discount_amount_from_percent(
+    *,
+    quantity: str,
+    unit_price: str,
+    discount_percent: Decimal,
+) -> Decimal:
+    try:
+        parsed_quantity = parse_decimal(quantity)
+        parsed_unit_price = parse_decimal(unit_price)
+    except (InvalidOperation, ValueError) as exc:
+        raise ValueError("Quantity and unit price must be valid numbers.") from exc
+    gross_before_discount = parsed_quantity * parsed_unit_price
+    if gross_before_discount <= 0 or discount_percent == 0:
+        return Decimal("0.00")
+    return money(gross_before_discount * discount_percent / Decimal("100"))
+
+
+def _parse_sale_lines(form, *, customer_default_discount_percent: Decimal = Decimal("0")) -> list[SaleLineInput]:
     descriptions = form.getlist("description")
     quantities = form.getlist("quantity")
     unit_prices = form.getlist("unit_price")
     vat_percents = form.getlist("vat_percent")
-    discounts = form.getlist("discount_amount")
+    discount_percents = form.getlist("discount_percent") or form.getlist("discount_amount")
     product_ids = form.getlist("product_id")
     lines: list[SaleLineInput] = []
     for index, description in enumerate(descriptions):
         if not (description or "").strip() and not (product_ids[index] if index < len(product_ids) else ""):
             continue
+        quantity = quantities[index] if index < len(quantities) else "1"
+        unit_price = unit_prices[index] if index < len(unit_prices) else "0"
+        discount_percent = _form_discount_percent(
+            discount_percents[index] if index < len(discount_percents) else "",
+            customer_default_discount_percent,
+        )
+        discount_amount = _discount_amount_from_percent(
+            quantity=quantity,
+            unit_price=unit_price,
+            discount_percent=discount_percent,
+        )
         lines.append(
             SaleLineInput(
                 product_id=_optional_int(product_ids[index] if index < len(product_ids) else None),
                 description=description,
-                quantity=quantities[index] if index < len(quantities) else "1",
-                unit_price=unit_prices[index] if index < len(unit_prices) else "0",
+                quantity=quantity,
+                unit_price=unit_price,
                 vat_percent=vat_percents[index] if index < len(vat_percents) else "24",
-                discount_amount=discounts[index] if index < len(discounts) else "0",
+                discount_amount=discount_amount,
             )
         )
     return lines
@@ -277,6 +320,9 @@ def _parse_payments(form) -> tuple[list[PaymentInput], bool]:
 async def create_quick_sale(request: Request, db: Session = Depends(get_db)):
     form = await request.form()
     current_user = request_current_user(request)
+    customer_id = _optional_int(form.get("customer_id"))
+    customer = db.get(Customer, customer_id) if customer_id else None
+    customer_default_discount_percent = Decimal(str(customer.default_discount_percent or "0")) if customer else Decimal("0")
     try:
         sale = create_sale_from_lines(
             db,
@@ -284,14 +330,14 @@ async def create_quick_sale(request: Request, db: Session = Depends(get_db)):
             cash_register_id=_optional_int(form.get("cash_register_id")),
             seller_id=_optional_int(form.get("seller_id")),
             seller_mode=str(form.get("seller_mode") or "default"),
-            lines=_parse_sale_lines(form),
+            lines=_parse_sale_lines(form, customer_default_discount_percent=customer_default_discount_percent),
             payments=_parse_payments(form)[0],
             created_by_user_id=current_user.id if current_user is not None else None,
             seller_selection_mode="selectable_active_seller",
             source_type="pos",
             send_to_invoice=_parse_payments(form)[1],
             idempotency_key=(form.get("idempotency_key") or "").strip() or None,
-            customer_id=_optional_int(form.get("customer_id")),
+            customer_id=customer_id,
             customer_name=str(form.get("customer_name") or ""),
         )
     except ValueError as exc:

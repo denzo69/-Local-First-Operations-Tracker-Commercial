@@ -33,6 +33,11 @@
                 <label class="form-label" for="business_id">{{ t.business_id }}</label>
                 <input class="form-control" id="business_id" name="business_id" value="{{ customer.business_id if customer and customer.business_id else '' }}">
             </div>
+            <div class="col-md-6">
+                <label class="form-label" for="default_discount_percent">{{ t.default_discount_percent }}</label>
+                <input class="form-control" id="default_discount_percent" name="default_discount_percent" inputmode="decimal" value="{{ customer.default_discount_percent if customer else '0' }}">
+                <div class="form-text">{{ t.default_discount_percent_help }}</div>
+            </div>
             <div class="col-12">
                 <label class="form-label" for="notes">{{ t.notes }}</label>
                 <textarea class="form-control" id="notes" name="notes" rows="3">{{ customer.notes if customer and customer.notes else '' }}</textarea>

@@ -25,7 +25,7 @@
             <select class="form-select mb-2" id="customer_id" name="customer_id">
                 <option value="">{{ t.no_customer }}</option>
                 {% for customer in customers %}
-                <option value="{{ customer.id }}">{{ customer.name }}</option>
+                <option value="{{ customer.id }}" data-default-discount="{{ customer.default_discount_percent or 0 }}">{{ customer.name }}</option>
                 {% endfor %}
             </select>
             <input class="form-control" id="customer_name" name="customer_name" placeholder="{{ t.manual_customer_name }}">
@@ -68,7 +68,7 @@
     </div>
     <div class="table-responsive responsive-card-table">
         <table class="table align-middle" id="sale-lines">
-            <thead><tr><th>{{ t.product }}</th><th>{{ t.description }}</th><th>{{ t.quantity }}</th><th>{{ t.unit_price }}</th><th>{{ t.vat }} %</th><th>{{ t.discount }}</th><th class="text-end" style="min-width: 6.5rem;"></th></tr></thead>
+            <thead><tr><th>{{ t.product }}</th><th>{{ t.description }}</th><th>{{ t.quantity }}</th><th>{{ t.unit_price }}</th><th>{{ t.vat }} %</th><th>{{ t.discount_percent }}</th><th class="text-end" style="min-width: 6.5rem;"></th></tr></thead>
             <tbody>
                 <tr>
                     <td data-label="{{ t.product }}"><input type="hidden" name="product_id"><span class="text-muted product-label">{{ t.manual }}</span></td>
@@ -76,7 +76,7 @@
                     <td data-label="{{ t.quantity }}"><input class="form-control" name="quantity" value="1" inputmode="decimal"></td>
                     <td data-label="{{ t.unit_price }}"><input class="form-control" name="unit_price" value="0" inputmode="decimal"></td>
                     <td data-label="{{ t.vat }} %"><input class="form-control" name="vat_percent" value="24" inputmode="decimal"></td>
-                    <td data-label="{{ t.discount }}"><input class="form-control" name="discount_amount" value="0" inputmode="decimal"></td>
+                    <td data-label="{{ t.discount_percent }}"><input class="form-control discount-percent-input" name="discount_percent" value="0" inputmode="decimal"></td>
                     <td class="text-end"><button class="btn btn-sm btn-outline-danger remove-line text-nowrap" type="button">{{ t.remove }}</button></td>
                 </tr>
             </tbody>
@@ -111,7 +111,20 @@ const uiText = {
   stock: {{ t.stock|tojson }}
 };
 const picker = document.getElementById("product_picker");
+const customerPicker = document.getElementById("customer_id");
 const tbody = document.querySelector("#sale-lines tbody");
+function selectedCustomerDiscount() {
+  const option = customerPicker?.selectedOptions?.[0];
+  return option?.dataset?.defaultDiscount || "0";
+}
+function applyCustomerDiscountToRows() {
+  const discount = selectedCustomerDiscount();
+  document.querySelectorAll(".discount-percent-input").forEach((input) => {
+    if (!input.value || input.value === "0" || input.value === "0.0" || input.value === "0.00") {
+      input.value = discount;
+    }
+  });
+}
 function bindRow(row) {
   row.querySelector(".remove-line")?.addEventListener("click", () => {
     if (tbody.rows.length > 1) row.remove();
@@ -134,10 +147,12 @@ document.getElementById("add-line").addEventListener("click", () => {
   row.querySelectorAll("input").forEach((input) => input.value = input.name === "quantity" ? "1" : (input.name === "vat_percent" ? "24" : "0"));
   row.querySelector("[name='description']").value = "";
   row.querySelector("[name='product_id']").value = "";
+  row.querySelector("[name='discount_percent']").value = selectedCustomerDiscount();
   row.querySelector(".product-label").textContent = uiText.manual;
   tbody.appendChild(row);
   bindRow(row);
 });
+customerPicker?.addEventListener("change", applyCustomerDiscountToRows);
 picker?.addEventListener("change", () => {
   const option = picker.selectedOptions[0];
   if (!option) return;

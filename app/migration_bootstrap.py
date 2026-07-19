@@ -33,7 +33,8 @@ OPTIONAL_SHIFTS_REVISION = "e2f4a6b8c0d1"
 SHIFTLESS_REFUNDS_REVISION = "f3a9b7c1d2e4"
 QUICK_SALE_CUSTOMER_REVISION = "a8c1e3f5b7d9"
 DOCUMENT_WORKFLOW_REVISION = "b9d2e4f6a8c0"
-HEAD_REVISION = DOCUMENT_WORKFLOW_REVISION
+CUSTOMER_DISCOUNT_REVISION = "d6e8f0a1b2c3"
+HEAD_REVISION = CUSTOMER_DISCOUNT_REVISION
 
 CLASS_EMPTY = "empty database"
 CLASS_BASELINE = "matches baseline"
@@ -47,6 +48,7 @@ CLASS_OPTIONAL_SHIFTS = "matches optional cashier shifts revision"
 CLASS_SHIFTLESS_REFUNDS = "matches shiftless refunds revision"
 CLASS_QUICK_SALE_CUSTOMER = "matches quick sale customer revision"
 CLASS_DOCUMENT_WORKFLOW = "matches document workflow revision"
+CLASS_CUSTOMER_DISCOUNT = "matches customer default discount revision"
 CLASS_UNKNOWN = "inconsistent / partially migrated / unknown"
 
 
@@ -419,6 +421,10 @@ DOCUMENT_WORKFLOW_COLUMNS = {
     "jobs": {"document_type", "source_job_id", "converted_at"},
 }
 
+CUSTOMER_DISCOUNT_COLUMNS = {
+    "customers": {"default_discount_percent"},
+}
+
 OPTIONAL_SHIFTS_SETTING_KEYS = {"require_cashier_shift"}
 
 NULLABLE_COLUMNS_BY_REVISION = {
@@ -431,6 +437,7 @@ NULLABLE_COLUMNS_BY_REVISION = {
     },
     QUICK_SALE_CUSTOMER_REVISION: {},
     DOCUMENT_WORKFLOW_REVISION: {},
+    CUSTOMER_DISCOUNT_REVISION: {},
 }
 
 REQUIRED_INDEXES_BY_REVISION = {
@@ -530,6 +537,7 @@ REQUIRED_INDEXES_BY_REVISION = {
         "ix_jobs_document_type",
         "ix_jobs_source_job_id",
     },
+    CUSTOMER_DISCOUNT_REVISION: set(),
 }
 
 REQUIRED_TRIGGERS_BY_REVISION = {
@@ -551,6 +559,7 @@ REVISION_LABELS = {
     SHIFTLESS_REFUNDS_REVISION: CLASS_SHIFTLESS_REFUNDS,
     QUICK_SALE_CUSTOMER_REVISION: CLASS_QUICK_SALE_CUSTOMER,
     DOCUMENT_WORKFLOW_REVISION: CLASS_DOCUMENT_WORKFLOW,
+    CUSTOMER_DISCOUNT_REVISION: CLASS_CUSTOMER_DISCOUNT,
 }
 
 REVISION_ORDER = [
@@ -565,6 +574,7 @@ REVISION_ORDER = [
     SHIFTLESS_REFUNDS_REVISION,
     QUICK_SALE_CUSTOMER_REVISION,
     DOCUMENT_WORKFLOW_REVISION,
+    CUSTOMER_DISCOUNT_REVISION,
 ]
 
 
@@ -751,7 +761,8 @@ OPTIONAL_SHIFTS_SCHEMA = merge_columns(SALE_DOCUMENT_SCHEMA, OPTIONAL_SHIFTS_COL
 SHIFTLESS_REFUNDS_SCHEMA = merge_columns(OPTIONAL_SHIFTS_SCHEMA, SHIFTLESS_REFUNDS_COLUMNS)
 QUICK_SALE_CUSTOMER_SCHEMA = merge_columns(SHIFTLESS_REFUNDS_SCHEMA, QUICK_SALE_CUSTOMER_COLUMNS)
 DOCUMENT_WORKFLOW_SCHEMA = merge_columns(QUICK_SALE_CUSTOMER_SCHEMA, DOCUMENT_WORKFLOW_COLUMNS)
-HEAD_KNOWN_SCHEMA = DOCUMENT_WORKFLOW_SCHEMA
+CUSTOMER_DISCOUNT_SCHEMA = merge_columns(DOCUMENT_WORKFLOW_SCHEMA, CUSTOMER_DISCOUNT_COLUMNS)
+HEAD_KNOWN_SCHEMA = CUSTOMER_DISCOUNT_SCHEMA
 
 
 def _missing_schema(schema: dict[str, set[str]], inspection: SchemaInspection) -> list[str]:
@@ -797,6 +808,8 @@ def _missing_indexes(revision: str, inspection: SchemaInspection) -> list[str]:
         required.update(REQUIRED_INDEXES_BY_REVISION[QUICK_SALE_CUSTOMER_REVISION])
     if revision_index >= REVISION_ORDER.index(DOCUMENT_WORKFLOW_REVISION):
         required.update(REQUIRED_INDEXES_BY_REVISION[DOCUMENT_WORKFLOW_REVISION])
+    if revision_index >= REVISION_ORDER.index(CUSTOMER_DISCOUNT_REVISION):
+        required.update(REQUIRED_INDEXES_BY_REVISION[CUSTOMER_DISCOUNT_REVISION])
     return [f"missing index {index}" for index in sorted(required - inspection.indexes)]
 
 
@@ -928,6 +941,11 @@ def _future_revision_evidence(revision: str, inspection: SchemaInspection) -> li
         present_indexes = REQUIRED_INDEXES_BY_REVISION[DOCUMENT_WORKFLOW_REVISION] & inspection.indexes
         evidence.extend(f"future index {index}" for index in sorted(present_indexes))
 
+    if CUSTOMER_DISCOUNT_REVISION in later_revisions:
+        for table, columns in CUSTOMER_DISCOUNT_COLUMNS.items():
+            present = inspection.columns_by_table.get(table, set()) & columns
+            evidence.extend(f"future column {table}.{column}" for column in sorted(present))
+
     return evidence
 
 
@@ -949,6 +967,7 @@ def classify_schema(inspection: SchemaInspection) -> SchemaClassification:
         )
 
     candidates = [
+        (CUSTOMER_DISCOUNT_REVISION, CUSTOMER_DISCOUNT_SCHEMA),
         (DOCUMENT_WORKFLOW_REVISION, DOCUMENT_WORKFLOW_SCHEMA),
         (QUICK_SALE_CUSTOMER_REVISION, QUICK_SALE_CUSTOMER_SCHEMA),
         (SHIFTLESS_REFUNDS_REVISION, SHIFTLESS_REFUNDS_SCHEMA),

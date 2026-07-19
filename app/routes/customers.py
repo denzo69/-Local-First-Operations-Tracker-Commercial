@@ -1,3 +1,5 @@
+from decimal import Decimal, InvalidOperation
+
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
@@ -10,6 +12,16 @@ from app.template_context import templates
 
 router = APIRouter(prefix="/customers", tags=["customers"])
 settings = get_settings()
+
+
+def _parse_discount_percent(value: str) -> Decimal:
+    try:
+        discount = Decimal(str(value or "0").replace(",", "."))
+    except InvalidOperation as exc:
+        raise HTTPException(status_code=400, detail="Default discount percent must be a valid number") from exc
+    if discount < 0 or discount > 100:
+        raise HTTPException(status_code=400, detail="Default discount percent must be between 0 and 100")
+    return discount.quantize(Decimal("0.01"))
 
 
 @router.get("", response_class=HTMLResponse)
@@ -63,6 +75,7 @@ def create_customer(
     address: str = Form(""),
     company_name: str = Form(""),
     business_id: str = Form(""),
+    default_discount_percent: str = Form("0"),
     notes: str = Form(""),
     db: Session = Depends(get_db),
 ):
@@ -76,6 +89,7 @@ def create_customer(
         address=address.strip() or None,
         company_name=company_name.strip() or None,
         business_id=business_id.strip() or None,
+        default_discount_percent=_parse_discount_percent(default_discount_percent),
         notes=notes.strip() or None,
     )
     db.add(customer)
@@ -152,6 +166,7 @@ def update_customer(
     address: str = Form(""),
     company_name: str = Form(""),
     business_id: str = Form(""),
+    default_discount_percent: str = Form("0"),
     notes: str = Form(""),
     db: Session = Depends(get_db),
 ):
@@ -167,6 +182,7 @@ def update_customer(
     customer.address = address.strip() or None
     customer.company_name = company_name.strip() or None
     customer.business_id = business_id.strip() or None
+    customer.default_discount_percent = _parse_discount_percent(default_discount_percent)
     customer.notes = notes.strip() or None
 
     log_audit_event(

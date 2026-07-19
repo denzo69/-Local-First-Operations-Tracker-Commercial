@@ -20,6 +20,7 @@ class Customer(Base):
     address = Column(Text, nullable=True)
     company_name = Column(String(255), nullable=True)
     business_id = Column(String(100), nullable=True)
+    default_discount_percent = Column(Numeric(5, 2), default=0, nullable=False)
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)

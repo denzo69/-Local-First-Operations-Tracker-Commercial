@@ -28,6 +28,9 @@
                         <div class="fw-semibold">{{ customer.name }}</div>
                         <div class="text-muted small">
                             {{ customer.company_name or customer.phone or customer.email or t.no_contact_details }}
+                            {% if customer.default_discount_percent and customer.default_discount_percent > 0 %}
+                            · {{ t.default_discount_percent }} {{ customer.default_discount_percent }} %
+                            {% endif %}
                         </div>
                     </div>
                     <span class="text-muted">{{ t.view }}</span>

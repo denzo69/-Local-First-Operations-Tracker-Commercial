@@ -7,6 +7,7 @@ from app.migration_bootstrap import (
     BASELINE_REVISION,
     CLASS_AUTH,
     CLASS_BASELINE,
+    CLASS_CUSTOMER_DISCOUNT,
     CLASS_EMPTY,
     CLASS_DOCUMENT_WORKFLOW,
     CLASS_INVENTORY,
@@ -19,6 +20,7 @@ from app.migration_bootstrap import (
     CLASS_UNKNOWN,
     CLASS_UNIFIED_SALES,
     DOCUMENT_WORKFLOW_REVISION,
+    CUSTOMER_DISCOUNT_REVISION,
     HEAD_REVISION,
     INVOICE_FOLLOWUP_REVISION,
     INVENTORY_REVISION,
@@ -115,7 +117,9 @@ def test_alembic_upgrade_head_creates_current_schema(tmp_path):
     assert "current_inventory_quantity" in product_columns
     assert "current_inventory_value_ex_vat" in product_columns
     sale_columns = {column["name"] for column in inspector.get_columns("sales")}
+    customer_columns = {column["name"] for column in inspector.get_columns("customers")}
     job_columns = {column["name"] for column in inspector.get_columns("jobs")}
+    assert "default_discount_percent" in customer_columns
     assert "document_type" in job_columns
     assert "source_job_id" in job_columns
     assert "converted_at" in job_columns
@@ -380,7 +384,7 @@ def test_unstamped_quick_sale_customer_database_is_stamped_and_upgraded(tmp_path
     assert _current_revision(db_path) == HEAD_REVISION
 
 
-def test_unstamped_document_workflow_database_is_stamped_without_upgrade(tmp_path):
+def test_unstamped_document_workflow_database_is_stamped_and_upgraded(tmp_path):
     db_path = tmp_path / "document-workflow.sqlite"
     _upgrade_to_revision(db_path, DOCUMENT_WORKFLOW_REVISION)
     _drop_alembic_version(db_path)
@@ -389,6 +393,19 @@ def test_unstamped_document_workflow_database_is_stamped_without_upgrade(tmp_pat
 
     assert plan.classification.classification == CLASS_DOCUMENT_WORKFLOW
     assert plan.stamp_revision == DOCUMENT_WORKFLOW_REVISION
+    assert plan.upgrade_target == "head"
+    assert _current_revision(db_path) == HEAD_REVISION
+
+
+def test_unstamped_customer_discount_database_is_stamped_without_upgrade(tmp_path):
+    db_path = tmp_path / "customer-discount.sqlite"
+    _upgrade_to_revision(db_path, CUSTOMER_DISCOUNT_REVISION)
+    _drop_alembic_version(db_path)
+
+    plan = run_bootstrap(_database_url(db_path), backup_dir=tmp_path / "backups")
+
+    assert plan.classification.classification == CLASS_CUSTOMER_DISCOUNT
+    assert plan.stamp_revision == CUSTOMER_DISCOUNT_REVISION
     assert plan.upgrade_target is None
     assert _current_revision(db_path) == HEAD_REVISION
 
@@ -402,6 +419,7 @@ def test_stamped_pr19_revisions_upgrade_to_head(tmp_path):
         OPTIONAL_SHIFTS_REVISION,
         SHIFTLESS_REFUNDS_REVISION,
         QUICK_SALE_CUSTOMER_REVISION,
+        DOCUMENT_WORKFLOW_REVISION,
     ]:
         db_path = tmp_path / f"stamped-{revision}.sqlite"
         _upgrade_to_revision(db_path, revision)
@@ -599,7 +617,7 @@ def test_extra_legacy_side_table_does_not_block_known_schema_classification(tmp_
     inspection = inspect_database(_database_url(db_path))
     classification = classify_schema(inspection)
 
-    assert classification.classification == CLASS_DOCUMENT_WORKFLOW
+    assert classification.classification == CLASS_CUSTOMER_DISCOUNT
     assert classification.matched_revision == HEAD_REVISION
 
 
@@ -650,5 +668,6 @@ def test_default_database_can_be_classified_in_dry_run_without_modification():
         CLASS_SHIFTLESS_REFUNDS,
         CLASS_QUICK_SALE_CUSTOMER,
         CLASS_DOCUMENT_WORKFLOW,
+        CLASS_CUSTOMER_DISCOUNT,
         CLASS_UNKNOWN,
     }

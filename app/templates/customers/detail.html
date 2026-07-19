@@ -23,6 +23,8 @@
             <dd class="col-sm-9">{{ customer.address or "-" }}</dd>
             <dt class="col-sm-3">Business ID</dt>
             <dd class="col-sm-9">{{ customer.business_id or "-" }}</dd>
+            <dt class="col-sm-3">{{ t.default_discount_percent }}</dt>
+            <dd class="col-sm-9">{{ customer.default_discount_percent or 0 }} %</dd>
             <dt class="col-sm-3">Notes</dt>
             <dd class="col-sm-9">{{ customer.notes or "-" }}</dd>
         </dl>
