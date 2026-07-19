@@ -21,6 +21,7 @@ from app.routes import (
     help as help_routes,
     inventory,
     jobs,
+    product_import,
     products,
     quotes,
     reports,
@@ -67,6 +68,7 @@ app.include_router(quotes.router)
 app.include_router(jobs.router, dependencies=[Depends(require_work_order_route)])
 app.include_router(help_routes.router)
 app.include_router(audit_log.router)
+app.include_router(product_import.router)
 app.include_router(products.router)
 app.include_router(users.router)
 app.include_router(cash_registers.router)
