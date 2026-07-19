@@ -18,17 +18,7 @@ The application is designed for a first-time small-business user: start from a c
 
 The current dashboard is designed as an operations view rather than a marketing page. It prioritizes quick actions, work queues, upcoming work orders, recent activity, sales and invoicing, and daily closing status in one browser screen.
 
-More UI screenshots are available in [`docs/UI/Screenshots.md`](docs/UI/Screenshots.md).
-
-### Browser Dashboard
-
-![Browser dashboard](docs/UI/screenshots/dashboard-v2-desktop.png)
-
-### Mobile Dashboard
-
-The mobile layout uses the same server-rendered UI with a single-column dashboard suitable for phone use over LAN or Tailscale.
-
-![Mobile dashboard](docs/UI/screenshots/dashboard-v2-mobile.png)
+UI screenshots have been removed from the repository until a fresh screenshot set is captured from the current visual design.
 
 ## Current MVP Status
 
