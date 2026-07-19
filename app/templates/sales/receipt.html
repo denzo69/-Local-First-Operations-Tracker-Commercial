@@ -1,52 +1,166 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="receipt-page">
-    <div class="d-flex justify-content-between align-items-start mb-3">
-        <div>
-            <h1>{{ t.sale_summary }} {{ sale.document_number or sale.id }}</h1>
-            <p class="text-muted">{{ sale.sold_at }}</p>
-        </div>
-        <button class="btn btn-outline-secondary d-print-none" onclick="window.print()">{{ t.print }}</button>
+<style>
+@media print {
+    .app-sidebar,
+    .app-topbar,
+    .no-print {
+        display: none !important;
+    }
+    .app-shell {
+        margin: 0 !important;
+    }
+    .app-main {
+        padding: 0 !important;
+        background: #fff !important;
+    }
+    .customer-receipt {
+        width: 72mm;
+        max-width: none;
+        border: 0 !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+        margin: 0 auto !important;
+    }
+}
+.customer-receipt {
+    max-width: 420px;
+    margin: 0 auto;
+    background: #fff;
+    color: #111827;
+}
+.receipt-title {
+    font-size: 1.6rem;
+    letter-spacing: .08em;
+    font-weight: 800;
+    text-align: center;
+}
+.receipt-section {
+    border-top: 1px dashed #9ca3af;
+    padding-top: .75rem;
+    margin-top: .75rem;
+}
+.receipt-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+}
+.receipt-row span:last-child {
+    text-align: right;
+}
+.receipt-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.receipt-table th,
+.receipt-table td {
+    padding: .3rem 0;
+    border-bottom: 1px solid #e5e7eb;
+    vertical-align: top;
+}
+.receipt-table th:not(:first-child),
+.receipt-table td:not(:first-child) {
+    text-align: right;
+}
+.receipt-total {
+    font-size: 1.35rem;
+    font-weight: 800;
+}
+</style>
+
+<div class="no-print d-flex justify-content-between align-items-start mb-3">
+    <div>
+        <h1 class="h4 mb-1">{{ t.customer_receipt_title }}</h1>
+        <p class="text-muted mb-0">{{ sale.document_number }}</p>
     </div>
-    {% if sale.settlement_status in ["awaiting_invoice", "partially_paid_awaiting_invoice"] %}
-    <div class="alert alert-warning">{{ t.awaiting_invoice_summary_notice }}</div>
-    {% endif %}
-    <dl class="row">
-        <dt class="col-sm-3">{{ t.sale_document_number }}</dt><dd class="col-sm-9">{{ sale.document_number or "-" }}</dd>
-        <dt class="col-sm-3">{{ t.customer }}</dt><dd class="col-sm-9">{{ sale.customer.name if sale.customer else (sale.customer_name_snapshot or (sale.work_order.customer.name if sale.work_order and sale.work_order.customer else "-")) }}</dd>
-        <dt class="col-sm-3">{{ t.source_work_order }}</dt><dd class="col-sm-9">{% if sale.work_order %}{{ sale.work_order.receipt_number or sale.work_order.job_number or sale.work_order.id }} - {{ sale.work_order.title }}{% else %}-{% endif %}</dd>
-        {% if sale.external_invoice_number %}<dt class="col-sm-3">{{ t.external_invoice_number }}</dt><dd class="col-sm-9">{{ sale.external_invoice_number }}</dd>{% endif %}
-        <dt class="col-sm-3">{{ t.credited_seller }}</dt><dd class="col-sm-9">{{ (sale.sold_by or sale.seller).name if (sale.sold_by or sale.seller) else t.not_specified }}</dd>
-        <dt class="col-sm-3">{{ t.operator }}</dt><dd class="col-sm-9">{{ sale.created_by.name if sale.created_by else "-" }}</dd>
-        {% if sale.shift %}<dt class="col-sm-3">{{ t.cashier_shift }}</dt><dd class="col-sm-9">#{{ sale.shift_id }}</dd>{% endif %}
-        {% if sale.cash_register %}<dt class="col-sm-3">{{ t.cash_register }}</dt><dd class="col-sm-9">{{ sale.cash_register.name }}</dd>{% endif %}
-        <dt class="col-sm-3">{{ t.business_date }}</dt><dd class="col-sm-9">{{ sale.business_date or (sale.shift.business_date if sale.shift else sale.sold_at.date()) }}</dd>
-        <dt class="col-sm-3">{{ t.settlement }}</dt><dd class="col-sm-9">{{ t[sale.settlement_status] }}</dd>
-    </dl>
-    <table class="table">
-        <thead><tr><th>{{ t.description }}</th><th class="text-end">{{ t.quantity }}</th><th class="text-end">{{ t.unit }}</th><th class="text-end">{{ t.vat }}</th><th class="text-end">{{ t.total }}</th></tr></thead>
-        <tbody>
-        {% for line in sale.lines %}
-        <tr><td>{{ line.description_snapshot }}</td><td class="text-end">{{ line.quantity }}</td><td class="text-end">{{ line.unit_price }}</td><td class="text-end">{{ line.vat_percent }}%</td><td class="text-end">{{ line.line_total }}</td></tr>
-        {% endfor %}
-        </tbody>
-    </table>
-    <div class="row">
-        <div class="col-md-6">
-            <h2 class="h5">{{ t.payments }}</h2>
-            {% for payment in sale.payments %}
-            <div>{{ t[payment.payment_method] }}: {{ payment.amount }}</div>
-            {% else %}
-            <div class="text-muted">{{ t.no_payments }}</div>
-            {% endfor %}
-        </div>
-        <div class="col-md-6 text-md-end">
-            <div>{{ t.net }}: {{ sale.subtotal }}</div>
-            <div>{{ t.vat }}: {{ sale.vat_total }}</div>
-            <div class="h4">{{ t.total }}: {{ sale.total }}</div>
-            <div>{{ t.paid }}: {{ paid_amount }}</div>
-            <div>{{ t.remaining_balance }}: {{ balance_due }}</div>
-        </div>
-    </div>
+    <button class="btn btn-outline-secondary" onclick="window.print()">{{ t.print }}</button>
 </div>
+
+<article class="customer-receipt card p-3 p-md-4">
+    <header class="text-center">
+        <div class="receipt-title">{{ t.customer_receipt_heading }}</div>
+        {% if receipt_company.name %}<div class="fw-semibold mt-2">{{ receipt_company.name }}</div>{% endif %}
+        {% if receipt_company.business_id %}<div>{{ t.business_id }}: {{ receipt_company.business_id }}</div>{% endif %}
+        {% if receipt_company.address %}<div>{{ receipt_company.address }}</div>{% endif %}
+        {% if receipt_company.phone %}<div>{{ receipt_company.phone }}</div>{% endif %}
+        {% if receipt_company.email %}<div>{{ receipt_company.email }}</div>{% endif %}
+    </header>
+
+    <section class="receipt-section">
+        <div class="receipt-row"><span>{{ t.sale_document_number }}</span><strong>{{ sale.document_number }}</strong></div>
+        <div class="receipt-row"><span>{{ t.receipt_date }}</span><span>{{ receipt_date }}</span></div>
+        <div class="receipt-row"><span>{{ t.transaction_time }}</span><span>{{ receipt_datetime }}</span></div>
+        {% if receipt_customer_name %}
+        <div class="receipt-row"><span>{{ t.customer }}</span><span>{{ receipt_customer_name }}</span></div>
+        {% endif %}
+        {% if receipt_source_work_order %}
+        <div class="receipt-row"><span>{{ t.source_work_order }}</span><span>{{ receipt_source_work_order }}</span></div>
+        {% endif %}
+    </section>
+
+    <section class="receipt-section">
+        <table class="receipt-table">
+            <thead>
+                <tr>
+                    <th>{{ t.description }}</th>
+                    <th>{{ t.quantity }}</th>
+                    <th>{{ t.unit }}</th>
+                    <th>{{ t.unit_price_inc_vat }}</th>
+                    <th>{{ t.vat }}</th>
+                    <th>{{ t.total }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for line in receipt_lines %}
+                <tr>
+                    <td>{{ line.description }}</td>
+                    <td>{{ line.quantity }}</td>
+                    <td>{{ line.unit }}</td>
+                    <td>{{ line.unit_price }}</td>
+                    <td>{{ line.vat_rate }}</td>
+                    <td>{{ line.line_total }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+
+    <section class="receipt-section">
+        <h2 class="h6 fw-bold">{{ t.vat_breakdown }}</h2>
+        {% for row in receipt_vat_breakdown %}
+        <div class="mb-2">
+            <div class="fw-semibold">{{ t.vat }} {{ row.rate }}</div>
+            <div class="receipt-row"><span>{{ t.total_ex_vat }}</span><span>{{ row.net }}</span></div>
+            <div class="receipt-row"><span>{{ t.vat_amount }}</span><span>{{ row.vat }}</span></div>
+            <div class="receipt-row"><span>{{ t.total_inc_vat }}</span><span>{{ row.gross }}</span></div>
+        </div>
+        {% endfor %}
+    </section>
+
+    <section class="receipt-section">
+        <h2 class="h6 fw-bold">{{ t.payments }}</h2>
+        {% for payment in receipt_payments %}
+        <div class="receipt-row"><span>{{ t[payment.method] }}</span><span>{{ payment.amount }}</span></div>
+        {% else %}
+        <div>{{ t.no_payments }}</div>
+        {% endfor %}
+        <div class="receipt-row fw-semibold mt-2"><span>{{ t.total_paid }}</span><span>{{ receipt_paid_total }}</span></div>
+        {% if receipt_balance_due_raw > 0 %}
+        <div class="receipt-row"><span>{{ t.remaining_balance }}</span><span>{{ receipt_balance_due }}</span></div>
+        {% endif %}
+        {% if receipt_change_due_raw > 0 %}
+        <div class="receipt-row"><span>{{ t.change_due }}</span><span>{{ receipt_change_due }}</span></div>
+        {% endif %}
+    </section>
+
+    <section class="receipt-section">
+        <div class="receipt-row"><span>{{ t.total_ex_vat }}</span><span>{{ receipt_total_ex_vat }}</span></div>
+        <div class="receipt-row"><span>{{ t.total_vat }}</span><span>{{ receipt_total_vat }}</span></div>
+        <div class="receipt-row receipt-total"><span>{{ t.total_inc_vat }}</span><span>{{ receipt_total_inc_vat }}</span></div>
+    </section>
+
+    <footer class="receipt-section text-center fw-semibold">
+        {{ t.receipt_thank_you }}
+    </footer>
+</article>
 {% endblock %}

@@ -1,3 +1,4 @@
+import re
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -324,7 +325,123 @@ def test_quick_sale_route_creates_multiline_sale_and_receipt_loads():
     assert detail.status_code == 200
     assert "Balance due" in detail.text
     assert receipt.status_code == 200
-    assert "Sale summary" in receipt.text
+    assert "RECEIPT" in receipt.text
+
+
+def test_customer_cash_receipt_contains_company_vat_payments_and_hides_internal_fields():
+    with SessionLocal() as db:
+        configure_sale_document_sequence(db)
+        db.add_all(
+            [
+                Setting(key="language", value="fi"),
+                Setting(key="company_name", value="JEronAI Operations"),
+                Setting(key="company_business_id", value="1234567-8"),
+                Setting(key="company_address", value="Testikatu 1, 00100 Helsinki"),
+                Setting(key="company_phone", value=""),
+                Setting(key="company_email", value=""),
+            ]
+        )
+        seller = user(db, "Hidden Receipt Seller")
+        customer = Customer(name="Receipt Customer")
+        product_a = service_product(db, "Receipt line VAT 24", "12.40", "24")
+        product_a.unit = "kpl"
+        product_b = service_product(db, "Receipt line VAT 10", "11.00", "10")
+        product_b.unit = "h"
+        db.add(customer)
+        db.commit()
+        sale = create_sale_from_lines(
+            db,
+            lines=[
+                SaleLineInput(product_id=product_a.id, description="Receipt line VAT 24", quantity="1", unit_price="12.40", vat_percent="24"),
+                SaleLineInput(product_id=product_b.id, description="Receipt line VAT 10", quantity="2", unit_price="11.00", vat_percent="10"),
+            ],
+            payments=[PaymentInput("cash", "20.00"), PaymentInput("card", "14.40")],
+            seller_id=seller.id,
+            seller_mode="selected",
+            created_by_user_id=seller.id,
+            customer_id=customer.id,
+            idempotency_key="receipt-layout-fi",
+        )
+        sale_id = sale.id
+        document_number = sale.document_number
+
+    with TestClient(app) as client:
+        first_receipt = client.get(f"/sales/{sale_id}/receipt")
+        second_receipt = client.get(f"/sales/{sale_id}/receipt")
+
+    text = first_receipt.text
+    assert first_receipt.status_code == 200
+    assert second_receipt.status_code == 200
+    assert "KASSAKUITTI" in text
+    assert "Myynnin yhteenveto" not in text
+    assert "JEronAI Operations" in text
+    assert "1234567-8" in text
+    assert "Testikatu 1, 00100 Helsinki" in text
+    assert "Puhelin" not in text
+    assert "Sähköposti" not in text
+    assert document_number in text
+    assert "Receipt Customer" in text
+    assert "Receipt line VAT 24" in text
+    assert "Receipt line VAT 10" in text
+    assert "1" in text
+    assert "kpl" in text
+    assert "12,40 €" in text
+    assert "24 %" in text
+    assert "10 %" in text
+    assert "34,40 €" in text
+    assert "ALV-erittely" in text
+    assert "Käteinen" in text
+    assert "Kortti" in text
+    assert "20,00 €" in text
+    assert "14,40 €" in text
+    assert "Yhteensä maksettu" in text
+    assert "Jäljellä oleva saldo" not in text
+    assert "Hidden Receipt Seller" not in text
+    assert "Hyvitettävä myyjä" not in text
+    assert "Myyntikate" not in text
+    assert "Audit" not in text
+    assert not re.search(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+", text)
+
+    with SessionLocal() as db:
+        assert db.get(Sale, sale_id).document_number == document_number
+
+
+def test_customer_cash_receipt_english_heading_and_hides_customer_when_absent():
+    with SessionLocal() as db:
+        configure_sale_document_sequence(db)
+        db.add_all(
+            [
+                Setting(key="language", value="en"),
+                Setting(key="company_name", value="Receipt Company"),
+                Setting(key="company_business_id", value=""),
+                Setting(key="company_address", value=""),
+                Setting(key="company_phone", value=""),
+                Setting(key="company_email", value=""),
+            ]
+        )
+        seller = user(db, "English Receipt Seller")
+        product = service_product(db, "English receipt service", "5", "0")
+        sale = create_sale_from_lines(
+            db,
+            lines=[SaleLineInput(product_id=product.id, description="English receipt service", quantity="1", unit_price="5", vat_percent="0")],
+            payments=[PaymentInput("cash")],
+            seller_id=seller.id,
+            seller_mode="selected",
+            created_by_user_id=seller.id,
+            idempotency_key="receipt-layout-en",
+        )
+        sale_id = sale.id
+
+    with TestClient(app) as client:
+        receipt = client.get(f"/sales/{sale_id}/receipt")
+
+    assert receipt.status_code == 200
+    assert "RECEIPT" in receipt.text
+    assert "Sales summary" not in receipt.text
+    assert "Receipt Company" in receipt.text
+    assert "Business ID:" not in receipt.text
+    assert "Customer</span>" not in receipt.text
+    assert "English Receipt Seller" not in receipt.text
 
 
 def test_quick_sale_accepts_registered_or_manual_customer_name():

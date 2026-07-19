@@ -1,3 +1,5 @@
+from collections import defaultdict
+from decimal import Decimal
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -37,6 +39,7 @@ from app.services.invoice_query_service import (
     invoice_related_sales,
     invoice_row,
 )
+from app.services.settings_service import get_app_settings
 from app.template_context import templates
 
 router = APIRouter(prefix="/sales", tags=["sales"])
@@ -80,6 +83,118 @@ def _quick_sale_context(request: Request, db: Session, *, error: str | None = No
         "payment_methods": {key: value for key, value in PAYMENT_METHODS.items() if key != "invoice"},
         "idempotency_key": idempotency_key or str(uuid4()),
         "error": error,
+    }
+
+
+def _format_money(value, language: str) -> str:
+    amount = Decimal(str(value or "0")).quantize(Decimal("0.01"))
+    text = f"{amount:,.2f}"
+    if language == "fi":
+        text = text.replace(",", "X").replace(".", ",").replace("X", " ")
+        return f"{text} €"
+    return f"€{text}"
+
+
+def _format_decimal(value, *, places: int = 3) -> str:
+    amount = Decimal(str(value or "0")).quantize(Decimal("1." + ("0" * places)))
+    return f"{amount.normalize():f}"
+
+
+def _format_vat_rate(value, language: str) -> str:
+    amount = Decimal(str(value or "0")).quantize(Decimal("0.01")).normalize()
+    text = f"{amount:f}"
+    if language == "fi":
+        text = text.replace(".", ",")
+    return f"{text} %"
+
+
+def _format_receipt_datetime(value, language: str) -> str:
+    if value is None:
+        return ""
+    if language == "fi":
+        return f"{value.day}.{value.month}.{value.year} klo {value:%H.%M}"
+    return value.strftime("%Y-%m-%d %H:%M")
+
+
+def _sale_receipt_context(sale: Sale, db: Session) -> dict:
+    settings_values = get_app_settings(db)
+    language = settings_values.get("language", "en")
+    company = {
+        "name": (settings_values.get("company_name") or "").strip(),
+        "business_id": (settings_values.get("company_business_id") or "").strip(),
+        "address": (settings_values.get("company_address") or "").strip(),
+        "phone": (settings_values.get("company_phone") or "").strip(),
+        "email": (settings_values.get("company_email") or "").strip(),
+    }
+    company = {key: value for key, value in company.items() if value}
+
+    receipt_lines = []
+    vat_groups = defaultdict(lambda: {"net": Decimal("0.00"), "vat": Decimal("0.00"), "gross": Decimal("0.00")})
+    for line in sale.lines:
+        gross = Decimal(str(line.line_total or "0"))
+        vat_amount = Decimal(str(line.vat_amount or "0"))
+        net = gross - vat_amount
+        rate_key = str(Decimal(str(line.vat_percent or "0")).quantize(Decimal("0.01")))
+        vat_groups[rate_key]["net"] += net
+        vat_groups[rate_key]["vat"] += vat_amount
+        vat_groups[rate_key]["gross"] += gross
+        receipt_lines.append(
+            {
+                "description": line.description_snapshot,
+                "quantity": _format_decimal(line.quantity),
+                "unit": line.product.unit if line.product and line.product.unit else "",
+                "unit_price": _format_money(line.unit_price, language),
+                "vat_rate": _format_vat_rate(line.vat_percent, language),
+                "line_total": _format_money(line.line_total, language),
+            }
+        )
+
+    vat_breakdown = [
+        {
+            "rate": _format_vat_rate(rate, language),
+            "net": _format_money(values["net"], language),
+            "vat": _format_money(values["vat"], language),
+            "gross": _format_money(values["gross"], language),
+        }
+        for rate, values in sorted(vat_groups.items(), key=lambda item: Decimal(item[0]))
+    ]
+
+    paid = sale_paid_amount(sale)
+    balance = sale_balance_due(sale)
+    change_due = paid - Decimal(str(sale.total or "0"))
+    if change_due < 0:
+        change_due = Decimal("0.00")
+    customer_name = (
+        sale.customer.name
+        if sale.customer is not None
+        else ((sale.customer_name_snapshot or "").strip() or None)
+    )
+    source_work_order = None
+    if sale.work_order is not None:
+        source_work_order = sale.work_order.receipt_number or sale.work_order.job_number or str(sale.work_order.id)
+    return {
+        "receipt_company": company,
+        "receipt_lines": receipt_lines,
+        "receipt_vat_breakdown": vat_breakdown,
+        "receipt_payments": [
+            {
+                "method": payment.payment_method,
+                "amount": _format_money(payment.amount, language),
+            }
+            for payment in sale.payments
+        ],
+        "receipt_customer_name": customer_name,
+        "receipt_source_work_order": source_work_order,
+        "receipt_datetime": _format_receipt_datetime(sale.sold_at, language),
+        "receipt_date": _format_receipt_datetime(sale.sold_at, language).split(" klo ")[0] if language == "fi" else sale.sold_at.strftime("%Y-%m-%d"),
+        "receipt_total_ex_vat": _format_money(sale.subtotal, language),
+        "receipt_total_vat": _format_money(sale.vat_total, language),
+        "receipt_total_inc_vat": _format_money(sale.total, language),
+        "receipt_paid_total": _format_money(paid, language),
+        "receipt_balance_due": _format_money(balance, language),
+        "receipt_balance_due_raw": balance,
+        "receipt_change_due": _format_money(change_due, language),
+        "receipt_change_due_raw": change_due,
     }
 
 
@@ -461,9 +576,11 @@ def sale_receipt(sale_id: int, request: Request, db: Session = Depends(get_db)):
         {
             "request": request,
             "app_name": settings.app_name,
+            "page_title": "Receipt",
             "sale": sale,
             "paid_amount": sale_paid_amount(sale),
             "balance_due": sale_balance_due(sale),
+            **_sale_receipt_context(sale, db),
         },
     )
 
