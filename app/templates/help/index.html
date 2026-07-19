@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mb-4">
+    <h1 class="h3 mb-1">{{ t.help }}</h1>
+    <p class="text-muted mb-0">{{ t.help_and_getting_started_intro }}</p>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-6">
+        <section class="card shadow-sm border-0 h-100">
+            <div class="card-body">
+                <h2 class="h5">{{ t.daily_workflow }}</h2>
+                <ol class="mb-0">
+                    <li>{{ t.help_step_customer }}</li>
+                    <li>{{ t.help_step_document }}</li>
+                    <li>{{ t.help_step_sale }}</li>
+                    <li>{{ t.help_step_closing }}</li>
+                </ol>
+            </div>
+        </section>
+    </div>
+    <div class="col-lg-6">
+        <section class="card shadow-sm border-0 h-100">
+            <div class="card-body">
+                <h2 class="h5">{{ t.inventory_rules }}</h2>
+                <p>{{ t.help_inventory_rule }}</p>
+                <p class="mb-0">{{ t.receive_stock_help }}</p>
+            </div>
+        </section>
+    </div>
+    <div class="col-lg-6">
+        <section class="card shadow-sm border-0 h-100">
+            <div class="card-body">
+                <h2 class="h5">{{ t.sales_and_documents }}</h2>
+                <p>{{ t.quick_sale_help }}</p>
+                <p>{{ t.work_order_help }}</p>
+                <p>{{ t.delivery_note_help }}</p>
+                <p class="mb-0">{{ t.quote_help }}</p>
+            </div>
+        </section>
+    </div>
+    <div class="col-lg-6">
+        <section class="card shadow-sm border-0 h-100">
+            <div class="card-body">
+                <h2 class="h5">{{ t.settings }}</h2>
+                <p>{{ t.language_help }}</p>
+                <p>{{ t.user_management_help }}</p>
+                <p class="mb-0">{{ t.dashboard_settings_help }}</p>
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}

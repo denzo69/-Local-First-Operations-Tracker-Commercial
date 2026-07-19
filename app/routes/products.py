@@ -25,6 +25,7 @@ from app.services.inventory_service import (
 )
 from app.services.money_service import parse_decimal
 from app.services.settings_service import get_app_settings
+from app.services.supplier_service import resolve_goods_receipt_supplier
 from app.template_context import templates
 
 router = APIRouter(prefix="/products", tags=["products"])
@@ -299,7 +300,8 @@ def new_product_goods_receipt(request: Request, db: Session = Depends(get_db)):
 @router.post("/goods-receipts")
 def create_product_goods_receipt_route(
     request: Request,
-    supplier_id: int = Form(...),
+    supplier_id: str = Form(""),
+    supplier_name: str = Form(""),
     receipt_date: date = Form(...),
     delivery_number: str = Form(""),
     invoice_number: str = Form(""),
@@ -312,9 +314,10 @@ def create_product_goods_receipt_route(
     db: Session = Depends(get_db),
 ):
     try:
+        supplier = resolve_goods_receipt_supplier(db, supplier_id=supplier_id, supplier_name=supplier_name)
         receipt = create_goods_receipt(
             db,
-            supplier_id=supplier_id,
+            supplier_id=supplier.id,
             receipt_date=receipt_date,
             received_by_user_id=operator_id_from_request(request, received_by_user_id),
             delivery_number=delivery_number,
@@ -595,7 +598,8 @@ def receive_product_stock_form(product_id: int, request: Request, db: Session = 
 def receive_product_stock(
     product_id: int,
     request: Request,
-    supplier_id: int = Form(...),
+    supplier_id: str = Form(""),
+    supplier_name: str = Form(""),
     receipt_date: date = Form(...),
     destination_location_id: int = Form(...),
     quantity_value: str = Form(...),
@@ -618,9 +622,10 @@ def receive_product_stock(
         raise HTTPException(status_code=400, detail="Only stock products can be received into inventory.")
 
     try:
+        supplier = resolve_goods_receipt_supplier(db, supplier_id=supplier_id, supplier_name=supplier_name)
         receipt = create_goods_receipt(
             db,
-            supplier_id=supplier_id,
+            supplier_id=supplier.id,
             receipt_date=receipt_date,
             received_by_user_id=operator_id_from_request(request, received_by_user_id),
             delivery_number=delivery_number,

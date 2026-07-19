@@ -20,6 +20,7 @@ from app.services.inventory_service import (
     preview_goods_receipt,
     repair_inventory_caches_from_ledger,
 )
+from app.services.supplier_service import resolve_goods_receipt_supplier
 from app.template_context import templates
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
@@ -71,7 +72,8 @@ def new_goods_receipt(request: Request, db: Session = Depends(get_db)):
 @router.post("/goods-receipts")
 def create_goods_receipt_route(
     request: Request,
-    supplier_id: int = Form(...),
+    supplier_id: str = Form(""),
+    supplier_name: str = Form(""),
     receipt_date: date = Form(...),
     delivery_number: str = Form(""),
     invoice_number: str = Form(""),
@@ -84,9 +86,10 @@ def create_goods_receipt_route(
     db: Session = Depends(get_db),
 ):
     try:
+        supplier = resolve_goods_receipt_supplier(db, supplier_id=supplier_id, supplier_name=supplier_name)
         receipt = create_goods_receipt(
             db,
-            supplier_id=supplier_id,
+            supplier_id=supplier.id,
             receipt_date=receipt_date,
             received_by_user_id=operator_id_from_request(request, received_by_user_id),
             delivery_number=delivery_number,

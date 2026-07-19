@@ -33,23 +33,22 @@
     </div>
 </div>
 
-{% if not suppliers %}
-<div class="alert alert-warning">
-    {{ t.create_supplier_first }}
-    <a href="/products/suppliers">{{ t.suppliers }}</a>
-</div>
-{% endif %}
-
 <form method="post" action="/products/{{ product.id }}/receive" class="card shadow-sm border-0">
     <div class="card-body">
         <div class="row g-3">
             <div class="col-md-6">
                 <label class="form-label" for="supplier_id">{{ t.supplier }}</label>
-                <select class="form-select" id="supplier_id" name="supplier_id" required {% if not suppliers %}disabled{% endif %}>
+                <select class="form-select" id="supplier_id" name="supplier_id">
+                    <option value="">{{ t.select_supplier_or_type_new }}</option>
                     {% for supplier in suppliers %}
                     <option value="{{ supplier.id }}">{{ supplier.name }}</option>
                     {% endfor %}
                 </select>
+                <div class="form-text">{{ t.supplier_select_help }}</div>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="supplier_name">{{ t.manual_supplier_name }}</label>
+                <input class="form-control" id="supplier_name" name="supplier_name" placeholder="{{ t.manual_supplier_name_placeholder }}">
             </div>
             <div class="col-md-3">
                 <label class="form-label" for="receipt_date">{{ t.received_date }}</label>
@@ -125,7 +124,7 @@
         </div>
     </div>
     <div class="card-footer bg-white">
-        <button class="btn btn-primary" type="submit" {% if not suppliers %}disabled{% endif %}>{{ t.create_receipt_draft }}</button>
+        <button class="btn btn-primary" type="submit">{{ t.create_receipt_draft }}</button>
     </div>
 </form>
 {% endblock %}

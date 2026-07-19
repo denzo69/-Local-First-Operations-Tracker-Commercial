@@ -16,8 +16,8 @@ def test_dashboard_actions_are_links():
     assert 'href="/customers/new"' in response.text
     assert 'id="desktopNavSales"' in response.text
     assert 'id="desktopNavStock"' in response.text
-    assert 'id="desktopNavSales" hidden' not in response.text
-    assert 'id="desktopNavStock" hidden' not in response.text
+    assert 'id="desktopNavSales" hidden' in response.text
+    assert 'id="desktopNavStock" hidden' in response.text
 
 
 def test_main_navigation_targets_load():
@@ -38,6 +38,7 @@ def test_main_navigation_targets_load():
             "/products/inventory/reconciliation",
             "/inventory/goods-receipts",
             "/inventory/suppliers",
+            "/help",
             "/inventory/warehouses",
             "/inventory/valuation",
             "/inventory/ledger",
@@ -255,6 +256,7 @@ def test_mobile_navigation_markup_is_present():
     assert 'aria-controls="mobileNavSales"' in response.text
     assert 'aria-controls="mobileNavStock"' in response.text
     assert 'id="mobileNavSales"' in response.text
+    assert 'id="mobileNavSales" hidden' in response.text
     assert 'id="mobileNavStock" hidden' in response.text
 
 
@@ -667,6 +669,61 @@ def test_product_detail_has_direct_stock_receiving_flow():
         assert service_detail.status_code == 200
         assert f'href="/products/{service_id}/receive"' not in service_detail.text
         assert client.get(f"/products/{service_id}/receive").status_code == 400
+
+
+def test_product_receive_stock_accepts_manual_supplier_name():
+    with SessionLocal() as db:
+        ensure_default_roles(db)
+        role = db.query(Role).filter(Role.code == "manager").one()
+        manager = User(name="Manual Supplier Receiver", login_name="manual.supplier.receiver", role=role, is_active=True)
+        product = Product(
+            name="Manual Supplier Stock",
+            is_active=True,
+            is_stock_item=True,
+            unit_price="18",
+            vat_percent="24",
+        )
+        db.add_all([manager, product])
+        db.commit()
+        manager_id = manager.id
+        product_id = product.id
+
+    with TestClient(app) as client:
+        receive_form = client.get(f"/products/{product_id}/receive")
+        assert receive_form.status_code == 200
+        assert "New supplier name" in receive_form.text
+
+        with SessionLocal() as db:
+            location_id = db.query(WarehouseLocation).filter(WarehouseLocation.code == "DEFAULT").one().id
+
+        draft_response = client.post(
+            f"/products/{product_id}/receive",
+            data={
+                "supplier_id": "",
+                "supplier_name": "Manual Typed Supplier",
+                "receipt_date": date.today().isoformat(),
+                "destination_location_id": location_id,
+                "quantity_value": "2",
+                "purchase_unit_price_ex_vat": "9.50",
+                "vat_rate": "24",
+                "delivery_number": "MANUAL-SUPPLIER",
+                "invoice_number": "",
+                "freight_total_ex_vat": "0",
+                "freight_vat_rate": "0",
+                "other_costs_total_ex_vat": "0",
+                "other_costs_vat_rate": "0",
+                "allocation_method": "by_value",
+                "received_by_user_id": manager_id,
+            },
+            follow_redirects=False,
+        )
+
+    assert draft_response.status_code == 303
+    with SessionLocal() as db:
+        supplier = db.query(Supplier).filter(Supplier.name == "Manual Typed Supplier").one()
+        receipt_product = db.get(Product, product_id)
+        assert supplier.is_active is True
+        assert receipt_product.current_inventory_quantity == 0
 
 
 def test_customer_pages_use_translated_first_time_guidance():

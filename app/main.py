@@ -18,6 +18,7 @@ from app.routes import (
     customers,
     daily_closings,
     delivery_notes,
+    help as help_routes,
     inventory,
     jobs,
     products,
@@ -64,6 +65,7 @@ app.include_router(delivery_notes.router)
 app.include_router(quotes.legacy_router)
 app.include_router(quotes.router)
 app.include_router(jobs.router, dependencies=[Depends(require_work_order_route)])
+app.include_router(help_routes.router)
 app.include_router(audit_log.router)
 app.include_router(products.router)
 app.include_router(users.router)
