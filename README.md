@@ -31,7 +31,19 @@ The interface is designed around everyday operational work rather than a marketi
 
 The mobile navigation groups sales and documents, customers and stock, reports and history, and administration into collapsible sections.
 
-![Mobile navigation](docs/UI/screenshots/dashboard-mobile.png)
+![Mobile navigation](docs/UI/screenshots/mobile-navigation.jpg)
+
+### Mobile Work Orders
+
+The responsive work-order list keeps status filters, search, due dates, and direct access to each work order usable on a phone.
+
+![Mobile work-order list](docs/UI/screenshots/mobile-work-orders.jpg)
+
+### Mobile Work Order Workflow
+
+The work-order detail view exposes document conversion, sales or invoicing handoff, printing, and operational status changes from the same mobile screen.
+
+![Mobile work-order workflow](docs/UI/screenshots/mobile-work-order-detail.jpg)
 
 ## Current Status
 
