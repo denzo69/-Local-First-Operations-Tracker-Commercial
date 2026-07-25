@@ -9,7 +9,7 @@ services:
       PORT: 8000
       DATABASE_URL: sqlite:////app/data/app.sqlite
       BACKUP_DIR: /app/backups
-      SECRET_KEY: change-this-before-use
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY to a unique high-entropy value before starting Docker Compose}
       BACKUP_SCHEDULER_ENABLED: "true"
       BACKUP_SCHEDULER_INTERVAL_MINUTES: "1440"
       BACKUP_RETENTION_COUNT: "50"
