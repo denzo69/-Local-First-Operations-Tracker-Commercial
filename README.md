@@ -1,5 +1,10 @@
 # JEronAI Operations
 
+[![Tests](https://github.com/denzo69/-Local-First-Operations-Tracker-Commercial/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/denzo69/-Local-First-Operations-Tracker-Commercial/actions/workflows/tests.yml)
+![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
+![Python](https://img.shields.io/badge/python-3.13-blue)
+![License](https://img.shields.io/badge/license-proprietary-lightgrey)
+
 **A local-first ERP and CRM portfolio project for small-business operations.**
 
 JEronAI Operations is a browser-based business application built with FastAPI, SQLite, SQLAlchemy, Jinja2, and Bootstrap. It demonstrates how customer management, operational documents, sales, inventory control, daily closing, reporting, audit history, and backups can be combined into one maintainable local-first system.
@@ -161,7 +166,7 @@ Default landed-cost allocation is by purchase value:
 ```text
 line share = line purchase value / total receipt purchase value
 allocated freight = receipt freight total * line share
-allocated other costs = receipt other costs total * line share
+allocated other costs = receipt other costs * line share
 landed unit cost = (line purchase value + allocated freight + allocated other costs) / quantity
 ```
 
@@ -243,7 +248,7 @@ Run the full test suite:
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-The repository includes automated pytest tests and GitHub Actions checks. Coverage is measured under the configured test matrix; coverage percentages do not by themselves guarantee the absence of defects.
+The repository includes automated pytest tests and GitHub Actions checks. The CI workflow enforces 100% application-code coverage with `--cov-fail-under=100`; coverage percentages do not by themselves guarantee the absence of defects.
 
 Create or upgrade a database through the safe migration bootstrap:
 
@@ -275,7 +280,13 @@ Use the LAN script when another trusted device should access the application:
 
 The LAN script applies the migration bootstrap before binding to `0.0.0.0`.
 
-Open the server computer's LAN or Tailscale address in a browser, for example:
+Open the server computer's LAN or Tailscale address in a browser:
+
+```text
+http://192.168.x.x:8002
+```
+
+or:
 
 ```text
 http://100.x.x.x:8002
