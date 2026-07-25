@@ -1,3 +1,4 @@
+import importlib
 from types import SimpleNamespace
 
 import pytest
@@ -26,8 +27,11 @@ def _template_response(template, context):
 
 
 def test_setup_form_redirects_when_auth_is_configured(monkeypatch):
-    monkeypatch.setattr(auth_route, "auth_is_configured", lambda _db: True)
-    response = auth_route.setup_form(_request("/setup"), db=object())
+    # Some migration tests reload route modules during the full suite. Reload here
+    # as well so this test executes the currently instrumented module instance.
+    live_auth_route = importlib.reload(auth_route)
+    monkeypatch.setattr(live_auth_route, "auth_is_configured", lambda _db: True)
+    response = live_auth_route.setup_form(_request("/setup"), db=object())
     assert response.status_code == 303
     assert response.headers["location"] == "/login"
 
@@ -35,17 +39,24 @@ def test_setup_form_redirects_when_auth_is_configured(monkeypatch):
 def test_document_wrapper_edit_and_receipt_routes_delegate(monkeypatch):
     monkeypatch.setattr(delivery_notes_route.jobs, "edit_job", lambda **kwargs: ("delivery-edit", kwargs))
     monkeypatch.setattr(delivery_notes_route.jobs, "job_receipt", lambda **kwargs: ("delivery-receipt", kwargs))
-    monkeypatch.setattr(quotes_route.jobs, "edit_job", lambda **kwargs: ("quote-edit", kwargs))
-    monkeypatch.setattr(quotes_route.jobs, "job_receipt", lambda **kwargs: ("quote-receipt", kwargs))
-    monkeypatch.setattr(work_orders_route.jobs, "job_receipt", lambda **kwargs: ("work-order-receipt", kwargs))
 
     request = _request()
     assert delivery_notes_route.edit_delivery_note(1, request, db=object())[0] == "delivery-edit"
     assert delivery_notes_route.delivery_note_receipt(1, request, db=object())[0] == "delivery-receipt"
-    assert quotes_route.edit_quote(1, request, db=object())[0] == "quote-edit"
-    assert quotes_route.quote_receipt(1, request, db=object())[0] == "quote-receipt"
-    assert work_orders_route.print_work_order(1, request, db=object())[0] == "work-order-receipt"
-    assert work_orders_route.print_receipt(1, request, db=object())[0] == "work-order-receipt"
+
+    # Reload these modules because the full suite reloads route modules while
+    # exercising migration compatibility. This also verifies their decorators
+    # and wrappers on the active instrumented module objects.
+    live_quotes_route = importlib.reload(quotes_route)
+    monkeypatch.setattr(live_quotes_route.jobs, "edit_job", lambda **kwargs: ("quote-edit", kwargs))
+    monkeypatch.setattr(live_quotes_route.jobs, "job_receipt", lambda **kwargs: ("quote-receipt", kwargs))
+    assert live_quotes_route.edit_quote(1, request, db=object())[0] == "quote-edit"
+    assert live_quotes_route.quote_receipt(1, request, db=object())[0] == "quote-receipt"
+
+    live_work_orders_route = importlib.reload(work_orders_route)
+    monkeypatch.setattr(live_work_orders_route.jobs, "job_receipt", lambda **kwargs: ("work-order-receipt", kwargs))
+    assert live_work_orders_route.print_work_order(1, request, db=object())[0] == "work-order-receipt"
+    assert live_work_orders_route.print_receipt(1, request, db=object())[0] == "work-order-receipt"
 
 
 def test_missing_job_receipt_raises_404():
