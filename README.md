@@ -166,7 +166,7 @@ Default landed-cost allocation is by purchase value:
 ```text
 line share = line purchase value / total receipt purchase value
 allocated freight = receipt freight total * line share
-allocated other costs = receipt other costs total * line share
+allocated other costs = receipt other costs * line share
 landed unit cost = (line purchase value + allocated freight + allocated other costs) / quantity
 ```
 
@@ -280,8 +280,66 @@ Use the LAN script when another trusted device should access the application:
 
 The LAN script applies the migration bootstrap before binding to `0.0.0.0`.
 
-Open the server computer's LAN or Tailscale address in a browser.
+Open the server computer's LAN or Tailscale address in a browser:
+
+```text
+http://192.168.x.x:8002
+```
+
+or:
+
+```text
+http://100.x.x.x:8002
+```
+
+Use this only on trusted private networks or Tailscale. Do not port-forward the development server to the public internet.
+
+## Data And Backups
+
+Default local database:
+
+```text
+data/app.sqlite
+```
+
+Default backup folder:
+
+```text
+backups/
+```
+
+Backups are created with SQLite's backup API, validated with `PRAGMA integrity_check`, and listed in the Backups page. Restore creates a safety backup before replacing the current database.
+
+## Database Migration Safety
+
+Earlier local-first builds could create SQLite tables before Alembic version stamping existed. If such a database has application tables but no `alembic_version` row, a raw `alembic upgrade head` can fail because the baseline migration tries to recreate existing tables.
+
+Use `python -m app.migration_bootstrap` instead. It classifies an unstamped SQLite schema and stamps only when the schema satisfies the required tables, columns, indexes, foreign keys, and trigger checks for a known revision. Unknown or partial schemas abort without stamping or upgrading.
+
+Before modifying an existing non-empty SQLite database, the bootstrap creates a migration backup under `backups/migration-backups/` and verifies it. If verification fails, migration stops.
+
+Do not casually run `alembic stamp head`. For an unknown schema, make a manual backup and inspect the reported missing or unexpected objects before repairing or migrating deliberately.
+
+## Print Snapshots
+
+Opening a printable receipt or Work Order route creates a stored snapshot for that document type. Later edits to the live Work Order do not rewrite the stored snapshot. Reopening the same printable route reuses the existing document number and snapshot.
+
+## Documentation
+
+Design documents live in `docs/`:
+
+- `docs/Vision.md`
+- `docs/Projektisuunnitelma_v1.md`
+- `docs/Software_Design_Document.md`
+- `docs/Architecture.md`
+- `docs/Backup_and_Failover.md`
+- `docs/Database.md`
+- `docs/API.md`
+- `docs/Roadmap.md`
+- `docs/UI/Wireframes.md`
 
 ## License
 
-This project is proprietary software. See [LICENSE](LICENSE) for terms.
+This repository is source-available for portfolio and evaluation purposes but contains proprietary software. No permission is granted to use, copy, modify, distribute, host, sell, or create derivative works without a separate written license agreement from the copyright holder.
+
+See [LICENSE](LICENSE) for the complete terms.
