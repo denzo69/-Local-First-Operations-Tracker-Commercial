@@ -4,7 +4,6 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-import app.routes.auth as auth_route
 import app.routes.delivery_notes as delivery_notes_route
 import app.routes.jobs as jobs_route
 import app.routes.products as products_route
@@ -12,6 +11,7 @@ import app.routes.quotes as quotes_route
 import app.routes.sales as sales_route
 import app.routes.work_orders as work_orders_route
 from app.database import SessionLocal
+from app.main import app
 
 
 def _request(path="/"):
@@ -27,11 +27,17 @@ def _template_response(template, context):
 
 
 def test_setup_form_redirects_when_auth_is_configured(monkeypatch):
-    # Some migration tests reload route modules during the full suite. Reload here
-    # as well so this test executes the currently instrumented module instance.
-    live_auth_route = importlib.reload(auth_route)
-    monkeypatch.setattr(live_auth_route, "auth_is_configured", lambda _db: True)
-    response = live_auth_route.setup_form(_request("/setup"), db=object())
+    # Execute the endpoint object actually registered in the FastAPI app. Other
+    # tests reload route modules, so calling a separately imported module can
+    # exercise a stale code object and leave the registered route uncovered.
+    setup_endpoint = next(
+        route.endpoint
+        for route in app.routes
+        if getattr(route, "path", None) == "/setup"
+        and "GET" in getattr(route, "methods", set())
+    )
+    monkeypatch.setitem(setup_endpoint.__globals__, "auth_is_configured", lambda _db: True)
+    response = setup_endpoint(_request("/setup"), db=object())
     assert response.status_code == 303
     assert response.headers["location"] == "/login"
 
