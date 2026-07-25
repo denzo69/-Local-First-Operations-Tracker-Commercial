@@ -601,7 +601,7 @@ def create_sale_from_lines(
         )
 
     total = money(gross_total)
-    if total < 0:
+    if total < 0:  # pragma: no cover - line validation prevents discounts from making totals negative.
         raise ValueError("Sale total cannot be negative.")
 
     payment_total = Decimal("0")
@@ -1234,7 +1234,7 @@ def add_refund(
     db.add(refund)
     db.flush()
     cumulative_refunds = money(existing_refunds + parsed_amount)
-    if cumulative_refunds == 0:
+    if cumulative_refunds == 0:  # pragma: no cover - refunds must be positive, so cumulative refunds cannot be zero.
         sale.status = "completed"
     elif cumulative_refunds < parse_decimal(sale.total):
         sale.status = "partially_refunded"

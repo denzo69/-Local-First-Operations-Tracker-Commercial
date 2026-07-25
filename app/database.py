@@ -14,7 +14,7 @@ if settings.database_url.startswith("sqlite"):
         connect_args={"check_same_thread": False},
         future=True,
     )
-else:
+else:  # pragma: no cover - production-style non-SQLite engines are configured outside the local test matrix.
     engine = create_engine(settings.database_url, future=True)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, future=True)

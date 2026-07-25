@@ -1,3 +1,6 @@
+import runpy
+import sys
+
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect, text
@@ -26,18 +29,27 @@ from app.migration_bootstrap import (
     INVENTORY_REVISION,
     OPTIONAL_SHIFTS_REVISION,
     QUICK_SALE_CUSTOMER_REVISION,
+    SALE_DOCUMENT_SETTING_KEYS,
     SALE_DOCUMENT_REVISION,
+    SchemaInspection,
     SHIFTLESS_REFUNDS_REVISION,
     STABILIZATION_REVISION,
     UNIFIED_SALES_REVISION,
     MigrationBootstrapError,
+    _future_revision_evidence,
     classify_schema,
     inspect_database,
     quick_check,
     run_bootstrap,
     sqlite_path_from_url,
 )
-from app.services.migration_service import ensure_sqlite_schema_compatibility
+from app.services.migration_service import (
+    _add_column_if_missing,
+    _create_index_if_missing,
+    _create_inventory_transaction_immutability_triggers,
+    _create_unique_index_if_safe,
+    ensure_sqlite_schema_compatibility,
+)
 
 
 def _database_url(db_path):
@@ -58,7 +70,76 @@ def _drop_alembic_version(db_path):
     engine = create_engine(_database_url(db_path), future=True)
     with engine.begin() as connection:
         connection.execute(text("DROP TABLE alembic_version"))
+
+
+def test_runtime_migration_service_safety_noop_branches(tmp_path):
+    class NonSqliteEngine:
+        class Dialect:
+            name = "postgresql"
+
+        dialect = Dialect()
+
+    assert ensure_sqlite_schema_compatibility(NonSqliteEngine()) == []
+
+    engine = create_engine(_database_url(tmp_path / "compat.db"), future=True)
+    with engine.begin() as connection:
+        _create_inventory_transaction_immutability_triggers(connection)
+        assert connection.execute(text("SELECT name FROM sqlite_master WHERE type = 'trigger'")).fetchall() == []
+
+        _add_column_if_missing(connection, "missing_table", "new_column", "TEXT")
+        _create_index_if_missing(connection, index_name="ix_missing", table="missing_table", column="new_column")
+
+        connection.execute(text("CREATE TABLE demo (id INTEGER PRIMARY KEY, code TEXT)"))
+        _create_index_if_missing(connection, index_name="ix_missing_column", table="demo", column="missing_column")
+
+        connection.execute(text("INSERT INTO demo (code) VALUES ('DUP'), ('DUP')"))
+        _create_unique_index_if_safe(connection, table="demo", column="code", index_name="ux_demo_code")
+        indexes = {
+            row[1]
+            for row in connection.execute(text("PRAGMA index_list(demo)")).fetchall()
+        }
+        assert "ux_demo_code" not in indexes
     engine.dispose()
+
+
+def test_bootstrap_future_sale_document_evidence_when_settings_are_complete():
+    inspection = SchemaInspection(
+        database_url="sqlite:///example.db",
+        database_path=None,
+        sqlite=True,
+        tables=set(),
+        columns_by_table={},
+        nullable_columns_by_table={},
+        indexes=set(),
+        foreign_keys=set(),
+        triggers=set(),
+        alembic_versions=(),
+        settings_keys=set(SALE_DOCUMENT_SETTING_KEYS),
+        missing_finalized_sale_document_numbers=0,
+    )
+
+    evidence = _future_revision_evidence(INVOICE_FOLLOWUP_REVISION, inspection)
+
+    assert "future sale document numbering data requirements" in evidence
+
+
+def test_migration_bootstrap_module_entrypoint_dry_run_uses_temp_database(tmp_path, monkeypatch):
+    db_path = tmp_path / "entrypoint.db"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "migration_bootstrap",
+            "--database-url",
+            _database_url(db_path),
+            "--dry-run",
+        ],
+    )
+
+    try:
+        runpy.run_path("app/migration_bootstrap.py", run_name="__main__")
+    except SystemExit as exc:
+        assert exc.code == 0
 
 
 def _current_revision(db_path):
