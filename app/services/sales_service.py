@@ -530,8 +530,6 @@ def create_sale_from_lines(
             )
             db.commit()
             return existing_work_order_sale
-    if send_to_invoice and (work_order is None or work_order.customer is None):
-        raise ValueError("Customer is required when sending a sale to invoicing.")
     customer = db.get(Customer, customer_id) if customer_id else None
     if customer_id and customer is None:
         raise ValueError("Customer not found.")
@@ -546,6 +544,8 @@ def create_sale_from_lines(
         raise ValueError("Sale must contain at least one line.")
     normalized_payments = [_normalize_payment_input(payment) for payment in payments or []]
     invoice_requested = send_to_invoice or any(payment.payment_method == INVOICE_PAYMENT_METHOD for payment in normalized_payments)
+    if invoice_requested and customer is None:
+        raise ValueError("Customer is required when sending a sale to invoicing.")
 
     line_payloads: list[dict] = []
     vat_totals = defaultdict(lambda: {"gross": Decimal("0"), "net": Decimal("0"), "vat": Decimal("0")})
