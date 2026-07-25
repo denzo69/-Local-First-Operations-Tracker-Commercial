@@ -45,7 +45,7 @@ def test_validation_error_can_return_json():
 
 def test_unhandled_error_returns_safe_response():
     route_path = "/__test_unhandled_error"
-    if not any(route.path == route_path for route in app.routes):
+    if not any(getattr(route, "path", None) == route_path for route in app.routes):
         @app.get(route_path)
         def _raise_unhandled_error():
             raise RuntimeError("sensitive internal detail")
