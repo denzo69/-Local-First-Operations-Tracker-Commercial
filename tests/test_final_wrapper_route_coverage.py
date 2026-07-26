@@ -10,11 +10,15 @@ from fastapi import HTTPException
 
 import app.auth_middleware as auth_middleware
 import app.error_handlers as error_handlers
+import app.routes.auth as auth_route
 import app.routes.delivery_notes as delivery_notes_route
 import app.routes.jobs as jobs_route
+import app.routes.products as products_route
 import app.routes.product_import as product_import_route
 import app.routes.quotes as quotes_route
+import app.routes.sales as sales_route
 import app.routes.seller_reports as seller_reports_route
+import app.routes.work_orders as work_orders_route
 import app.services.backup_service as backup_service
 from app.database import SessionLocal
 from app.models import AuditLog, Job, JobItem, Product, Role, User
@@ -90,6 +94,74 @@ def test_delivery_note_and_quote_wrappers_delegate(monkeypatch):
     assert quotes_route.delete_quote_item(request, 1, 2, db=object()) == "delete_quote_item"
     assert quotes_route.update_quote_status(request, 1, 2, db=object()) == "status_quote"
     assert [call[0] for call in calls]
+
+
+def test_document_get_wrappers_delegate_to_shared_job_views(monkeypatch):
+    calls = []
+
+    def record(name):
+        def inner(*args, **kwargs):
+            calls.append((name, args, kwargs))
+            return name
+
+        return inner
+
+    request = _request(path="/delivery-notes")
+    monkeypatch.setattr(delivery_notes_route.jobs, "job_detail", record("delivery_detail"))
+    monkeypatch.setattr(delivery_notes_route.jobs, "edit_job", record("delivery_edit"))
+    monkeypatch.setattr(delivery_notes_route.jobs, "job_receipt", record("delivery_receipt"))
+    assert delivery_notes_route.delivery_note_detail(1, request, db=object()) == "delivery_detail"
+    assert delivery_notes_route.edit_delivery_note(1, request, db=object()) == "delivery_edit"
+    assert delivery_notes_route.delivery_note_receipt(1, request, db=object()) == "delivery_receipt"
+
+    request = _request(path="/quotes")
+    monkeypatch.setattr(quotes_route.jobs, "job_detail", record("quote_detail"))
+    monkeypatch.setattr(quotes_route.jobs, "edit_job", record("quote_edit"))
+    monkeypatch.setattr(quotes_route.jobs, "job_receipt", record("quote_receipt"))
+    assert quotes_route.quote_detail(2, request, db=object()) == "quote_detail"
+    assert quotes_route.edit_quote(2, request, db=object()) == "quote_edit"
+    assert quotes_route.quote_receipt(2, request, db=object()) == "quote_receipt"
+
+    request = _request(path="/work-orders")
+    monkeypatch.setattr(work_orders_route.jobs, "job_receipt", record("work_order_receipt"))
+    assert work_orders_route.work_order_receipt(3, request, db=object()) == "work_order_receipt"
+    assert work_orders_route.print_work_order(3, request, db=object()) == "work_order_receipt"
+    assert work_orders_route.print_receipt(3, request, db=object()) == "work_order_receipt"
+    assert [call[0] for call in calls] == [
+        "delivery_detail",
+        "delivery_edit",
+        "delivery_receipt",
+        "quote_detail",
+        "quote_edit",
+        "quote_receipt",
+        "work_order_receipt",
+        "work_order_receipt",
+        "work_order_receipt",
+    ]
+
+
+def test_small_html_route_branches_for_ci_coverage(monkeypatch):
+    monkeypatch.setattr(auth_route, "auth_is_configured", lambda _db: False)
+    monkeypatch.setattr(auth_route.templates, "TemplateResponse", _template_response)
+    setup_response = auth_route.setup_form(_request(path="/setup"), db=object())
+    assert setup_response.context["page_title"] == "Create admin"
+
+    monkeypatch.setattr(products_route, "create_default_warehouse", lambda _db: None)
+    monkeypatch.setattr(products_route.templates, "TemplateResponse", _template_response)
+    with SessionLocal() as db:
+        goods_receipt_form = products_route.new_product_goods_receipt(_request(path="/products/goods-receipts/new"), db=db)
+    assert goods_receipt_form.template == "inventory/goods_receipts/form.html"
+    assert goods_receipt_form.context["active_page"] == "products"
+
+    with SessionLocal() as db:
+        with pytest.raises(HTTPException) as missing_work_order_sale:
+            sales_route.work_order_sale_form(999999, _request(path="/sales/work-orders/999999"), db=db)
+    assert missing_work_order_sale.value.status_code == 404
+
+    with SessionLocal() as db:
+        with pytest.raises(HTTPException) as missing_sale_detail:
+            sales_route.sale_detail(999999, _request(path="/sales/999999"), db=db)
+    assert missing_sale_detail.value.status_code == 404
 
 
 def test_product_import_delimiter_and_header_errors():
