@@ -74,8 +74,9 @@ def logout():
 
 @router.get("/setup", response_class=HTMLResponse)
 def setup_form(request: Request, db: Session = Depends(get_db)):
+    login_redirect = RedirectResponse(url="/login", status_code=303)
     if auth_is_configured(db):
-        return RedirectResponse(url="/login", status_code=303)
+        return login_redirect
     return templates.TemplateResponse(
         "auth/setup.html",
         {
