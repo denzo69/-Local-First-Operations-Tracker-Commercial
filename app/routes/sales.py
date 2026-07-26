@@ -61,6 +61,7 @@ def _eligible_sellers(db: Session) -> list[User]:
 
 
 def _quick_sale_context(request: Request, db: Session, *, error: str | None = None, idempotency_key: str | None = None):
+    app_settings = get_app_settings(db)
     products = db.query(Product).filter(Product.is_active.is_(True)).order_by(Product.name.asc()).all()
     product_options = []
     for product in products:
@@ -82,6 +83,7 @@ def _quick_sale_context(request: Request, db: Session, *, error: str | None = No
         "sellers": _eligible_sellers(db),
         "cash_registers": db.query(CashRegister).filter(CashRegister.is_active.is_(True)).order_by(CashRegister.name.asc()).all(),
         "payment_methods": {key: value for key, value in PAYMENT_METHODS.items() if key != "invoice"},
+        "default_vat_percent": app_settings.get("default_vat_percent", "24") or "24",
         "idempotency_key": idempotency_key or str(uuid4()),
         "error": error,
     }

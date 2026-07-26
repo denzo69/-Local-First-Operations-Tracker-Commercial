@@ -435,7 +435,23 @@ def test_customer_cash_receipt_supports_a4_print_layout():
 
     assert receipt.status_code == 200
     assert "paper-a4" in receipt.text
+    assert "receipt-line-table" in receipt.text
+    assert "receipt-money" in receipt.text
+    assert "receipt-rate" in receipt.text
     assert "A4" in receipt.text
+
+
+def test_quick_sale_form_uses_configured_default_vat_for_manual_rows():
+    with SessionLocal() as db:
+        db.add(Setting(key="default_vat_percent", value="25.5"))
+        db.commit()
+
+    with TestClient(app) as client:
+        response = client.get("/sales/quick")
+
+    assert response.status_code == 200
+    assert 'name="vat_percent" value="25.5"' in response.text
+    assert 'defaultVatPercent: "25.5"' in response.text
 
 
 def test_customer_cash_receipt_shows_configured_contact_details_and_required_receipt_fields():

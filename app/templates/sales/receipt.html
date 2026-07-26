@@ -34,7 +34,11 @@
     background: #fff;
     color: #111827;
 }
+.customer-receipt.paper-receipt {
+    width: min(100%, 420px);
+}
 .customer-receipt.paper-a4 {
+    width: min(100%, 820px);
     max-width: 820px;
 }
 .receipt-title {
@@ -59,20 +63,74 @@
 .receipt-table {
     width: 100%;
     border-collapse: collapse;
+    table-layout: fixed;
 }
 .receipt-table th,
 .receipt-table td {
-    padding: .3rem 0;
+    padding: .35rem .45rem;
     border-bottom: 1px solid #e5e7eb;
     vertical-align: top;
+    overflow-wrap: anywhere;
+}
+.receipt-table th:first-child,
+.receipt-table td:first-child {
+    padding-left: 0;
+    text-align: left;
 }
 .receipt-table th:not(:first-child),
 .receipt-table td:not(:first-child) {
     text-align: right;
 }
+.receipt-money,
+.receipt-rate {
+    white-space: nowrap;
+}
+.receipt-meta {
+    color: #4b5563;
+    font-size: .85rem;
+    line-height: 1.35;
+}
 .receipt-total {
     font-size: 1.35rem;
     font-weight: 800;
+}
+.receipt-table.receipt-line-table th:nth-child(1) { width: 36%; }
+.receipt-table.receipt-line-table th:nth-child(2) { width: 12%; }
+.receipt-table.receipt-line-table th:nth-child(3) { width: 18%; }
+.receipt-table.receipt-line-table th:nth-child(4) { width: 12%; }
+.receipt-table.receipt-line-table th:nth-child(5) { width: 10%; }
+.receipt-table.receipt-line-table th:nth-child(6) { width: 12%; }
+.customer-receipt.paper-receipt .receipt-table.receipt-line-table,
+.customer-receipt.paper-receipt .receipt-table.receipt-line-table thead,
+.customer-receipt.paper-receipt .receipt-table.receipt-line-table tbody,
+.customer-receipt.paper-receipt .receipt-table.receipt-line-table tr,
+.customer-receipt.paper-receipt .receipt-table.receipt-line-table th,
+.customer-receipt.paper-receipt .receipt-table.receipt-line-table td {
+    display: block;
+}
+.customer-receipt.paper-receipt .receipt-table.receipt-line-table thead {
+    display: none;
+}
+.customer-receipt.paper-receipt .receipt-table.receipt-line-table tr {
+    border-bottom: 1px solid #e5e7eb;
+    padding: .45rem 0;
+}
+.customer-receipt.paper-receipt .receipt-table.receipt-line-table td {
+    border-bottom: 0;
+    padding: .12rem 0;
+    text-align: left;
+}
+.customer-receipt.paper-receipt .receipt-line-summary {
+    display: flex;
+    justify-content: space-between;
+    gap: .75rem;
+}
+.customer-receipt.paper-receipt .receipt-line-summary .receipt-money {
+    margin-left: auto;
+}
+.customer-receipt.paper-receipt .receipt-line-meta-cell {
+    color: #4b5563;
+    font-size: .85rem;
 }
 </style>
 
@@ -111,12 +169,11 @@
     </section>
 
     <section class="receipt-section">
-        <table class="receipt-table">
+        <table class="receipt-table receipt-line-table">
             <thead>
                 <tr>
                     <th>{{ t.description }}</th>
                     <th>{{ t.quantity }}</th>
-                    <th>{{ t.unit }}</th>
                     <th>{{ t.unit_price_inc_vat }}</th>
                     <th>{{ t.discount_percent }}</th>
                     <th>{{ t.vat }}</th>
@@ -126,13 +183,18 @@
             <tbody>
                 {% for line in receipt_lines %}
                 <tr>
-                    <td>{{ line.description }}</td>
-                    <td>{{ line.quantity }}</td>
-                    <td>{{ line.unit }}</td>
-                    <td>{{ line.unit_price }}</td>
-                    <td>{{ line.discount_percent or "-" }}</td>
-                    <td>{{ line.vat_rate }}</td>
-                    <td>{{ line.line_total }}</td>
+                    <td>
+                        <strong>{{ line.description }}</strong>
+                        <div class="receipt-meta d-none d-sm-block">{{ line.quantity }} {{ line.unit }} x {{ line.unit_price }}</div>
+                    </td>
+                    <td class="receipt-line-meta-cell">{{ line.quantity }}{% if line.unit %} {{ line.unit }}{% endif %}</td>
+                    <td class="receipt-money">{{ line.unit_price }}</td>
+                    <td class="receipt-rate">{{ line.discount_percent or "-" }}</td>
+                    <td class="receipt-rate">{{ line.vat_rate }}</td>
+                    <td class="receipt-line-summary">
+                        <span class="d-md-none receipt-meta">{{ t.total }}</span>
+                        <strong class="receipt-money">{{ line.line_total }}</strong>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>

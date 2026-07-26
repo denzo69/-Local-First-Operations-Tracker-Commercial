@@ -75,7 +75,7 @@
                     <td data-label="{{ t.description }}"><input class="form-control" name="description" required></td>
                     <td data-label="{{ t.quantity }}"><input class="form-control" name="quantity" value="1" inputmode="decimal"></td>
                     <td data-label="{{ t.unit_price }}"><input class="form-control" name="unit_price" value="0" inputmode="decimal"></td>
-                    <td data-label="{{ t.vat }} %"><input class="form-control" name="vat_percent" value="24" inputmode="decimal"></td>
+                    <td data-label="{{ t.vat }} %"><input class="form-control" name="vat_percent" value="{{ default_vat_percent }}" inputmode="decimal"></td>
                     <td data-label="{{ t.discount_percent }}"><input class="form-control discount-percent-input" name="discount_percent" value="0" inputmode="decimal"></td>
                     <td class="text-end"><button class="btn btn-sm btn-outline-danger remove-line text-nowrap" type="button">{{ t.remove }}</button></td>
                 </tr>
@@ -108,7 +108,8 @@
 const uiText = {
   manual: {{ t.manual|tojson }},
   stockProduct: {{ t.stock_products|tojson }},
-  stock: {{ t.stock|tojson }}
+  stock: {{ t.stock|tojson }},
+  defaultVatPercent: {{ default_vat_percent|tojson }}
 };
 const picker = document.getElementById("product_picker");
 const customerPicker = document.getElementById("customer_id");
@@ -136,7 +137,7 @@ function fillRowFromProduct(row, option) {
   if (option.value) {
     row.querySelector("[name='description']").value = option.dataset.name || "";
     row.querySelector("[name='unit_price']").value = option.dataset.price || "0";
-    row.querySelector("[name='vat_percent']").value = option.dataset.vat || "24";
+    row.querySelector("[name='vat_percent']").value = option.dataset.vat || uiText.defaultVatPercent;
     if (option.dataset.stockItem === "1") {
       row.querySelector(".product-label").textContent = `${option.dataset.name || uiText.stockProduct} - ${uiText.stock} ${option.dataset.stockQty || "0"}`;
     }
@@ -144,7 +145,7 @@ function fillRowFromProduct(row, option) {
 }
 document.getElementById("add-line").addEventListener("click", () => {
   const row = tbody.rows[0].cloneNode(true);
-  row.querySelectorAll("input").forEach((input) => input.value = input.name === "quantity" ? "1" : (input.name === "vat_percent" ? "24" : "0"));
+  row.querySelectorAll("input").forEach((input) => input.value = input.name === "quantity" ? "1" : (input.name === "vat_percent" ? uiText.defaultVatPercent : "0"));
   row.querySelector("[name='description']").value = "";
   row.querySelector("[name='product_id']").value = "";
   row.querySelector("[name='discount_percent']").value = selectedCustomerDiscount();
