@@ -205,6 +205,25 @@ def test_sales_invoice_refund_and_seller_routes_return_expected_errors():
     assert bad_quick_discount.status_code == 400
 
 
+def test_refund_route_blank_amount_uses_remaining_refundable_total():
+    sale = _sale()
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/sales/{sale.id}/refunds",
+            data={"refund_shift_id": "", "amount": "", "payment_method": "cash", "reason": "Full customer refund"},
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 303
+    with SessionLocal() as db:
+        refreshed = db.get(Sale, sale.id)
+        assert refreshed is not None
+        assert refreshed.status == "refunded"
+        assert len(refreshed.refunds) == 1
+        assert refreshed.refunds[0].amount == Decimal("10.00")
+
+
 def test_legacy_sale_route_handles_optional_ids_and_discount_validation():
     manager = _manager_user("Legacy Route Seller")
     register = _cash_register()

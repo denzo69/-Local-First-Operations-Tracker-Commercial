@@ -39,7 +39,7 @@ def invoice_related_sales(db: Session) -> list[Sale]:
         db.query(Sale)
         .filter(
             or_(
-                Sale.settlement_status.in_(list(INVOICE_ACTIVE_STATUSES) + ["paid", "cancelled"]),
+                Sale.settlement_status.in_(list(INVOICE_ACTIVE_STATUSES)),
                 Sale.payment_method == "invoice",
                 Sale.external_invoice_number.is_not(None),
             )

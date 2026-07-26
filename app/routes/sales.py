@@ -109,6 +109,14 @@ def _format_vat_rate(value, language: str) -> str:
     return f"{text} %"
 
 
+def _format_discount_percent(value, language: str) -> str:
+    amount = Decimal(str(value or "0")).quantize(Decimal("0.01")).normalize()
+    text = f"{amount:f}"
+    if language == "fi":
+        text = text.replace(".", ",")
+    return f"{text} %"
+
+
 def _format_receipt_datetime(value, language: str) -> str:
     if value is None:
         return ""
@@ -135,6 +143,13 @@ def _sale_receipt_context(sale: Sale, db: Session) -> dict:
         gross = Decimal(str(line.line_total or "0"))
         vat_amount = Decimal(str(line.vat_amount or "0"))
         net = gross - vat_amount
+        quantity = Decimal(str(line.quantity or "0"))
+        unit_price = Decimal(str(line.unit_price or "0"))
+        discount_amount = Decimal(str(line.discount_amount or "0"))
+        original_line_gross = quantity * unit_price
+        discount_percent = Decimal("0")
+        if original_line_gross > 0 and discount_amount > 0:
+            discount_percent = (discount_amount / original_line_gross * Decimal("100")).quantize(Decimal("0.01"))
         rate_key = str(Decimal(str(line.vat_percent or "0")).quantize(Decimal("0.01")))
         vat_groups[rate_key]["net"] += net
         vat_groups[rate_key]["vat"] += vat_amount
@@ -146,6 +161,7 @@ def _sale_receipt_context(sale: Sale, db: Session) -> dict:
                 "unit": line.product.unit if line.product and line.product.unit else "",
                 "unit_price": _format_money(line.unit_price, language),
                 "vat_rate": _format_vat_rate(line.vat_percent, language),
+                "discount_percent": _format_discount_percent(discount_percent, language) if discount_percent > 0 else "",
                 "line_total": _format_money(line.line_total, language),
             }
         )
@@ -613,10 +629,11 @@ def invoice_reminder_route(
 
 
 @router.get("/{sale_id}/receipt", response_class=HTMLResponse)
-def sale_receipt(sale_id: int, request: Request, db: Session = Depends(get_db)):
+def sale_receipt(sale_id: int, request: Request, paper: str = "receipt", db: Session = Depends(get_db)):
     sale = db.get(Sale, sale_id)
     if sale is None:
         raise HTTPException(status_code=404, detail="Sale not found")
+    selected_paper = "a4" if paper == "a4" else "receipt"
     return templates.TemplateResponse(
         "sales/receipt.html",
         {
@@ -624,6 +641,7 @@ def sale_receipt(sale_id: int, request: Request, db: Session = Depends(get_db)):
             "app_name": settings.app_name,
             "page_title": "Receipt",
             "sale": sale,
+            "receipt_paper": selected_paper,
             "paid_amount": sale_paid_amount(sale),
             "balance_due": sale_balance_due(sale),
             **_sale_receipt_context(sale, db),
@@ -636,7 +654,7 @@ def create_refund(
     sale_id: int,
     request: Request,
     refund_shift_id: str = Form(""),
-    amount: str = Form(...),
+    amount: str = Form(""),
     payment_method: str = Form(...),
     reason: str = Form(""),
     db: Session = Depends(get_db),
@@ -657,13 +675,16 @@ def create_refund(
     )
     if seller_id is None:
         raise HTTPException(status_code=400, detail="Refund requires an active operator or sale seller.")
+    refund_amount = str(amount or "").strip()
+    if refund_amount == "":
+        refund_amount = str(remaining_refundable_amount(sale))
     try:
         add_refund(
             db,
             sale_id=sale_id,
             refund_shift_id=parsed_refund_shift_id,
             seller_id=seller_id,
-            amount=amount,
+            amount=refund_amount,
             payment_method=payment_method,
             reason=reason,
         )

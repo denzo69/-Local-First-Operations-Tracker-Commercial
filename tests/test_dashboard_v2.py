@@ -57,6 +57,17 @@ def test_invoice_queue_tabs_keep_paid_transferred_cancelled_and_action_required_
                     external_invoice_number="EXT-4",
                     document_number="SALE-DASH-CANCEL",
                 ),
+                Sale(
+                    document_number="SALE-DASH-CASH",
+                    payment_method="cash",
+                    settlement_status="paid",
+                    source_type="pos",
+                    sold_at=datetime.now(UTC),
+                    business_date=today,
+                    total=25,
+                    subtotal=25,
+                    vat_total=0,
+                ),
             ]
         )
         db.commit()
@@ -78,6 +89,7 @@ def test_invoice_queue_tabs_keep_paid_transferred_cancelled_and_action_required_
     assert "SALE-DASH-CANCEL" in cancelled.text
     for document_number in ["SALE-DASH-WAIT", "SALE-DASH-TRANSFER", "SALE-DASH-OVERDUE", "SALE-DASH-PAID", "SALE-DASH-CANCEL"]:
         assert document_number in all_rows.text
+    assert "SALE-DASH-CASH" not in all_rows.text
 
 
 def test_dashboard_daily_closing_states_are_neutral_warning_red_and_green():

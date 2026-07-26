@@ -352,10 +352,17 @@ def test_customer_cash_receipt_contains_company_vat_payments_and_hides_internal_
         sale = create_sale_from_lines(
             db,
             lines=[
-                SaleLineInput(product_id=product_a.id, description="Receipt line VAT 24", quantity="1", unit_price="12.40", vat_percent="24"),
+                SaleLineInput(
+                    product_id=product_a.id,
+                    description="Receipt line VAT 24",
+                    quantity="1",
+                    unit_price="12.40",
+                    vat_percent="24",
+                    discount_amount="1.24",
+                ),
                 SaleLineInput(product_id=product_b.id, description="Receipt line VAT 10", quantity="2", unit_price="11.00", vat_percent="10"),
             ],
-            payments=[PaymentInput("cash", "20.00"), PaymentInput("card", "14.40")],
+            payments=[PaymentInput("cash", "20.00"), PaymentInput("card", "13.16")],
             seller_id=seller.id,
             seller_mode="selected",
             created_by_user_id=seller.id,
@@ -386,14 +393,15 @@ def test_customer_cash_receipt_contains_company_vat_payments_and_hides_internal_
     assert "1" in text
     assert "kpl" in text
     assert "12,40 €" in text
+    assert "Alennus %" in text
     assert "24 %" in text
     assert "10 %" in text
-    assert "34,40 €" in text
+    assert "33,16 €" in text
     assert "ALV-erittely" in text
     assert "Käteinen" in text
     assert "Kortti" in text
     assert "20,00 €" in text
-    assert "14,40 €" in text
+    assert "13,16 €" in text
     assert "Yhteensä maksettu" in text
     assert "Jäljellä oleva saldo" not in text
     assert "Hidden Receipt Seller" not in text
@@ -404,6 +412,30 @@ def test_customer_cash_receipt_contains_company_vat_payments_and_hides_internal_
 
     with SessionLocal() as db:
         assert db.get(Sale, sale_id).document_number == document_number
+
+
+def test_customer_cash_receipt_supports_a4_print_layout():
+    with SessionLocal() as db:
+        configure_sale_document_sequence(db)
+        seller = user(db, "A4 Receipt Seller")
+        product = service_product(db, "A4 receipt service", "15", "24")
+        sale = create_sale_from_lines(
+            db,
+            lines=[SaleLineInput(product_id=product.id, description="A4 receipt service", quantity="1", unit_price="15", vat_percent="24")],
+            payments=[PaymentInput("cash")],
+            seller_id=seller.id,
+            seller_mode="selected",
+            created_by_user_id=seller.id,
+            idempotency_key="receipt-layout-a4",
+        )
+        sale_id = sale.id
+
+    with TestClient(app) as client:
+        receipt = client.get(f"/sales/{sale_id}/receipt?paper=a4")
+
+    assert receipt.status_code == 200
+    assert "paper-a4" in receipt.text
+    assert "A4" in receipt.text
 
 
 def test_customer_cash_receipt_english_heading_and_hides_customer_when_absent():

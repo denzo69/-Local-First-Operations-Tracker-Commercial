@@ -15,12 +15,17 @@
         background: #fff !important;
     }
     .customer-receipt {
-        width: 72mm;
         max-width: none;
         border: 0 !important;
         box-shadow: none !important;
         padding: 0 !important;
         margin: 0 auto !important;
+    }
+    .customer-receipt.paper-receipt {
+        width: 72mm;
+    }
+    .customer-receipt.paper-a4 {
+        width: 190mm;
     }
 }
 .customer-receipt {
@@ -28,6 +33,9 @@
     margin: 0 auto;
     background: #fff;
     color: #111827;
+}
+.customer-receipt.paper-a4 {
+    max-width: 820px;
 }
 .receipt-title {
     font-size: 1.6rem;
@@ -73,10 +81,14 @@
         <h1 class="h4 mb-1">{{ t.customer_receipt_title }}</h1>
         <p class="text-muted mb-0">{{ sale.document_number }}</p>
     </div>
-    <button class="btn btn-outline-secondary" onclick="window.print()">{{ t.print }}</button>
+    <div class="d-flex flex-wrap gap-2 justify-content-end">
+        <a class="btn btn-outline-secondary" href="/sales/{{ sale.id }}/receipt">{{ t.print_receipt_size }}</a>
+        <a class="btn btn-outline-secondary" href="/sales/{{ sale.id }}/receipt?paper=a4">{{ t.print_a4 }}</a>
+        <button class="btn btn-primary" onclick="window.print()">{{ t.print }}</button>
+    </div>
 </div>
 
-<article class="customer-receipt card p-3 p-md-4">
+<article class="customer-receipt paper-{{ receipt_paper }} card p-3 p-md-4">
     <header class="text-center">
         <div class="receipt-title">{{ t.customer_receipt_heading }}</div>
         {% if receipt_company.name %}<div class="fw-semibold mt-2">{{ receipt_company.name }}</div>{% endif %}
@@ -106,6 +118,7 @@
                     <th>{{ t.quantity }}</th>
                     <th>{{ t.unit }}</th>
                     <th>{{ t.unit_price_inc_vat }}</th>
+                    <th>{{ t.discount_percent }}</th>
                     <th>{{ t.vat }}</th>
                     <th>{{ t.total }}</th>
                 </tr>
@@ -117,6 +130,7 @@
                     <td>{{ line.quantity }}</td>
                     <td>{{ line.unit }}</td>
                     <td>{{ line.unit_price }}</td>
+                    <td>{{ line.discount_percent or "-" }}</td>
                     <td>{{ line.vat_rate }}</td>
                     <td>{{ line.line_total }}</td>
                 </tr>

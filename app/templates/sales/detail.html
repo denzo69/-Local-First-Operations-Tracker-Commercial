@@ -174,7 +174,7 @@
         {% endfor %}
     </select>
     {% if not open_shifts %}<div class="alert alert-info">{{ t.refund_without_shift_hint }}</div>{% endif %}
-    <input class="form-control mb-2" name="amount" placeholder="{{ t.refund }}" required>
+    <input class="form-control mb-2" name="amount" value="{{ remaining_refundable }}" placeholder="{{ t.refund_amount_blank_full }}" inputmode="decimal">
     <select class="form-select mb-2" name="payment_method">
         {% for code, label in payment_methods.items() %}
         <option value="{{ code }}">{{ t[code] }}</option>
