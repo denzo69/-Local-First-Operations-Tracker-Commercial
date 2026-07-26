@@ -163,6 +163,11 @@ def test_small_html_route_branches_for_ci_coverage(monkeypatch):
             sales_route.sale_detail(999999, _request(path="/sales/999999"), db=db)
     assert missing_sale_detail.value.status_code == 404
 
+    with SessionLocal() as db:
+        with pytest.raises(HTTPException) as missing_job_receipt:
+            jobs_route.job_receipt(999999, _request(path="/work-orders/999999/receipt"), db=db)
+    assert missing_job_receipt.value.status_code == 404
+
 
 def test_product_import_delimiter_and_header_errors():
     with pytest.raises(HTTPException) as delimiter_error:
