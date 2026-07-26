@@ -438,6 +438,60 @@ def test_customer_cash_receipt_supports_a4_print_layout():
     assert "A4" in receipt.text
 
 
+def test_customer_cash_receipt_shows_configured_contact_details_and_required_receipt_fields():
+    with SessionLocal() as db:
+        configure_sale_document_sequence(db)
+        db.add_all(
+            [
+                Setting(key="language", value="fi"),
+                Setting(key="company_name", value="Receipt Legal Co"),
+                Setting(key="company_business_id", value="7654321-0"),
+                Setting(key="company_address", value="Kuitinkatu 2, 00200 Helsinki"),
+                Setting(key="company_phone", value="+358 40 123 4567"),
+                Setting(key="company_email", value="receipt@example.test"),
+            ]
+        )
+        seller = user(db, "Legal Receipt Seller")
+        product = service_product(db, "Legal receipt product", "25.50", "25.5")
+        product.unit = "kpl"
+        sale = create_sale_from_lines(
+            db,
+            lines=[SaleLineInput(product_id=product.id, description="Legal receipt product", quantity="2", unit_price="25.50", vat_percent="25.5")],
+            payments=[PaymentInput("cash")],
+            seller_id=seller.id,
+            seller_mode="selected",
+            created_by_user_id=seller.id,
+            idempotency_key="receipt-legal-fields",
+        )
+        sale_id = sale.id
+        document_number = sale.document_number
+
+    with TestClient(app) as client:
+        receipt = client.get(f"/sales/{sale_id}/receipt")
+
+    text = receipt.text
+    assert receipt.status_code == 200
+    assert "KASSAKUITTI" in text
+    assert "Receipt Legal Co" in text
+    assert "7654321-0" in text
+    assert "Kuitinkatu 2, 00200 Helsinki" in text
+    assert "+358 40 123 4567" in text
+    assert "receipt@example.test" in text
+    assert document_number in text
+    assert "Kuitin päivä" in text
+    assert "Tapahtuma-aika" in text
+    assert "Legal receipt product" in text
+    assert "2" in text
+    assert "kpl" in text
+    assert "25,5 %" in text
+    assert "ALV-erittely" in text
+    assert "Veroton summa" in text
+    assert "ALV" in text
+    assert "Verollinen summa" in text
+    assert "Käteinen" in text
+    assert "Yhteensä maksettu" in text
+
+
 def test_customer_cash_receipt_english_heading_and_hides_customer_when_absent():
     with SessionLocal() as db:
         configure_sale_document_sequence(db)
