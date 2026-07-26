@@ -1,5 +1,10 @@
 # JEronAI Operations
 
+[![Tests](https://github.com/denzo69/-Local-First-Operations-Tracker-Commercial/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/denzo69/-Local-First-Operations-Tracker-Commercial/actions/workflows/tests.yml)
+![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
+![Python](https://img.shields.io/badge/python-3.13-blue)
+![License](https://img.shields.io/badge/license-proprietary-lightgrey)
+
 **A local-first ERP and CRM portfolio project for small-business operations.**
 
 JEronAI Operations is a browser-based business application built with FastAPI, SQLite, SQLAlchemy, Jinja2, and Bootstrap.
@@ -34,6 +39,8 @@ The screenshots below use the current JEronAI Operations visual design and the e
 ![Desktop dashboard](docs/UI/screenshots/dashboard-desktop.png)
 
 ### Mobile Dashboard
+
+The mobile experience is a responsive browser interface, not a native mobile application.
 
 ![Mobile dashboard](docs/UI/screenshots/dashboard-mobile.png)
 
@@ -165,9 +172,9 @@ Daily Closing rules:
 
 The visible inventory workflow is organized under `Products / Tuotteet`. Product master data, suppliers, warehouses, shelf locations, Goods Receipts, Stock Balances, Inventory Transactions, Inventory Valuation, and reconciliation are presented as one product and inventory workspace. Internal services and tables remain separated for correctness.
 
-Inventory valuation is based on ex-VAT cost. VAT is stored and shown, but deductible VAT is not included in inventory value by default.
+Inventory Valuation is based on ex-VAT cost. VAT is stored and shown, but deductible VAT is not included in inventory value by default.
 
-Goods Receipts are created as drafts. Draft receipts do not affect stock, balances, weighted average cost, or valuation. Posting a receipt allocates freight and other landed costs, creates immutable Inventory Transactions, updates location balance caches, updates product-level cache totals, and writes audit events in one transaction.
+Goods Receipts are created as drafts. Draft receipts do not affect stock, balances, weighted-average cost, or valuation. Posting allocates freight and other landed costs, creates protected Inventory Transactions, updates balance caches, updates product-level cost totals, and writes Audit Log events in one transaction.
 
 Receipt-level freight and other landed costs store both ex-VAT and VAT amounts. Purchase-document VAT totals include product-line VAT, freight VAT, and other-cost VAT.
 
@@ -180,11 +187,11 @@ allocated other costs = receipt other costs total * line share
 landed unit cost = (line purchase value + allocated freight + allocated other costs) / quantity
 ```
 
-Quantity-based allocation is also supported. Monetary allocations are rounded to 2 decimals and the final rounding remainder is assigned deterministically so allocated totals reconcile to the receipt totals.
+Quantity-based allocation is also supported. Monetary allocations are rounded to two decimals and the final rounding remainder is assigned deterministically.
 
 If the same stock product appears on multiple receipt lines, posting processes rows in `GoodsReceiptLine.id` order for traceable ledger rows, while product-level projected quantity, value, and weighted average are reconciled from all lines for that product.
 
-Weighted average cost uses 6 decimal places internally:
+Weighted-average cost uses six decimal places internally:
 
 ```text
 old value = old quantity * old weighted average cost
@@ -192,7 +199,7 @@ new receipt value = received quantity * landed unit cost
 new average cost = (old value + new receipt value) / (old quantity + received quantity)
 ```
 
-The Inventory Transaction ledger is the accounting source of truth for stock quantity and value. Current balance caches and product-level cost fields must be reproducible from ledger rows. Negative stock is rejected by default because it would make weighted-average cost ambiguous.
+The Inventory Transaction ledger is the accounting source of truth for stock quantity and value. Current balance caches and product-level cost fields must be reproducible from ledger rows. Negative stock is rejected by default because it would make weighted-average cost ambiguous. Reconciliation can detect mismatches and repair caches without rewriting transaction history. Posted receipts are immutable through application guards and SQLite triggers; cancellation creates reversal transactions instead of deleting history.
 
 Sale-line COGS and gross-profit snapshots use the weighted average cost that existed when the Sale was finalized. Later purchases do not rewrite historical profit. Non-stock products and services have zero inventory COGS in the current MVP cost model.
 
@@ -224,7 +231,7 @@ Start the local development server:
 .\run.bat
 ```
 
-The run script installs requirements and applies the safe migration bootstrap before starting Uvicorn.
+The script creates `.venv` when needed, installs dependencies, runs the safe migration bootstrap, and starts Uvicorn.
 
 Open:
 
@@ -232,27 +239,27 @@ Open:
 http://127.0.0.1:8000
 ```
 
-Create the first admin account:
+Create the first admin user at:
 
 ```text
-http://127.0.0.1:8000/setup
+/setup
 ```
 
-Health check:
+Then sign in through:
 
 ```text
-http://127.0.0.1:8000/health
+/login
 ```
 
 ## Docker
 
-Docker is optional. The compose setup runs the app with SQLite stored in a named volume and backups stored in a separate named volume.
+Build and start:
 
 ```powershell
 docker compose up --build
 ```
 
-Then open:
+Open:
 
 ```text
 http://127.0.0.1:8000
@@ -274,6 +281,8 @@ Run the configured coverage check:
 .\.venv\Scripts\python.exe -m pytest -q --durations=20 --cov=app --cov-report=term-missing --cov-report=xml --cov-report=html
 ```
 
+The repository includes automated pytest tests and GitHub Actions checks. The CI workflow enforces 100% application-code coverage with `--cov-fail-under=100`; coverage percentages do not by themselves guarantee the absence of defects.
+
 The current automated test suite reports 100% application-code coverage under the configured local test matrix. This does not guarantee the absence of defects; it means the current measured application code paths are covered by automated tests.
 
 GitHub Actions runs the pytest workflow on pushes and pull requests to `main`.
@@ -288,25 +297,21 @@ Use the LAN script when another device should access the app:
 
 The LAN script applies the safe migration bootstrap before binding to `0.0.0.0`.
 
-Then open the server computer's LAN or Tailscale address in a browser, for example:
+Open the server computer's LAN or Tailscale address in a browser:
 
 ```text
-http://100.x.x.x:8002
+http://192.168.1.100:8000
+http://<tailscale-ip>:8000
 ```
 
-Only use this on trusted private networks or Tailscale. Do not port-forward the development server to the public internet.
+Keep the app in a trusted private network. Do not expose it directly to the public internet.
 
 ## Data And Backups
 
-Default local database:
+Default local paths:
 
 ```text
-data/app.sqlite
-```
-
-Default backup folder:
-
-```text
+data/
 backups/
 ```
 
