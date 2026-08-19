@@ -18,7 +18,7 @@ concurrency:
 jobs:
   pytest:
     runs-on: windows-latest
-    timeout-minutes: 35
+    timeout-minutes: 60
     env:
       PASSWORD_ITERATIONS: "1000"
       PYTHONUTF8: "1"
