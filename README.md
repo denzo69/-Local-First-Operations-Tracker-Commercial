@@ -1,6 +1,6 @@
 # JEronAI Operations
 
-[![Tests](https://github.com/denzo69/-Local-First-Operations-Tracker-Commercial/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/denzo69/-Local-First-Operations-Tracker-Commercial/actions/workflows/tests.yml)
+[![Tests](https://img.shields.io/github/actions/workflow/status/denzo69/-Local-First-Operations-Tracker-Commercial/tests.yml?branch=main&label=Tests)](https://github.com/denzo69/-Local-First-Operations-Tracker-Commercial/actions/workflows/tests.yml)
 ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
 ![Python](https://img.shields.io/badge/python-3.13-blue)
 ![License](https://img.shields.io/badge/license-proprietary-lightgrey)
