@@ -2,13 +2,13 @@ import csv
 from datetime import date, datetime, time
 from io import StringIO
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.models import GoodsReceipt, GoodsReceiptLine, InventoryBalance, InventoryTransaction, Product, Supplier, User, Warehouse, WarehouseLocation
+from app.models import GoodsReceipt, GoodsReceiptLine, InventoryBalance, InventoryTransaction, Product, ProductBarcode, Supplier, User, Warehouse, WarehouseLocation
 from app.services.auth_service import request_current_user
 from app.services.inventory_service import (
     add_goods_receipt_line,
@@ -24,6 +24,14 @@ from app.services.inventory_service import (
     repair_inventory_caches_from_ledger,
 )
 from app.services.money_service import parse_decimal
+from app.services.product_service import (
+    next_product_sku,
+    normalize_sku,
+    primary_barcode,
+    set_primary_barcode,
+    upsert_product_from_row as service_upsert_product_from_row,
+    validate_barcode,
+)
 from app.services.settings_service import get_app_settings
 from app.services.supplier_service import resolve_goods_receipt_supplier
 from app.template_context import templates
@@ -61,21 +69,7 @@ def products_workspace_summary(db: Session, products: list[Product]) -> dict:
 
 
 def upsert_product_from_row(db: Session, row: dict[str, str]) -> Product | None:
-    name = (row.get("name") or "").strip()
-    if not name:
-        return None
-
-    product = db.query(Product).filter(Product.name == name).first()
-    if product is None:
-        product = Product(name=name)
-        db.add(product)
-
-    product.description = (row.get("description") or "").strip() or None
-    product.unit_price = parse_decimal(row.get("unit_price") or row.get("price") or "0")
-    product.vat_percent = parse_decimal(row.get("vat_percent") or row.get("vat") or "24", "24")
-    product.unit = (row.get("unit") or "pcs").strip() or "pcs"
-    product.is_active = True
-    return product
+    return service_upsert_product_from_row(db, row)
 
 
 @router.get("", response_class=HTMLResponse)
@@ -113,15 +107,21 @@ async def import_products(
         raise HTTPException(status_code=400, detail="CSV must include a name column")
 
     imported_count = 0
-    for row in reader:
-        normalized_row = {
-            (key or "").strip().lower(): (value or "").strip()
-            for key, value in row.items()
-        }
-        if upsert_product_from_row(db, normalized_row) is not None:
-            imported_count += 1
-
-    db.commit()
+    try:
+        for row_number, row in enumerate(reader, start=2):
+            normalized_row = {
+                (key or "").strip().lower(): (value or "").strip()
+                for key, value in row.items()
+            }
+            try:
+                if upsert_product_from_row(db, normalized_row) is not None:
+                    imported_count += 1
+            except ValueError as exc:
+                raise ValueError(f"CSV row {row_number}: {exc}") from exc
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return RedirectResponse(url=f"/products?imported={imported_count}", status_code=303)
 
 
@@ -138,12 +138,15 @@ def new_product(request: Request, db: Session = Depends(get_db)):
             "form_action": "/products",
             "page_title": "New product",
             "default_vat_percent": app_settings["default_vat_percent"],
+            "primary_barcode": None,
         },
     )
 
 
 @router.post("")
 def create_product(
+    sku: str = Form(""),
+    primary_barcode_value: str = Form("", alias="primary_barcode"),
     name: str = Form(...),
     description: str = Form(""),
     unit_price: str = Form("0"),
@@ -155,7 +158,11 @@ def create_product(
     if not name.strip():
         raise HTTPException(status_code=400, detail="Product name is required")
 
+    normalized_sku = normalize_sku(sku) or next_product_sku(db)
+    if db.query(Product.id).filter(Product.sku == normalized_sku).first() is not None:
+        raise HTTPException(status_code=400, detail="SKU is already assigned to another product.")
     product = Product(
+        sku=normalized_sku,
         name=name.strip(),
         description=description.strip() or None,
         unit_price=parse_decimal(unit_price),
@@ -163,10 +170,57 @@ def create_product(
         unit=unit.strip() or "pcs",
         is_stock_item=is_stock_item == "on",
     )
-    db.add(product)
-    db.commit()
+    try:
+        db.add(product)
+        db.flush()
+        set_primary_barcode(db, product=product, value=primary_barcode_value)
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     db.refresh(product)
     return RedirectResponse(url="/products", status_code=303)
+
+
+@router.get("/barcode-lookup")
+def lookup_product_barcode(
+    code: str = Query(..., min_length=1, max_length=100),
+    db: Session = Depends(get_db),
+):
+    try:
+        normalized_code, _ = validate_barcode(code)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    barcode = (
+        db.query(ProductBarcode)
+        .join(Product)
+        .filter(ProductBarcode.code == normalized_code, Product.is_active.is_(True))
+        .first()
+    )
+    if barcode is None:
+        raise HTTPException(status_code=404, detail="Active product barcode was not found.")
+    product = barcode.product
+    available_quantity = sum(
+        (
+            parse_decimal(row[0] or 0)
+            for row in db.query(InventoryBalance.quantity_available)
+            .filter(InventoryBalance.product_id == product.id)
+            .all()
+        ),
+        parse_decimal("0"),
+    )
+    return {
+        "id": product.id,
+        "sku": product.sku,
+        "barcode": barcode.code,
+        "name": product.name,
+        "unit_price": str(product.unit_price),
+        "vat_percent": str(product.vat_percent),
+        "unit_multiplier": str(barcode.unit_multiplier),
+        "is_stock_item": product.is_stock_item,
+        "stock_quantity": str(available_quantity),
+        "out_of_stock": bool(product.is_stock_item and available_quantity <= 0),
+    }
 
 
 @router.get("/warehouses", response_class=HTMLResponse)
@@ -666,6 +720,7 @@ def edit_product(product_id: int, request: Request, db: Session = Depends(get_db
             "form_action": f"/products/{product.id}",
             "page_title": "Edit product",
             "default_vat_percent": product.vat_percent,
+            "primary_barcode": primary_barcode(product),
         },
     )
 
@@ -717,6 +772,8 @@ def product_detail(product_id: int, request: Request, db: Session = Depends(get_
 @router.post("/{product_id}")
 def update_product(
     product_id: int,
+    sku: str = Form(""),
+    primary_barcode_value: str = Form("", alias="primary_barcode"),
     name: str = Form(...),
     description: str = Form(""),
     unit_price: str = Form("0"),
@@ -732,6 +789,11 @@ def update_product(
     if not name.strip():
         raise HTTPException(status_code=400, detail="Product name is required")
 
+    normalized_sku = normalize_sku(sku) or product.sku
+    duplicate_sku = db.query(Product.id).filter(Product.sku == normalized_sku, Product.id != product.id).first()
+    if duplicate_sku is not None:
+        raise HTTPException(status_code=400, detail="SKU is already assigned to another product.")
+    product.sku = normalized_sku
     product.name = name.strip()
     product.description = description.strip() or None
     product.unit_price = parse_decimal(unit_price)
@@ -739,5 +801,10 @@ def update_product(
     product.unit = unit.strip() or "pcs"
     product.is_active = is_active == "on"
     product.is_stock_item = is_stock_item == "on"
-    db.commit()
+    try:
+        set_primary_barcode(db, product=product, value=primary_barcode_value)
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return RedirectResponse(url="/products", status_code=303)

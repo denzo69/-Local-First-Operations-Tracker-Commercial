@@ -42,7 +42,7 @@
                 <button class="btn btn-outline-primary w-100" type="submit">Import products</button>
             </div>
         </div>
-        <div class="form-text">Columns: name, description, unit_price, vat_percent, unit. Existing products are updated by name.</div>
+        <div class="form-text">Columns: sku, barcode (or gtin/ean), name, description, unit_price, vat_percent, unit. Products are matched by SKU or barcode; legacy files may match one unambiguous name.</div>
     </div>
 </form>
 
@@ -59,6 +59,7 @@
                 <div class="d-flex justify-content-between gap-3 align-items-start">
                     <div>
                         <a class="fw-semibold text-decoration-none" href="/products/{{ product.id }}">{{ product.name }}</a>
+                        <div class="text-muted small">{{ t.sku }}: {{ product.sku }}{% if product.barcodes %} · {{ t.barcode_gtin }}: {{ product.barcodes[0].code }}{% endif %}</div>
                         <div class="text-muted small">{{ product.unit }} - VAT {{ product.vat_percent }}%{% if not product.is_active %} - inactive{% endif %}</div>
                     </div>
                     <div class="text-end">

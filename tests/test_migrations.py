@@ -11,6 +11,7 @@ from app.migration_bootstrap import (
     CLASS_AUTH,
     CLASS_BASELINE,
     CLASS_CUSTOMER_DISCOUNT,
+    CLASS_PRODUCT_IDENTIFIERS,
     CLASS_EMPTY,
     CLASS_DOCUMENT_WORKFLOW,
     CLASS_INVENTORY,
@@ -24,6 +25,7 @@ from app.migration_bootstrap import (
     CLASS_UNIFIED_SALES,
     DOCUMENT_WORKFLOW_REVISION,
     CUSTOMER_DISCOUNT_REVISION,
+    PRODUCT_IDENTIFIERS_REVISION,
     HEAD_REVISION,
     INVOICE_FOLLOWUP_REVISION,
     INVENTORY_REVISION,
@@ -37,6 +39,7 @@ from app.migration_bootstrap import (
     UNIFIED_SALES_REVISION,
     MigrationBootstrapError,
     _future_revision_evidence,
+    _missing_non_nullable_requirements,
     classify_schema,
     inspect_database,
     quick_check,
@@ -123,6 +126,32 @@ def test_bootstrap_future_sale_document_evidence_when_settings_are_complete():
     assert "future sale document numbering data requirements" in evidence
 
 
+def test_product_identifier_bootstrap_evidence_and_non_nullable_checks():
+    inspection = SchemaInspection(
+        database_url="sqlite:///example.db",
+        database_path=None,
+        sqlite=True,
+        tables={"products", "product_barcodes"},
+        columns_by_table={"products": {"sku"}, "product_barcodes": {"id"}},
+        nullable_columns_by_table={"products": {"sku"}},
+        indexes={"ix_products_sku"},
+        foreign_keys=set(),
+        triggers=set(),
+        alembic_versions=(),
+        settings_keys=set(),
+        missing_finalized_sale_document_numbers=0,
+    )
+
+    evidence = _future_revision_evidence(CUSTOMER_DISCOUNT_REVISION, inspection)
+    assert "future table product_barcodes" in evidence
+    assert "future column products.sku" in evidence
+    assert "future index ix_products_sku" in evidence
+    assert "column products.sku is nullable" in _missing_non_nullable_requirements(
+        PRODUCT_IDENTIFIERS_REVISION,
+        inspection,
+    )
+
+
 def test_migration_bootstrap_module_entrypoint_dry_run_uses_temp_database(tmp_path, monkeypatch):
     db_path = tmp_path / "entrypoint.db"
     monkeypatch.setattr(
@@ -190,6 +219,7 @@ def test_alembic_upgrade_head_creates_current_schema(tmp_path):
     assert "goods_receipts" in tables
     assert "goods_receipt_lines" in tables
     assert "inventory_transactions" in tables
+    assert "product_barcodes" in tables
     user_columns = {column["name"] for column in inspector.get_columns("users")}
     assert "password_hash" in user_columns
     assert "can_receive_sales_credit" in user_columns
@@ -197,6 +227,11 @@ def test_alembic_upgrade_head_creates_current_schema(tmp_path):
     assert "current_weighted_average_cost_ex_vat" in product_columns
     assert "current_inventory_quantity" in product_columns
     assert "current_inventory_value_ex_vat" in product_columns
+    assert "sku" in product_columns
+    product_column_meta = {column["name"]: column for column in inspector.get_columns("products")}
+    assert product_column_meta["sku"]["nullable"] is False
+    barcode_columns = {column["name"] for column in inspector.get_columns("product_barcodes")}
+    assert {"product_id", "code", "symbology", "unit_multiplier", "is_primary"} <= barcode_columns
     sale_columns = {column["name"] for column in inspector.get_columns("sales")}
     customer_columns = {column["name"] for column in inspector.get_columns("customers")}
     job_columns = {column["name"] for column in inspector.get_columns("jobs")}
@@ -267,8 +302,13 @@ def test_alembic_upgrade_head_creates_current_schema(tmp_path):
     assert "trg_inventory_transactions_no_delete" in triggers
     sale_indexes = {index["name"] for index in inspector.get_indexes("sales")}
     job_indexes = {index["name"] for index in inspector.get_indexes("jobs")}
+    product_indexes = {index["name"] for index in inspector.get_indexes("products")}
+    barcode_indexes = {index["name"] for index in inspector.get_indexes("product_barcodes")}
     assert "ix_jobs_document_type" in job_indexes
     assert "ix_jobs_source_job_id" in job_indexes
+    assert "ix_products_sku" in product_indexes
+    assert "ix_product_barcodes_product_id" in barcode_indexes
+    assert "ix_product_barcodes_code" in barcode_indexes
     assert "ix_sales_settlement_status" in sale_indexes
     assert "ux_sales_active_work_order" in sale_indexes
     assert "ix_sales_due_date" in sale_indexes
@@ -339,7 +379,7 @@ def test_unstamped_stabilization_database_is_stamped_without_rebuild(tmp_path):
     assert plan.classification.classification == CLASS_STABILIZATION
     assert plan.stamp_revision == STABILIZATION_REVISION
     assert plan.upgrade_target == "head"
-    assert before_tables | {"alembic_version"} == after_tables
+    assert before_tables | {"alembic_version", "product_barcodes"} == after_tables
     assert _current_revision(db_path) == HEAD_REVISION
 
 
@@ -478,7 +518,7 @@ def test_unstamped_document_workflow_database_is_stamped_and_upgraded(tmp_path):
     assert _current_revision(db_path) == HEAD_REVISION
 
 
-def test_unstamped_customer_discount_database_is_stamped_without_upgrade(tmp_path):
+def test_unstamped_customer_discount_database_is_stamped_and_upgraded(tmp_path):
     db_path = tmp_path / "customer-discount.sqlite"
     _upgrade_to_revision(db_path, CUSTOMER_DISCOUNT_REVISION)
     _drop_alembic_version(db_path)
@@ -487,8 +527,42 @@ def test_unstamped_customer_discount_database_is_stamped_without_upgrade(tmp_pat
 
     assert plan.classification.classification == CLASS_CUSTOMER_DISCOUNT
     assert plan.stamp_revision == CUSTOMER_DISCOUNT_REVISION
+    assert plan.upgrade_target == "head"
+    assert _current_revision(db_path) == HEAD_REVISION
+
+
+def test_unstamped_product_identifier_database_is_stamped_without_upgrade(tmp_path):
+    db_path = tmp_path / "product-identifiers.sqlite"
+    _upgrade_to_revision(db_path, PRODUCT_IDENTIFIERS_REVISION)
+    _drop_alembic_version(db_path)
+
+    plan = run_bootstrap(_database_url(db_path), backup_dir=tmp_path / "backups")
+
+    assert plan.classification.classification == CLASS_PRODUCT_IDENTIFIERS
+    assert plan.stamp_revision == PRODUCT_IDENTIFIERS_REVISION
     assert plan.upgrade_target is None
     assert _current_revision(db_path) == HEAD_REVISION
+
+
+def test_product_identifier_migration_backfills_unique_skus(tmp_path):
+    db_path = tmp_path / "product-identifier-content.sqlite"
+    _upgrade_to_revision(db_path, CUSTOMER_DISCOUNT_REVISION)
+    engine = create_engine(_database_url(db_path), future=True)
+    with engine.begin() as connection:
+        first_id = connection.execute(text("INSERT INTO products (name) VALUES ('Legacy one')")).lastrowid
+        second_id = connection.execute(text("INSERT INTO products (name) VALUES ('Legacy two')")).lastrowid
+    engine.dispose()
+
+    command.upgrade(_alembic_config(db_path), PRODUCT_IDENTIFIERS_REVISION)
+
+    engine = create_engine(_database_url(db_path), future=True)
+    inspector = inspect(engine)
+    with engine.connect() as connection:
+        rows = connection.execute(text("SELECT id, sku FROM products ORDER BY id")).all()
+    assert rows == [(first_id, f"P-{first_id:06d}"), (second_id, f"P-{second_id:06d}")]
+    assert {index["name"] for index in inspector.get_indexes("products")} >= {"ix_products_sku"}
+    assert {column["name"]: column for column in inspector.get_columns("products")}["sku"]["nullable"] is False
+    engine.dispose()
 
 
 def test_stamped_pr19_revisions_upgrade_to_head(tmp_path):
@@ -698,7 +772,7 @@ def test_extra_legacy_side_table_does_not_block_known_schema_classification(tmp_
     inspection = inspect_database(_database_url(db_path))
     classification = classify_schema(inspection)
 
-    assert classification.classification == CLASS_CUSTOMER_DISCOUNT
+    assert classification.classification == CLASS_PRODUCT_IDENTIFIERS
     assert classification.matched_revision == HEAD_REVISION
 
 
@@ -720,6 +794,10 @@ def test_failed_backup_validation_prevents_stamp_or_upgrade(tmp_path, monkeypatc
     _drop_alembic_version(db_path)
 
     monkeypatch.setattr("app.migration_bootstrap.quick_check", lambda _path: False)
+    monkeypatch.setattr(
+        "pathlib.Path.unlink",
+        lambda _path: (_ for _ in ()).throw(OSError("locked backup")),
+    )
 
     try:
         run_bootstrap(_database_url(db_path), backup_dir=tmp_path / "backups")
@@ -750,5 +828,6 @@ def test_default_database_can_be_classified_in_dry_run_without_modification():
         CLASS_QUICK_SALE_CUSTOMER,
         CLASS_DOCUMENT_WORKFLOW,
         CLASS_CUSTOMER_DISCOUNT,
+        CLASS_PRODUCT_IDENTIFIERS,
         CLASS_UNKNOWN,
     }

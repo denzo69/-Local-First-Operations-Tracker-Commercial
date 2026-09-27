@@ -24,7 +24,7 @@ It demonstrates how customer management, operational documents, sales, inventory
 - Invoice Follow-up for manual payment checks, unpaid status, reminder tracking, and paid confirmation
 - Daily Closing with stored historical snapshots and closed-date write locks
 - Goods Receipts, Stock Balances, Inventory Transactions, weighted-average costing, and Inventory Valuation
-- Product CSV import with update-by-name behavior
+- Internal product SKUs, validated EAN/UPC/GTIN barcodes, Quick Sale scanner support, and identifier-aware CSV import
 - Reporting, Audit Log, database migrations, Backups, and Restore
 - Local authentication and operational user roles
 - Finnish and English user-interface support
@@ -59,6 +59,7 @@ The mobile experience is a responsive browser UI, not a native mobile applicatio
 - Customer CRUD and customer Work Order history
 - Customer default discount percentage for future Sales when the customer is selected from the register
 - Product and service records with VAT-inclusive sales pricing
+- Required unique internal SKU for every product and optional primary EAN/UPC/GTIN barcode
 - Stock products and non-stock/service products
 - Product workspace for product master data, stock receiving, warehouses, shelf locations, stock balances, inventory history, Inventory Valuation, and reconciliation
 - Supplier records for Goods Receipts, including manual supplier entry during receiving
@@ -77,6 +78,7 @@ The mobile experience is a responsive browser UI, not a native mobile applicatio
 ### Sales, Payments, And Reporting
 
 - Unified Sales service for direct Quick Sale and document-based Sales
+- Keyboard-wedge USB/Bluetooth barcode scanner support in Quick Sale
 - Sale document numbers shared by Quick Sale and Work Order-originated Sales
 - Cash, card, bank transfer, mobile, other, split-payment, partial-payment, and external Invoice Handoff settlement paths
 - Payment rows stored separately from Sale rows
@@ -355,7 +357,9 @@ Customer receipts are intentionally separate from internal Sale detail views. Cu
 
 ## CSV Import
 
-Product CSV import supports UTF-8 CSV files with case-insensitive, whitespace-normalized headers. Existing products are updated by matching the `name` column.
+Product CSV import supports UTF-8 CSV files with case-insensitive, whitespace-normalized headers. Products are matched by `sku` or `barcode`/`gtin`/`ean`; legacy files may update a single unambiguous name. Ambiguous name-only updates are rejected. The import is atomic, so an invalid later row rolls back the whole file.
+
+EAN-8, UPC-A, EAN-13, and GTIN-14 check digits are validated. Other non-empty codes up to 100 characters are stored as Code 128 identifiers for internal barcode use.
 
 Supported price columns:
 

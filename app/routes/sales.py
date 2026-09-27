@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.models import CashRegister, Customer, Job, Product, Sale, Shift, User
+from app.models import CashRegister, Customer, InventoryBalance, Job, Product, Sale, Shift, User
 from app.services.auth_service import request_current_user
 from app.services.sales_service import (
     AuthorizationError,
@@ -65,7 +65,15 @@ def _quick_sale_context(request: Request, db: Session, *, error: str | None = No
     products = db.query(Product).filter(Product.is_active.is_(True)).order_by(Product.name.asc()).all()
     product_options = []
     for product in products:
-        stock_quantity = product.current_inventory_quantity or 0
+        stock_quantity = sum(
+            (
+                Decimal(str(row[0] or 0))
+                for row in db.query(InventoryBalance.quantity_available)
+                .filter(InventoryBalance.product_id == product.id)
+                .all()
+            ),
+            Decimal("0"),
+        )
         product_options.append(
             {
                 "product": product,
