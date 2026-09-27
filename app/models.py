@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from uuid import uuid4
 
 from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, event
 from sqlalchemy.orm import relationship
@@ -74,6 +75,13 @@ class Product(Base):
     __tablename__ = "products"
 
     id = Column(Integer, primary_key=True, index=True)
+    sku = Column(
+        String(100),
+        nullable=False,
+        unique=True,
+        index=True,
+        default=lambda: f"P-{uuid4().hex[:10].upper()}",
+    )
     name = Column(String(255), nullable=False, index=True)
     description = Column(Text, nullable=True)
     unit_price = Column(Numeric(12, 2), default=0)
@@ -92,6 +100,26 @@ class Product(Base):
     job_items = relationship("JobItem", back_populates="product")
     inventory_balances = relationship("InventoryBalance", back_populates="product")
     inventory_transactions = relationship("InventoryTransaction", back_populates="product")
+    barcodes = relationship(
+        "ProductBarcode",
+        back_populates="product",
+        cascade="all, delete-orphan",
+        order_by="ProductBarcode.id",
+    )
+
+
+class ProductBarcode(Base):
+    __tablename__ = "product_barcodes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
+    code = Column(String(100), nullable=False, unique=True, index=True)
+    symbology = Column(String(50), nullable=False, default="code128")
+    unit_multiplier = Column(Numeric(18, 3), nullable=False, default=1)
+    is_primary = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, default=utc_now)
+
+    product = relationship("Product", back_populates="barcodes")
 
 
 class Supplier(Base):

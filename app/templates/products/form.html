@@ -9,6 +9,16 @@
 <form class="card shadow-sm border-0" method="post" action="{{ form_action }}">
     <div class="card-body">
         <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label" for="sku">{{ t.sku }}</label>
+                <input class="form-control" id="sku" name="sku" value="{{ product.sku if product else '' }}" placeholder="{{ t.sku_auto_help }}">
+                <div class="form-text">{{ t.sku_help }}</div>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="primary_barcode">{{ t.barcode_gtin }}</label>
+                <input class="form-control" id="primary_barcode" name="primary_barcode" value="{{ primary_barcode.code if primary_barcode else '' }}">
+                <div class="form-text">{{ t.barcode_gtin_help }}</div>
+            </div>
             <div class="col-12">
                 <label class="form-label" for="name">Name</label>
                 <input class="form-control" id="name" name="name" required value="{{ product.name if product else '' }}">

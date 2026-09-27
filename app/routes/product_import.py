@@ -6,51 +6,15 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Product
-from app.services.money_service import parse_decimal
+from app.services.product_service import _first_value, upsert_product_from_row
 from app.services.settings_service import get_app_settings
 
 router = APIRouter(prefix="/products", tags=["products"])
 
-PRICE_COLUMNS = (
-    "unit_price",
-    "price",
-    "price_eur",
-    "selling_price",
-    "sales_price",
-    "unitprice",
-)
-VAT_COLUMNS = ("vat_percent", "vat", "alv", "alv_percent")
 
-
-def _first_value(row: dict[str, str], columns: tuple[str, ...], default: str = "") -> str:
-    for column in columns:
-        value = (row.get(column) or "").strip()
-        if value:
-            return value
-    return default
-
-
-def _upsert_product(db: Session, row: dict[str, str], *, default_vat_percent: str) -> Product | None:
-    name = (row.get("name") or "").strip()
-    if not name:
-        return None
-
-    product = db.query(Product).filter(Product.name == name).first()
-    if product is None:
-        product = Product(name=name)
-        db.add(product)
-
-    product.description = (row.get("description") or "").strip() or None
-    product.unit_price = parse_decimal(_first_value(row, PRICE_COLUMNS, "0"))
-    product.vat_percent = parse_decimal(
-        _first_value(row, VAT_COLUMNS, default_vat_percent),
-        default_vat_percent,
-    )
-    product.unit = (row.get("unit") or "pcs").strip() or "pcs"
-    product.is_active = True
-    return product
-
+def _upsert_product(db: Session, row: dict[str, str], *, default_vat_percent: str):
+    """Compatibility wrapper for callers of the original import helper."""
+    return upsert_product_from_row(db, row, default_vat_percent=default_vat_percent)
 
 @router.post("/import")
 async def import_products_csv(
@@ -89,11 +53,19 @@ async def import_products_csv(
                 (key or "").strip().lower(): (value or "").strip()
                 for key, value in row.items()
             }
-            if _upsert_product(db, normalized_row, default_vat_percent=default_vat_percent) is not None:
-                imported_count += 1
+            try:
+                if upsert_product_from_row(
+                    db,
+                    normalized_row,
+                    default_vat_percent=default_vat_percent,
+                ) is not None:
+                    imported_count += 1
+            except ValueError as exc:
+                raise ValueError(f"CSV row {row_number}: {exc}") from exc
         db.commit()
     except Exception as exc:
         db.rollback()
-        raise HTTPException(status_code=400, detail=f"Invalid product data on CSV row {row_number}") from exc
+        detail = str(exc) if isinstance(exc, ValueError) else f"Invalid product data on CSV row {row_number}"
+        raise HTTPException(status_code=400, detail=detail) from exc
 
     return RedirectResponse(url=f"/products?imported={imported_count}", status_code=303)

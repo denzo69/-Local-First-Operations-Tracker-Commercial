@@ -34,7 +34,8 @@ SHIFTLESS_REFUNDS_REVISION = "f3a9b7c1d2e4"
 QUICK_SALE_CUSTOMER_REVISION = "a8c1e3f5b7d9"
 DOCUMENT_WORKFLOW_REVISION = "b9d2e4f6a8c0"
 CUSTOMER_DISCOUNT_REVISION = "d6e8f0a1b2c3"
-HEAD_REVISION = CUSTOMER_DISCOUNT_REVISION
+PRODUCT_IDENTIFIERS_REVISION = "d2e4f6a8b0c1"
+HEAD_REVISION = PRODUCT_IDENTIFIERS_REVISION
 
 CLASS_EMPTY = "empty database"
 CLASS_BASELINE = "matches baseline"
@@ -49,6 +50,7 @@ CLASS_SHIFTLESS_REFUNDS = "matches shiftless refunds revision"
 CLASS_QUICK_SALE_CUSTOMER = "matches quick sale customer revision"
 CLASS_DOCUMENT_WORKFLOW = "matches document workflow revision"
 CLASS_CUSTOMER_DISCOUNT = "matches customer default discount revision"
+CLASS_PRODUCT_IDENTIFIERS = "matches product identifiers revision"
 CLASS_UNKNOWN = "inconsistent / partially migrated / unknown"
 
 
@@ -425,6 +427,22 @@ CUSTOMER_DISCOUNT_COLUMNS = {
     "customers": {"default_discount_percent"},
 }
 
+PRODUCT_IDENTIFIER_COLUMNS = {
+    "products": {"sku"},
+}
+
+PRODUCT_BARCODE_TABLE_COLUMNS = {
+    "product_barcodes": {
+        "id",
+        "product_id",
+        "code",
+        "symbology",
+        "unit_multiplier",
+        "is_primary",
+        "created_at",
+    },
+}
+
 OPTIONAL_SHIFTS_SETTING_KEYS = {"require_cashier_shift"}
 
 NULLABLE_COLUMNS_BY_REVISION = {
@@ -438,6 +456,20 @@ NULLABLE_COLUMNS_BY_REVISION = {
     QUICK_SALE_CUSTOMER_REVISION: {},
     DOCUMENT_WORKFLOW_REVISION: {},
     CUSTOMER_DISCOUNT_REVISION: {},
+    PRODUCT_IDENTIFIERS_REVISION: {},
+}
+
+NON_NULLABLE_COLUMNS_BY_REVISION = {
+    PRODUCT_IDENTIFIERS_REVISION: {
+        "products": {"sku"},
+        "product_barcodes": {
+            "product_id",
+            "code",
+            "symbology",
+            "unit_multiplier",
+            "is_primary",
+        },
+    },
 }
 
 REQUIRED_INDEXES_BY_REVISION = {
@@ -538,6 +570,12 @@ REQUIRED_INDEXES_BY_REVISION = {
         "ix_jobs_source_job_id",
     },
     CUSTOMER_DISCOUNT_REVISION: set(),
+    PRODUCT_IDENTIFIERS_REVISION: {
+        "ix_products_sku",
+        "ix_product_barcodes_id",
+        "ix_product_barcodes_product_id",
+        "ix_product_barcodes_code",
+    },
 }
 
 REQUIRED_TRIGGERS_BY_REVISION = {
@@ -560,6 +598,7 @@ REVISION_LABELS = {
     QUICK_SALE_CUSTOMER_REVISION: CLASS_QUICK_SALE_CUSTOMER,
     DOCUMENT_WORKFLOW_REVISION: CLASS_DOCUMENT_WORKFLOW,
     CUSTOMER_DISCOUNT_REVISION: CLASS_CUSTOMER_DISCOUNT,
+    PRODUCT_IDENTIFIERS_REVISION: CLASS_PRODUCT_IDENTIFIERS,
 }
 
 REVISION_ORDER = [
@@ -575,6 +614,7 @@ REVISION_ORDER = [
     QUICK_SALE_CUSTOMER_REVISION,
     DOCUMENT_WORKFLOW_REVISION,
     CUSTOMER_DISCOUNT_REVISION,
+    PRODUCT_IDENTIFIERS_REVISION,
 ]
 
 
@@ -762,7 +802,12 @@ SHIFTLESS_REFUNDS_SCHEMA = merge_columns(OPTIONAL_SHIFTS_SCHEMA, SHIFTLESS_REFUN
 QUICK_SALE_CUSTOMER_SCHEMA = merge_columns(SHIFTLESS_REFUNDS_SCHEMA, QUICK_SALE_CUSTOMER_COLUMNS)
 DOCUMENT_WORKFLOW_SCHEMA = merge_columns(QUICK_SALE_CUSTOMER_SCHEMA, DOCUMENT_WORKFLOW_COLUMNS)
 CUSTOMER_DISCOUNT_SCHEMA = merge_columns(DOCUMENT_WORKFLOW_SCHEMA, CUSTOMER_DISCOUNT_COLUMNS)
-HEAD_KNOWN_SCHEMA = CUSTOMER_DISCOUNT_SCHEMA
+PRODUCT_IDENTIFIERS_SCHEMA = merge_columns(
+    CUSTOMER_DISCOUNT_SCHEMA,
+    PRODUCT_IDENTIFIER_COLUMNS,
+    PRODUCT_BARCODE_TABLE_COLUMNS,
+)
+HEAD_KNOWN_SCHEMA = PRODUCT_IDENTIFIERS_SCHEMA
 
 
 def _missing_schema(schema: dict[str, set[str]], inspection: SchemaInspection) -> list[str]:
@@ -810,6 +855,8 @@ def _missing_indexes(revision: str, inspection: SchemaInspection) -> list[str]:
         required.update(REQUIRED_INDEXES_BY_REVISION[DOCUMENT_WORKFLOW_REVISION])
     if revision_index >= REVISION_ORDER.index(CUSTOMER_DISCOUNT_REVISION):
         required.update(REQUIRED_INDEXES_BY_REVISION[CUSTOMER_DISCOUNT_REVISION])
+    if revision_index >= REVISION_ORDER.index(PRODUCT_IDENTIFIERS_REVISION):
+        required.update(REQUIRED_INDEXES_BY_REVISION[PRODUCT_IDENTIFIERS_REVISION])
     return [f"missing index {index}" for index in sorted(required - inspection.indexes)]
 
 
@@ -827,6 +874,26 @@ def _missing_nullable_requirements(revision: str, inspection: SchemaInspection) 
         nullable_columns = inspection.nullable_columns_by_table.get(table, set())
         for column in sorted(columns - nullable_columns):
             missing.append(f"column {table}.{column} is not nullable")
+    return missing
+
+
+def _missing_non_nullable_requirements(
+    revision: str,
+    inspection: SchemaInspection,
+) -> list[str]:
+    required: dict[str, set[str]] = {}
+    revision_index = REVISION_ORDER.index(revision)
+    for required_revision, table_columns in NON_NULLABLE_COLUMNS_BY_REVISION.items():
+        if revision_index < REVISION_ORDER.index(required_revision):
+            continue
+        for table, columns in table_columns.items():
+            required.setdefault(table, set()).update(columns)
+
+    missing: list[str] = []
+    for table, columns in required.items():
+        nullable_columns = inspection.nullable_columns_by_table.get(table, set())
+        for column in sorted(columns & nullable_columns):
+            missing.append(f"column {table}.{column} is nullable")
     return missing
 
 
@@ -946,6 +1013,15 @@ def _future_revision_evidence(revision: str, inspection: SchemaInspection) -> li
             present = inspection.columns_by_table.get(table, set()) & columns
             evidence.extend(f"future column {table}.{column}" for column in sorted(present))
 
+    if PRODUCT_IDENTIFIERS_REVISION in later_revisions:
+        for table, columns in PRODUCT_IDENTIFIER_COLUMNS.items():
+            present = inspection.columns_by_table.get(table, set()) & columns
+            evidence.extend(f"future column {table}.{column}" for column in sorted(present))
+        for table in sorted(set(PRODUCT_BARCODE_TABLE_COLUMNS) & inspection.tables):
+            evidence.append(f"future table {table}")
+        present_indexes = REQUIRED_INDEXES_BY_REVISION[PRODUCT_IDENTIFIERS_REVISION] & inspection.indexes
+        evidence.extend(f"future index {index}" for index in sorted(present_indexes))
+
     return evidence
 
 
@@ -967,6 +1043,7 @@ def classify_schema(inspection: SchemaInspection) -> SchemaClassification:
         )
 
     candidates = [
+        (PRODUCT_IDENTIFIERS_REVISION, PRODUCT_IDENTIFIERS_SCHEMA),
         (CUSTOMER_DISCOUNT_REVISION, CUSTOMER_DISCOUNT_SCHEMA),
         (DOCUMENT_WORKFLOW_REVISION, DOCUMENT_WORKFLOW_SCHEMA),
         (QUICK_SALE_CUSTOMER_REVISION, QUICK_SALE_CUSTOMER_SCHEMA),
@@ -985,6 +1062,7 @@ def classify_schema(inspection: SchemaInspection) -> SchemaClassification:
         missing = _missing_schema(schema, inspection)
         missing.extend(_missing_indexes(revision, inspection))
         missing.extend(_missing_nullable_requirements(revision, inspection))
+        missing.extend(_missing_non_nullable_requirements(revision, inspection))
         missing.extend(_missing_triggers(revision, inspection))
         missing.extend(_missing_data_requirements(revision, inspection))
         if not missing:

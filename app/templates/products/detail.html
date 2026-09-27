@@ -30,6 +30,8 @@
     <div class="card-header">{{ t.overview }}</div>
     <div class="card-body">
         <div class="row g-3">
+            <div class="col-md-3"><div class="text-muted">{{ t.sku }}</div><strong>{{ product.sku }}</strong></div>
+            <div class="col-md-3"><div class="text-muted">{{ t.barcode_gtin }}</div><strong>{{ product.barcodes[0].code if product.barcodes else "-" }}</strong></div>
             <div class="col-md-3"><div class="text-muted">{{ t.product_type }}</div><strong>{{ t.stock_products if product.is_stock_item else t.service_products }}</strong></div>
             <div class="col-md-3"><div class="text-muted">{{ t.status }}</div><strong>{{ t.active if product.is_active else "Inactive" }}</strong></div>
             <div class="col-md-3"><div class="text-muted">{{ t.vat }}</div><strong>{{ product.vat_percent }}%</strong></div>

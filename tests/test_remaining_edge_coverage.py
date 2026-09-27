@@ -710,7 +710,9 @@ def test_inventory_additional_hard_edges(monkeypatch):
 def test_route_and_bootstrap_remaining_edges(monkeypatch, tmp_path):
     assert sqlite_path_from_url("sqlite:///:memory:") is None
     assert sqlite_path_from_url("postgresql://example/db") is None
-    assert str(sqlite_path_from_url("sqlite://server/share/app.db")).endswith("server\\share\\app.db")
+    unc_path = str(sqlite_path_from_url("sqlite://server/share/app.db")).replace("/", "\\")
+    assert unc_path.endswith("server\\share\\app.db")
+    assert str(sqlite_path_from_url("sqlite:///C:/data/app.db")).replace("\\", "/").endswith("C:/data/app.db")
     non_sqlite_inspection = inspect_database("sqlite:///:memory:")
     assert non_sqlite_inspection.sqlite is False
 

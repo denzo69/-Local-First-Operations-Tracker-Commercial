@@ -65,6 +65,12 @@
             </select>
             <div class="form-text">{{ t.stock_product_sale_help }}</div>
         </div>
+        <div class="col-md-6">
+            <label class="form-label" for="barcode_scanner">{{ t.scan_barcode }}</label>
+            <input class="form-control" id="barcode_scanner" autocomplete="off" autofocus>
+            <div class="form-text">{{ t.scan_barcode_help }}</div>
+            <div class="small mt-1" id="barcode_feedback" role="status" aria-live="polite"></div>
+        </div>
     </div>
     <div class="table-responsive responsive-card-table">
         <table class="table align-middle" id="sale-lines">
@@ -109,11 +115,15 @@ const uiText = {
   manual: {{ t.manual|tojson }},
   stockProduct: {{ t.stock_products|tojson }},
   stock: {{ t.stock|tojson }},
-  defaultVatPercent: {{ default_vat_percent|tojson }}
+  defaultVatPercent: {{ default_vat_percent|tojson }},
+  barcodeNotFound: {{ t.barcode_not_found|tojson }},
+  barcodeOutOfStock: {{ t.barcode_out_of_stock|tojson }}
 };
 const picker = document.getElementById("product_picker");
 const customerPicker = document.getElementById("customer_id");
 const tbody = document.querySelector("#sale-lines tbody");
+const barcodeScanner = document.getElementById("barcode_scanner");
+const barcodeFeedback = document.getElementById("barcode_feedback");
 function selectedCustomerDiscount() {
   const option = customerPicker?.selectedOptions?.[0];
   return option?.dataset?.defaultDiscount || "0";
@@ -159,6 +169,58 @@ picker?.addEventListener("change", () => {
   if (!option) return;
   const row = tbody.rows[tbody.rows.length - 1];
   fillRowFromProduct(row, option);
+});
+barcodeScanner?.addEventListener("keydown", async (event) => {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  const code = barcodeScanner.value.trim();
+  if (!code) return;
+  barcodeFeedback.className = "small mt-1 text-muted";
+  barcodeFeedback.textContent = "…";
+  try {
+    const response = await fetch(`/products/barcode-lookup?code=${encodeURIComponent(code)}`, {
+      headers: {"Accept": "application/json"}
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.detail || uiText.barcodeNotFound);
+    if (payload.out_of_stock) throw new Error(uiText.barcodeOutOfStock);
+
+    const existing = Array.from(tbody.rows).find(
+      (row) => row.querySelector("[name='product_id']")?.value === String(payload.id)
+    );
+    const multiplier = Number(payload.unit_multiplier || "1");
+    if (existing) {
+      const quantityInput = existing.querySelector("[name='quantity']");
+      quantityInput.value = String(Number(quantityInput.value || "0") + multiplier);
+    } else {
+      let row = Array.from(tbody.rows).find(
+        (candidate) => !candidate.querySelector("[name='product_id']")?.value && !candidate.querySelector("[name='description']")?.value
+      );
+      if (!row) {
+        document.getElementById("add-line").click();
+        row = tbody.rows[tbody.rows.length - 1];
+      }
+      fillRowFromProduct(row, {
+        value: String(payload.id),
+        dataset: {
+          name: payload.name,
+          price: payload.unit_price,
+          vat: payload.vat_percent,
+          stockItem: payload.is_stock_item ? "1" : "0",
+          stockQty: payload.stock_quantity
+        }
+      });
+      row.querySelector("[name='quantity']").value = payload.unit_multiplier || "1";
+      row.querySelector("[name='discount_percent']").value = selectedCustomerDiscount();
+    }
+    barcodeFeedback.className = "small mt-1 text-success";
+    barcodeFeedback.textContent = `${payload.name} (${payload.sku})`;
+    barcodeScanner.value = "";
+  } catch (error) {
+    barcodeFeedback.className = "small mt-1 text-danger";
+    barcodeFeedback.textContent = error.message || uiText.barcodeNotFound;
+    barcodeScanner.select();
+  }
 });
 document.querySelectorAll("#sale-lines tbody tr").forEach(bindRow);
 </script>

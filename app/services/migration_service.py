@@ -84,6 +84,53 @@ def ensure_sqlite_schema_compatibility(engine: Engine) -> list[str]:
         _add_column_if_missing(connection, "sales", "customer_id", "INTEGER")
         _add_column_if_missing(connection, "sales", "customer_name_snapshot", "VARCHAR(255)")
         _add_column_if_missing(connection, "customers", "default_discount_percent", "NUMERIC(5, 2) DEFAULT 0 NOT NULL")
+        _add_column_if_missing(connection, "products", "sku", "VARCHAR(100)")
+        product_table_exists = connection.execute(
+            text("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'products'")
+        ).first()
+        if product_table_exists is not None:
+            connection.execute(
+                text("UPDATE products SET sku = printf('P-%06d', id) WHERE sku IS NULL OR sku = ''")
+            )
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS product_barcodes (
+                        id INTEGER NOT NULL PRIMARY KEY,
+                        product_id INTEGER NOT NULL REFERENCES products (id),
+                        code VARCHAR(100) NOT NULL,
+                        symbology VARCHAR(50) NOT NULL DEFAULT 'code128',
+                        unit_multiplier NUMERIC(18, 3) NOT NULL DEFAULT 1,
+                        is_primary BOOLEAN NOT NULL DEFAULT 0,
+                        created_at DATETIME
+                    )
+                    """
+                )
+            )
+        _create_unique_index_if_safe(
+            connection,
+            table="products",
+            column="sku",
+            index_name="ix_products_sku",
+        )
+        _create_index_if_missing(
+            connection,
+            index_name="ix_product_barcodes_id",
+            table="product_barcodes",
+            column="id",
+        )
+        _create_index_if_missing(
+            connection,
+            index_name="ix_product_barcodes_product_id",
+            table="product_barcodes",
+            column="product_id",
+        )
+        _create_unique_index_if_safe(
+            connection,
+            table="product_barcodes",
+            column="code",
+            index_name="ix_product_barcodes_code",
+        )
         _add_column_if_missing(connection, "jobs", "document_type", "VARCHAR(50)")
         _add_column_if_missing(connection, "jobs", "source_job_id", "INTEGER")
         _add_column_if_missing(connection, "jobs", "converted_at", "DATETIME")
@@ -150,6 +197,18 @@ def _create_inventory_transaction_immutability_triggers(connection) -> None:
 
 
 def _create_unique_index_if_safe(connection, *, table: str, column: str, index_name: str) -> None:
+    table_exists = connection.execute(
+        text("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = :table"),
+        {"table": table},
+    ).first()
+    if table_exists is None:
+        return
+    columns = {
+        row[1]
+        for row in connection.execute(text(f"PRAGMA table_info({table})")).fetchall()
+    }
+    if column not in columns:
+        return
     duplicates = connection.execute(
         text(
             f"""
