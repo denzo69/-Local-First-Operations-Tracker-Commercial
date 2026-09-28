@@ -95,6 +95,10 @@ class Product(Base):
     current_inventory_value_ex_vat = Column(Numeric(18, 2), default=0)
     current_purchase_price_ex_vat = Column(Numeric(12, 2), nullable=True)
     current_purchase_price_inc_vat = Column(Numeric(12, 2), nullable=True)
+    preferred_supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True, index=True)
+    supplier_product_code = Column(String(100), nullable=True)
+    reorder_point = Column(Numeric(18, 3), nullable=False, default=0)
+    target_stock_quantity = Column(Numeric(18, 3), nullable=False, default=0)
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
@@ -108,6 +112,8 @@ class Product(Base):
         cascade="all, delete-orphan",
         order_by="ProductBarcode.id",
     )
+    preferred_supplier = relationship("Supplier", foreign_keys=[preferred_supplier_id])
+    purchase_order_lines = relationship("PurchaseOrderLine", back_populates="product")
 
 
 class ProductBarcode(Base):
@@ -140,6 +146,7 @@ class Supplier(Base):
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
     goods_receipts = relationship("GoodsReceipt", back_populates="supplier")
+    purchase_orders = relationship("PurchaseOrder", back_populates="supplier")
 
 
 class Warehouse(Base):
@@ -203,6 +210,7 @@ class GoodsReceipt(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False)
+    purchase_order_id = Column(Integer, ForeignKey("purchase_orders.id"), nullable=True, index=True)
     receipt_date = Column(Date, nullable=False, index=True)
     delivery_number = Column(String(100), nullable=True, index=True)
     invoice_number = Column(String(100), nullable=True, index=True)
@@ -227,6 +235,7 @@ class GoodsReceipt(Base):
     supplier = relationship("Supplier", back_populates="goods_receipts")
     received_by = relationship("User", foreign_keys=[received_by_user_id])
     lines = relationship("GoodsReceiptLine", back_populates="goods_receipt")
+    purchase_order = relationship("PurchaseOrder", back_populates="goods_receipts")
     transactions = relationship("InventoryTransaction", back_populates="goods_receipt")
 
 
@@ -235,6 +244,7 @@ class GoodsReceiptLine(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     goods_receipt_id = Column(Integer, ForeignKey("goods_receipts.id"), nullable=False)
+    purchase_order_line_id = Column(Integer, ForeignKey("purchase_order_lines.id"), nullable=True, index=True)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
     destination_location_id = Column(Integer, ForeignKey("warehouse_locations.id"), nullable=False)
     quantity = Column(Numeric(18, 3), nullable=False)
@@ -250,6 +260,49 @@ class GoodsReceiptLine(Base):
     goods_receipt = relationship("GoodsReceipt", back_populates="lines")
     product = relationship("Product")
     destination_location = relationship("WarehouseLocation")
+    purchase_order_line = relationship("PurchaseOrderLine", back_populates="receipt_lines")
+
+
+class PurchaseOrder(Base):
+    __tablename__ = "purchase_orders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    order_number = Column(String(40), nullable=False, unique=True, index=True)
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=False, index=True)
+    status = Column(String(30), nullable=False, default="draft", index=True)
+    order_date = Column(Date, nullable=False, index=True)
+    expected_date = Column(Date, nullable=True)
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    ordered_at = Column(DateTime, nullable=True)
+    cancelled_at = Column(DateTime, nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
+    supplier = relationship("Supplier", back_populates="purchase_orders")
+    created_by = relationship("User", foreign_keys=[created_by_user_id])
+    lines = relationship("PurchaseOrderLine", back_populates="purchase_order", cascade="all, delete-orphan")
+    goods_receipts = relationship("GoodsReceipt", back_populates="purchase_order")
+
+
+class PurchaseOrderLine(Base):
+    __tablename__ = "purchase_order_lines"
+
+    id = Column(Integer, primary_key=True, index=True)
+    purchase_order_id = Column(Integer, ForeignKey("purchase_orders.id"), nullable=False, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
+    destination_location_id = Column(Integer, ForeignKey("warehouse_locations.id"), nullable=False)
+    supplier_product_code = Column(String(100), nullable=True)
+    ordered_quantity = Column(Numeric(18, 3), nullable=False)
+    received_quantity = Column(Numeric(18, 3), nullable=False, default=0)
+    unit_cost_ex_vat = Column(Numeric(12, 2), nullable=False)
+    vat_rate = Column(Numeric(5, 2), nullable=False, default=24)
+    created_at = Column(DateTime, default=utc_now)
+
+    purchase_order = relationship("PurchaseOrder", back_populates="lines")
+    product = relationship("Product", back_populates="purchase_order_lines")
+    destination_location = relationship("WarehouseLocation")
+    receipt_lines = relationship("GoodsReceiptLine", back_populates="purchase_order_line")
 
 
 class InventoryTransaction(Base):

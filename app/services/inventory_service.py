@@ -707,6 +707,17 @@ def post_goods_receipt(db: Session, *, goods_receipt_id: int, posted_by_user_id:
             reference=receipt.delivery_number,
             created_by_user_id=user.id,
         )
+        if line.purchase_order_line_id is not None:
+            from app.services.purchasing_service import refresh_purchase_order_receipt_status
+
+            purchase_order_line = line.purchase_order_line
+            if purchase_order_line is None:
+                raise ValueError("Purchase order line linked to receipt was not found.")
+            next_received = quantity(parse_decimal(purchase_order_line.received_quantity or 0) + received_qty)
+            if next_received > quantity(parse_decimal(purchase_order_line.ordered_quantity)):
+                raise ValueError("Posted receipt would exceed the outstanding purchase order quantity.")
+            purchase_order_line.received_quantity = next_received
+            refresh_purchase_order_receipt_status(db, purchase_order_line.purchase_order)
 
     for product_id, projected in preview["projected_by_product"].items():
         product = db.get(Product, product_id)
@@ -813,6 +824,16 @@ def cancel_goods_receipt(db: Session, *, goods_receipt_id: int, user_id: int, re
             reversal_of_transaction_id=transaction.id,
         )
 
+    for line in receipt.lines:
+        if line.purchase_order_line_id is not None and line.purchase_order_line is not None:
+            po_line = line.purchase_order_line
+            po_line.received_quantity = quantity(parse_decimal(po_line.received_quantity or 0) - parse_decimal(line.quantity))
+            if po_line.received_quantity < 0:
+                raise ValueError("Purchase order received quantity cannot become negative.")
+            from app.services.purchasing_service import refresh_purchase_order_receipt_status
+
+            refresh_purchase_order_receipt_status(db, po_line.purchase_order)
+
     receipt.status = "cancelled"
     receipt.cancelled_at = utc_now()
     receipt.cancellation_reason = cancellation_reason
@@ -823,6 +844,25 @@ def cancel_goods_receipt(db: Session, *, goods_receipt_id: int, user_id: int, re
         entity_id=receipt.id,
         description=f"Goods receipt cancelled: {cancellation_reason}.",
     )
+    db.commit()
+    db.refresh(receipt)
+    return receipt
+
+
+def discard_draft_goods_receipt(db: Session, *, goods_receipt_id: int, user_id: int, reason: str = "Draft discarded") -> GoodsReceipt:
+    user = require_inventory_operational_user(db.get(User, user_id))
+    receipt = db.get(GoodsReceipt, goods_receipt_id)
+    if receipt is None:
+        raise ValueError("Goods receipt not found.")
+    if receipt.status != "draft":
+        raise ValueError("Only draft goods receipts can be discarded.")
+    note = reason.strip()
+    if not note:
+        raise ValueError("Discard reason is required.")
+    receipt.status = "cancelled"
+    receipt.cancelled_at = utc_now()
+    receipt.cancellation_reason = note
+    log_audit_event(db, event_type="goods_receipt.discarded", entity_type="goods_receipt", entity_id=receipt.id, description=f"Draft goods receipt discarded: {note}.")
     db.commit()
     db.refresh(receipt)
     return receipt

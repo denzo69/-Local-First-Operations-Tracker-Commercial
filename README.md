@@ -23,8 +23,8 @@ It demonstrates how customer management, operational documents, sales, inventory
 - Cash, card, bank transfer, mobile, other payment, split-payment, line-level refund, and external Invoice Handoff workflows
 - Invoice Follow-up for manual payment checks, unpaid status, reminder tracking, and paid confirmation
 - Daily Closing with stored historical snapshots and closed-date write locks
-- Goods Receipts, Delivery Note stock reservations, Stock Balances, Inventory Transactions, weighted-average costing, and Inventory Valuation
-- Internal product SKUs, validated EAN/UPC/GTIN barcodes, Quick Sale scanner support, and identifier-aware CSV import
+- Purchase Orders with partial Goods Receipt matching, replenishment suggestions, Delivery Note stock reservations, Stock Balances, Inventory Transactions, weighted-average costing, and Inventory Valuation
+- Internal product SKUs, validated EAN/UPC/GTIN barcodes, printable barcode labels, Quick Sale scanner support, and identifier-aware CSV import
 - Reporting, Audit Log, database migrations, Backups, and Restore
 - Local authentication and operational user roles
 - Finnish and English user-interface support
@@ -180,6 +180,10 @@ The visible inventory workflow is organized under `Products / Tuotteet`. Product
 Inventory Valuation is based on ex-VAT cost. VAT is stored and shown, but deductible VAT is not included in inventory value by default.
 
 Goods Receipts are created as drafts. Draft receipts do not affect stock, balances, weighted-average cost, or valuation. Posting allocates freight and other landed costs, creates protected Inventory Transactions, updates balance caches, updates product-level cost totals, and writes Audit Log events in one transaction.
+
+Purchase Orders use supplier-specific product settings and retain ordered and received quantities on each line. A sent order can be received in multiple Goods Receipts; posting updates stock and the order's partial/complete status together. Cancelling a posted receipt reverses its stock movements and returns the corresponding quantities to the open order. Replenishment suggestions compare available stock plus quantities on sent orders against the product reorder point and target stock, avoiding duplicate orders. Draft Goods Receipts can be discarded with an audit event.
+
+Product labels are printable from the product page. EAN-8, UPC-A, and EAN-13 use their retail bar patterns; SKU and other Code 39-compatible identifiers print as Code 39. The browser print dialog controls paper and label layout.
 
 Receipt-level freight and other landed costs store both ex-VAT and VAT amounts. Purchase-document VAT totals include product-line VAT, freight VAT, and other-cost VAT.
 

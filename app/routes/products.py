@@ -8,13 +8,14 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.models import GoodsReceipt, GoodsReceiptLine, InventoryBalance, InventoryTransaction, Product, ProductBarcode, Supplier, User, Warehouse, WarehouseLocation
+from app.models import GoodsReceipt, GoodsReceiptLine, InventoryBalance, InventoryTransaction, Product, ProductBarcode, PurchaseOrder, PurchaseOrderLine, Supplier, User, Warehouse, WarehouseLocation
 from app.services.auth_service import request_current_user
 from app.services.inventory_service import (
     add_goods_receipt_line,
     cancel_goods_receipt,
     create_default_warehouse,
     create_goods_receipt,
+    discard_draft_goods_receipt,
     inventory_ledger,
     inventory_reconciliation,
     inventory_valuation,
@@ -34,6 +35,16 @@ from app.services.product_service import (
 )
 from app.services.settings_service import get_app_settings
 from app.services.supplier_service import resolve_goods_receipt_supplier
+from app.services.barcode_label_service import barcode_svg
+from app.services.purchasing_service import (
+    add_purchase_order_line,
+    cancel_purchase_order,
+    create_order_from_replenishment,
+    create_purchase_order,
+    create_receipt_from_purchase_order,
+    order_purchase_order,
+    replenishment_suggestions,
+)
 from app.template_context import templates
 
 router = APIRouter(prefix="/products", tags=["products"])
@@ -139,6 +150,7 @@ def new_product(request: Request, db: Session = Depends(get_db)):
             "page_title": "New product",
             "default_vat_percent": app_settings["default_vat_percent"],
             "primary_barcode": None,
+            "suppliers": db.query(Supplier).filter(Supplier.is_active.is_(True)).order_by(Supplier.name.asc()).all(),
         },
     )
 
@@ -153,6 +165,10 @@ def create_product(
     vat_percent: str = Form("24"),
     unit: str = Form("pcs"),
     is_stock_item: str | None = Form(None),
+    preferred_supplier_id: int | None = Form(None),
+    supplier_product_code: str = Form(""),
+    reorder_point: str = Form("0"),
+    target_stock_quantity: str = Form("0"),
     db: Session = Depends(get_db),
 ):
     if not name.strip():
@@ -161,6 +177,10 @@ def create_product(
     normalized_sku = normalize_sku(sku) or next_product_sku(db)
     if db.query(Product.id).filter(Product.sku == normalized_sku).first() is not None:
         raise HTTPException(status_code=400, detail="SKU is already assigned to another product.")
+    reorder = parse_decimal(reorder_point)
+    target = parse_decimal(target_stock_quantity)
+    if not reorder.is_finite() or not target.is_finite() or reorder < 0 or target < reorder:
+        raise HTTPException(status_code=400, detail="Reorder point and target stock must be non-negative, with target at least the reorder point.")
     product = Product(
         sku=normalized_sku,
         name=name.strip(),
@@ -169,6 +189,10 @@ def create_product(
         vat_percent=parse_decimal(vat_percent, "24"),
         unit=unit.strip() or "pcs",
         is_stock_item=is_stock_item == "on",
+        preferred_supplier_id=preferred_supplier_id or None,
+        supplier_product_code=supplier_product_code.strip() or None,
+        reorder_point=reorder if is_stock_item == "on" else 0,
+        target_stock_quantity=target if is_stock_item == "on" else 0,
     )
     try:
         db.add(product)
@@ -304,6 +328,207 @@ def product_suppliers(request: Request, db: Session = Depends(get_db)):
             "supplier_action": "/products/suppliers",
             "products_inventory_base": "/products",
         },
+    )
+
+
+@router.get("/purchasing", response_class=HTMLResponse)
+def purchase_order_list(request: Request, db: Session = Depends(get_db)):
+    return templates.TemplateResponse(
+        "purchasing/list.html",
+        {
+            "request": request,
+            "app_name": settings.app_name,
+            "active_page": "products",
+            "page_title": "Purchase orders",
+            "orders": db.query(PurchaseOrder).order_by(PurchaseOrder.created_at.desc()).all(),
+        },
+    )
+
+
+@router.get("/purchasing/replenishment", response_class=HTMLResponse)
+def purchase_replenishment(request: Request, db: Session = Depends(get_db)):
+    create_default_warehouse(db)
+    db.commit()
+    suggestions = replenishment_suggestions(db)
+    grouped = {}
+    for suggestion in suggestions:
+        supplier = suggestion["supplier"]
+        grouped.setdefault(supplier.id if supplier else None, {"supplier": supplier, "items": []})["items"].append(suggestion)
+    return templates.TemplateResponse(
+        "purchasing/replenishment.html",
+        {
+            "request": request,
+            "app_name": settings.app_name,
+            "active_page": "products",
+            "page_title": "Replenishment suggestions",
+            "groups": list(grouped.values()),
+            "locations": db.query(WarehouseLocation).filter(WarehouseLocation.is_active.is_(True)).order_by(WarehouseLocation.code.asc()).all(),
+            "users": db.query(User).filter(User.is_active.is_(True)).order_by(User.name.asc()).all(),
+            "suggestions": suggestions,
+        },
+    )
+
+
+@router.post("/purchasing/from-replenishment")
+def purchase_from_replenishment(
+    request: Request,
+    supplier_id: int = Form(...),
+    destination_location_id: int = Form(...),
+    created_by_user_id: int | None = Form(None),
+    product_ids: list[int] = Form([]),
+    db: Session = Depends(get_db),
+):
+    try:
+        available = {item["product"].id: str(item["suggested_quantity"]) for item in replenishment_suggestions(db)}
+        quantities = {product_id: available[product_id] for product_id in product_ids if product_id in available}
+        order = create_order_from_replenishment(
+            db,
+            supplier_id=supplier_id,
+            product_quantities=quantities,
+            destination_location_id=destination_location_id,
+            created_by_user_id=operator_id_from_request(request, created_by_user_id),
+        )
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(url=f"/products/purchasing/{order.id}", status_code=303)
+
+
+@router.get("/purchasing/new", response_class=HTMLResponse)
+def new_purchase_order(request: Request, db: Session = Depends(get_db)):
+    create_default_warehouse(db)
+    db.commit()
+    return templates.TemplateResponse(
+        "purchasing/new.html",
+        {
+            "request": request,
+            "app_name": settings.app_name,
+            "active_page": "products",
+            "page_title": "New purchase order",
+            "suppliers": db.query(Supplier).filter(Supplier.is_active.is_(True)).order_by(Supplier.name.asc()).all(),
+            "users": db.query(User).filter(User.is_active.is_(True)).order_by(User.name.asc()).all(),
+        },
+    )
+
+
+@router.post("/purchasing")
+def create_purchase_order_route(
+    request: Request,
+    supplier_id: int = Form(...),
+    expected_date: date | None = Form(None),
+    notes: str = Form(""),
+    created_by_user_id: int | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    try:
+        order = create_purchase_order(
+            db,
+            supplier_id=supplier_id,
+            created_by_user_id=operator_id_from_request(request, created_by_user_id),
+            expected_date=expected_date,
+            notes=notes,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(url=f"/products/purchasing/{order.id}", status_code=303)
+
+
+@router.get("/purchasing/{order_id}", response_class=HTMLResponse)
+def purchase_order_detail(order_id: int, request: Request, db: Session = Depends(get_db)):
+    order = db.get(PurchaseOrder, order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+    create_default_warehouse(db)
+    db.commit()
+    return templates.TemplateResponse(
+        "purchasing/detail.html",
+        {
+            "request": request,
+            "app_name": settings.app_name,
+            "active_page": "products",
+            "page_title": order.order_number,
+            "order": order,
+            "products": db.query(Product).filter(Product.is_active.is_(True), Product.is_stock_item.is_(True)).order_by(Product.name.asc()).all(),
+            "locations": db.query(WarehouseLocation).filter(WarehouseLocation.is_active.is_(True)).order_by(WarehouseLocation.code.asc()).all(),
+            "users": db.query(User).filter(User.is_active.is_(True)).order_by(User.name.asc()).all(),
+        },
+    )
+
+
+@router.post("/purchasing/{order_id}/lines")
+def purchase_order_add_line(
+    order_id: int,
+    product_id: int = Form(...),
+    destination_location_id: int = Form(...),
+    ordered_quantity: str = Form(...),
+    unit_cost_ex_vat: str = Form(...),
+    vat_rate: str = Form("24"),
+    db: Session = Depends(get_db),
+):
+    try:
+        add_purchase_order_line(db, purchase_order_id=order_id, product_id=product_id, destination_location_id=destination_location_id, ordered_quantity=ordered_quantity, unit_cost_ex_vat=unit_cost_ex_vat, vat_rate=vat_rate)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(url=f"/products/purchasing/{order_id}", status_code=303)
+
+
+@router.post("/purchasing/{order_id}/send")
+def purchase_order_send(order_id: int, db: Session = Depends(get_db)):
+    try:
+        order_purchase_order(db, purchase_order_id=order_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(url=f"/products/purchasing/{order_id}", status_code=303)
+
+
+@router.post("/purchasing/{order_id}/cancel")
+def purchase_order_cancel(order_id: int, db: Session = Depends(get_db)):
+    try:
+        cancel_purchase_order(db, purchase_order_id=order_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(url=f"/products/purchasing/{order_id}", status_code=303)
+
+
+@router.post("/purchasing/{order_id}/receive")
+async def purchase_order_receive(
+    order_id: int,
+    request: Request,
+    received_by_user_id: int | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    try:
+        form = await request.form()
+        quantities = {}
+        order = db.get(PurchaseOrder, order_id)
+        if order is None:
+            raise HTTPException(status_code=404, detail="Purchase order not found")
+        for line in order.lines:
+            quantities[line.id] = form.get(f"quantity_{line.id}", "0")
+        receipt = create_receipt_from_purchase_order(
+            db,
+            purchase_order_id=order_id,
+            quantities=quantities,
+            received_by_user_id=operator_id_from_request(request, received_by_user_id),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(url=f"/products/goods-receipts/{receipt.id}", status_code=303)
+
+
+@router.get("/{product_id}/labels", response_class=HTMLResponse)
+def product_labels(product_id: int, request: Request, copies: int = Query(1, ge=1, le=100), db: Session = Depends(get_db)):
+    product = db.get(Product, product_id)
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+    barcode = primary_barcode(product)
+    code = barcode.code if barcode else product.sku
+    try:
+        svg = barcode_svg(code, barcode.symbology if barcode else "code39")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return templates.TemplateResponse(
+        "products/labels.html",
+        {"request": request, "app_name": settings.app_name, "product": product, "barcode_value": code, "barcode_svg": svg, "copies": copies},
     )
 
 
@@ -472,6 +697,26 @@ def cancel_product_goods_receipt_route(
 ):
     try:
         cancel_goods_receipt(
+            db,
+            goods_receipt_id=receipt_id,
+            user_id=operator_id_from_request(request, user_id),
+            reason=reason,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(url=f"/products/goods-receipts/{receipt_id}", status_code=303)
+
+
+@router.post("/goods-receipts/{receipt_id}/discard")
+def discard_product_goods_receipt_route(
+    receipt_id: int,
+    request: Request,
+    reason: str = Form("Draft discarded"),
+    user_id: int | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    try:
+        discard_draft_goods_receipt(
             db,
             goods_receipt_id=receipt_id,
             user_id=operator_id_from_request(request, user_id),
@@ -721,6 +966,7 @@ def edit_product(product_id: int, request: Request, db: Session = Depends(get_db
             "page_title": "Edit product",
             "default_vat_percent": product.vat_percent,
             "primary_barcode": primary_barcode(product),
+            "suppliers": db.query(Supplier).filter(Supplier.is_active.is_(True)).order_by(Supplier.name.asc()).all(),
         },
     )
 
@@ -781,6 +1027,10 @@ def update_product(
     unit: str = Form("pcs"),
     is_active: str | None = Form(None),
     is_stock_item: str | None = Form(None),
+    preferred_supplier_id: int | None = Form(None),
+    supplier_product_code: str = Form(""),
+    reorder_point: str = Form("0"),
+    target_stock_quantity: str = Form("0"),
     db: Session = Depends(get_db),
 ):
     product = db.get(Product, product_id)
@@ -801,6 +1051,14 @@ def update_product(
     product.unit = unit.strip() or "pcs"
     product.is_active = is_active == "on"
     product.is_stock_item = is_stock_item == "on"
+    reorder = parse_decimal(reorder_point)
+    target = parse_decimal(target_stock_quantity)
+    if not reorder.is_finite() or not target.is_finite() or reorder < 0 or target < reorder:
+        raise HTTPException(status_code=400, detail="Reorder point and target stock must be non-negative, with target at least the reorder point.")
+    product.preferred_supplier_id = preferred_supplier_id or None
+    product.supplier_product_code = supplier_product_code.strip() or None
+    product.reorder_point = reorder if product.is_stock_item else 0
+    product.target_stock_quantity = target if product.is_stock_item else 0
     try:
         set_primary_barcode(db, product=product, value=primary_barcode_value)
         db.commit()

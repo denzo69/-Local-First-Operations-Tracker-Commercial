@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div><h1 class="h3 mb-1">{{ t.purchase_orders }}</h1><p class="text-muted mb-0">{{ t.purchase_orders_help }}</p></div>
+  <div class="d-flex gap-2"><a class="btn btn-outline-primary" href="/products/purchasing/replenishment">{{ t.replenishment }}</a><a class="btn btn-primary" href="/products/purchasing/new">{{ t.new_purchase_order }}</a></div>
+</div>
+<div class="card border-0 shadow-sm"><div class="table-responsive"><table class="table mb-0"><thead><tr><th>{{ t.ordered }}</th><th>{{ t.supplier }}</th><th>{{ t.date }}</th><th>{{ t.expected_delivery }}</th><th>{{ t.status }}</th><th></th></tr></thead><tbody>
+{% for order in orders %}<tr><td><a href="/products/purchasing/{{ order.id }}">{{ order.order_number }}</a></td><td>{{ order.supplier.name }}</td><td>{{ order.order_date }}</td><td>{{ order.expected_date or "-" }}</td><td>{{ order.status|replace("_", " ")|title }}</td><td><a class="btn btn-sm btn-outline-secondary" href="/products/purchasing/{{ order.id }}">{{ t.view }}</a></td></tr>{% else %}<tr><td colspan="6" class="text-muted p-4">{{ t.no_purchase_orders }}</td></tr>{% endfor %}
+</tbody></table></div></div>
+{% endblock %}
