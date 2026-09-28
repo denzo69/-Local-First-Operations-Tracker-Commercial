@@ -6,7 +6,20 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.models import AuditLog, Customer, Job, JobItem, JobStatus, Product, Role, Sale, User, utc_now
+from app.models import (
+    AuditLog,
+    Customer,
+    InventoryReservation,
+    InventoryTransaction,
+    Job,
+    JobItem,
+    JobStatus,
+    Product,
+    Role,
+    Sale,
+    User,
+    utc_now,
+)
 from app.services.auth_service import request_current_user
 from app.services.audit_service import log_audit_event
 from app.services.money_service import line_total as calculate_line_total
@@ -15,7 +28,12 @@ from app.services.money_service import sum_money
 from app.services.print_service import build_print_context
 from app.services.receipt_number_service import allocate_receipt_number
 from app.services.sales_service import PaymentInput, create_sale_from_work_order
-from app.services.inventory_service import issue_stock_for_delivery_note, reverse_delivery_note_item_issue
+from app.services.inventory_service import (
+    dispatch_delivery_note_reservations,
+    release_delivery_note_item_reservations,
+    reserve_stock_for_delivery_note,
+    reverse_delivery_note_item_issue,
+)
 from app.template_context import templates
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -160,16 +178,16 @@ def inventory_actor_id_for_request(request: Request, db: Session) -> int:
 
 
 def apply_delivery_note_stock_issue(db: Session, *, request: Request, job: Job, item: JobItem) -> None:
+    """Compatibility name: new delivery-note rows reserve stock instead of issuing it."""
     if job.document_type != "delivery_note" or item.product is None or not item.product.is_stock_item:
         return
-    issue_stock_for_delivery_note(
+    reserve_stock_for_delivery_note(
         db,
         product_id=item.product.id,
         quantity_value=item.quantity,
         work_order_id=job.id,
         job_item_id=item.id,
         created_by_user_id=inventory_actor_id_for_request(request, db),
-        delivery_note_number=job.receipt_number,
         commit=False,
     )
 
@@ -177,11 +195,22 @@ def apply_delivery_note_stock_issue(db: Session, *, request: Request, job: Job, 
 def reverse_delivery_note_stock_issue(db: Session, *, request: Request, job: Job, item: JobItem, reason: str) -> None:
     if job.document_type != "delivery_note" or item.product is None or not item.product.is_stock_item:
         return
+    actor_id = inventory_actor_id_for_request(request, db)
+    release_delivery_note_item_reservations(
+        db,
+        work_order_id=job.id,
+        job_item_id=item.id,
+        created_by_user_id=actor_id,
+        reason=reason,
+        commit=False,
+    )
+    # Existing databases can contain pre-reservation delivery-note issues. Keep
+    # their historical reversal path working while new rows use reservations.
     reverse_delivery_note_item_issue(
         db,
         work_order_id=job.id,
         job_item_id=item.id,
-        created_by_user_id=inventory_actor_id_for_request(request, db),
+        created_by_user_id=actor_id,
         reason=reason,
         commit=False,
     )
@@ -425,6 +454,45 @@ def job_detail(job_id: int, request: Request, db: Session = Depends(get_db)):
         .order_by(AuditLog.created_at.desc())
         .all()
     )
+    active_reservations = (
+        db.query(InventoryReservation)
+        .filter(
+            InventoryReservation.job_id == job.id,
+            InventoryReservation.status == "active",
+        )
+        .all()
+    )
+    original_issues = (
+        db.query(InventoryTransaction)
+        .filter(
+            InventoryTransaction.work_order_id == job.id,
+            InventoryTransaction.transaction_type == "delivery_note_issue",
+        )
+        .all()
+    )
+    reversed_issue_ids = {
+        row[0]
+        for row in db.query(InventoryTransaction.reversal_of_transaction_id)
+        .filter(InventoryTransaction.reversal_of_transaction_id.is_not(None))
+        .all()
+    }
+    active_issues = [row for row in original_issues if row.id not in reversed_issue_ids]
+    reserved_quantity = sum(
+        (parse_decimal(row.quantity) for row in active_reservations),
+        start=parse_decimal("0"),
+    )
+    issued_quantity = sum(
+        (-parse_decimal(row.quantity_change) for row in active_issues),
+        start=parse_decimal("0"),
+    )
+    if reserved_quantity > 0 and issued_quantity > 0:
+        inventory_state = "partially_dispatched"
+    elif reserved_quantity > 0:
+        inventory_state = "reserved"
+    elif issued_quantity > 0:
+        inventory_state = "dispatched"
+    else:
+        inventory_state = "no_stock_rows"
 
     return templates.TemplateResponse(
         "jobs/detail.html",
@@ -439,6 +507,9 @@ def job_detail(job_id: int, request: Request, db: Session = Depends(get_db)):
             "products": products,
             "audit_events": audit_events,
             "job_total": sum_money(item.line_total for item in job.items),
+            "inventory_state": inventory_state,
+            "reserved_quantity": reserved_quantity,
+            "issued_quantity": issued_quantity,
             "route_base": route_base_for(request),
         },
     )
@@ -586,6 +657,38 @@ def update_job_status(
     db.commit()
 
     return RedirectResponse(url=f"{route_base_for(request)}/{job.id}", status_code=303)
+
+
+def dispatch_delivery_note(
+    request: Request,
+    job_id: int,
+    db: Session = Depends(get_db),
+):
+    job = db.get(Job, job_id)
+    if job is None or job.document_type != "delivery_note":
+        raise HTTPException(status_code=404, detail="Delivery note not found")
+    try:
+        transactions = dispatch_delivery_note_reservations(
+            db,
+            work_order_id=job.id,
+            created_by_user_id=inventory_actor_id_for_request(request, db),
+            commit=False,
+        )
+        if transactions:
+            log_audit_event(
+                db,
+                event_type="delivery_note.dispatched",
+                entity_type="job",
+                entity_id=job.id,
+                description=(
+                    f"Delivery note dispatched; {len(transactions)} stock issue transaction(s) posted."
+                ),
+            )
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(url=f"/delivery-notes/{job.id}", status_code=303)
 
 
 @router.post("/{job_id}/delete")

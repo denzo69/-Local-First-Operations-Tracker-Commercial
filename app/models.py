@@ -69,6 +69,7 @@ class Job(Base):
     status = relationship("JobStatus", back_populates="jobs")
     items = relationship("JobItem", back_populates="job")
     sales = relationship("Sale", back_populates="work_order")
+    inventory_reservations = relationship("InventoryReservation", back_populates="job")
 
 
 class Product(Base):
@@ -100,6 +101,7 @@ class Product(Base):
     job_items = relationship("JobItem", back_populates="product")
     inventory_balances = relationship("InventoryBalance", back_populates="product")
     inventory_transactions = relationship("InventoryTransaction", back_populates="product")
+    inventory_reservations = relationship("InventoryReservation", back_populates="product")
     barcodes = relationship(
         "ProductBarcode",
         back_populates="product",
@@ -173,6 +175,7 @@ class WarehouseLocation(Base):
     warehouse = relationship("Warehouse", back_populates="locations")
     parent = relationship("WarehouseLocation", remote_side=[id])
     balances = relationship("InventoryBalance", back_populates="warehouse_location")
+    inventory_reservations = relationship("InventoryReservation", back_populates="warehouse_location")
 
 
 class InventoryBalance(Base):
@@ -317,6 +320,43 @@ class JobItem(Base):
 
     job = relationship("Job", back_populates="items")
     product = relationship("Product", back_populates="job_items")
+    inventory_reservations = relationship(
+        "InventoryReservation",
+        back_populates="job_item",
+        cascade="all, delete-orphan",
+    )
+
+
+class InventoryReservation(Base):
+    __tablename__ = "inventory_reservations"
+    __table_args__ = (
+        UniqueConstraint(
+            "job_item_id",
+            "warehouse_location_id",
+            name="ux_inventory_reservation_item_location",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False, index=True)
+    job_item_id = Column(Integer, ForeignKey("job_items.id"), nullable=False, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
+    warehouse_location_id = Column(Integer, ForeignKey("warehouse_locations.id"), nullable=False, index=True)
+    quantity = Column(Numeric(18, 3), nullable=False)
+    status = Column(String(30), nullable=False, default="active", index=True)
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=utc_now)
+    consumed_at = Column(DateTime, nullable=True)
+    released_at = Column(DateTime, nullable=True)
+    release_reason = Column(Text, nullable=True)
+    inventory_transaction_id = Column(Integer, ForeignKey("inventory_transactions.id"), nullable=True)
+
+    job = relationship("Job", back_populates="inventory_reservations")
+    job_item = relationship("JobItem", back_populates="inventory_reservations")
+    product = relationship("Product", back_populates="inventory_reservations")
+    warehouse_location = relationship("WarehouseLocation", back_populates="inventory_reservations")
+    created_by = relationship("User", foreign_keys=[created_by_user_id])
+    inventory_transaction = relationship("InventoryTransaction", foreign_keys=[inventory_transaction_id])
 
 
 class Receipt(Base):
@@ -501,6 +541,7 @@ class SaleLine(Base):
     sale = relationship("Sale", back_populates="lines")
     product = relationship("Product")
     work_order_item = relationship("JobItem")
+    refund_lines = relationship("RefundLine", back_populates="sale_line")
 
 
 class Payment(Base):
@@ -540,6 +581,29 @@ class Refund(Base):
     sale = relationship("Sale", back_populates="refunds")
     shift = relationship("Shift", back_populates="refunds")
     seller = relationship("User")
+    lines = relationship("RefundLine", back_populates="refund", cascade="all, delete-orphan")
+
+
+class RefundLine(Base):
+    __tablename__ = "refund_lines"
+
+    id = Column(Integer, primary_key=True, index=True)
+    refund_id = Column(Integer, ForeignKey("refunds.id"), nullable=False, index=True)
+    sale_line_id = Column(Integer, ForeignKey("sale_lines.id"), nullable=False, index=True)
+    quantity = Column(Numeric(12, 3), nullable=False)
+    gross_amount = Column(Numeric(12, 2), nullable=False)
+    net_amount = Column(Numeric(12, 2), nullable=False)
+    vat_amount = Column(Numeric(12, 2), nullable=False)
+    restocked = Column(Boolean, nullable=False, default=False)
+    restock_location_id = Column(Integer, ForeignKey("warehouse_locations.id"), nullable=True)
+    inventory_cost_ex_vat = Column(Numeric(12, 2), nullable=False, default=0)
+    inventory_transaction_id = Column(Integer, ForeignKey("inventory_transactions.id"), nullable=True)
+    created_at = Column(DateTime, default=utc_now)
+
+    refund = relationship("Refund", back_populates="lines")
+    sale_line = relationship("SaleLine", back_populates="refund_lines")
+    restock_location = relationship("WarehouseLocation")
+    inventory_transaction = relationship("InventoryTransaction", foreign_keys=[inventory_transaction_id])
 
 
 class CashMovement(Base):

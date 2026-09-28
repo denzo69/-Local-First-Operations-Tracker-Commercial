@@ -103,6 +103,11 @@ def update_delivery_note_status(request: Request, job_id: int, status_id: int = 
     return jobs.update_job_status(request=request, job_id=job_id, status_id=status_id, db=db)
 
 
+@router.post("/{job_id}/dispatch")
+def dispatch_delivery_note(request: Request, job_id: int, db: Session = Depends(get_db)):
+    return jobs.dispatch_delivery_note(request=request, job_id=job_id, db=db)
+
+
 @router.post("/{job_id}/delete")
 def delete_delivery_note(request: Request, job_id: int, db: Session = Depends(get_db)):
     return jobs.delete_job(request=request, job_id=job_id, db=db)

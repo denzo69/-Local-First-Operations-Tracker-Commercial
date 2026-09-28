@@ -9,7 +9,17 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.models import CashRegister, Customer, InventoryBalance, Job, Product, Sale, Shift, User
+from app.models import (
+    CashRegister,
+    Customer,
+    InventoryBalance,
+    Job,
+    Product,
+    Sale,
+    Shift,
+    User,
+    WarehouseLocation,
+)
 from app.services.auth_service import request_current_user
 from app.services.sales_service import (
     AuthorizationError,
@@ -17,6 +27,7 @@ from app.services.sales_service import (
     PAYMENT_METHODS,
     PaymentInput,
     SaleLineInput,
+    add_line_refund,
     add_refund,
     confirm_invoice_paid,
     confirm_invoice_unpaid,
@@ -27,6 +38,7 @@ from app.services.sales_service import (
     invoice_follow_up_status,
     record_invoice_reminder_sent,
     remaining_refundable_amount,
+    remaining_refundable_quantity,
     sale_balance_due,
     sale_paid_amount,
     transfer_sale_to_invoicing,
@@ -529,6 +541,15 @@ def sale_detail(sale_id: int, request: Request, db: Session = Depends(get_db)):
             "can_correct_seller": user_can_override_sale_seller(request_current_user(request)),
             "payment_methods": {key: value for key, value in PAYMENT_METHODS.items() if key != "invoice"},
             "remaining_refundable": remaining_refundable_amount(sale),
+            "remaining_refundable_quantities": {
+                line.id: remaining_refundable_quantity(line) for line in sale.lines
+            },
+            "restock_locations": (
+                db.query(WarehouseLocation)
+                .filter(WarehouseLocation.is_active.is_(True))
+                .order_by(WarehouseLocation.code.asc())
+                .all()
+            ),
             "paid_amount": sale_paid_amount(sale),
             "balance_due": sale_balance_due(sale),
             "invoice_follow_up_status": invoice_follow_up_status(sale),
@@ -697,6 +718,52 @@ def create_refund(
             amount=refund_amount,
             payment_method=payment_method,
             reason=reason,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RedirectResponse(url=f"/sales/{sale_id}", status_code=303)
+
+
+@router.post("/{sale_id}/refund-lines")
+def create_line_refund(
+    sale_id: int,
+    request: Request,
+    sale_line_id: int = Form(...),
+    quantity: str = Form(...),
+    refund_shift_id: str = Form(""),
+    payment_method: str = Form(...),
+    reason: str = Form(""),
+    restock: bool = Form(False),
+    restock_location_id: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    sale = db.get(Sale, sale_id)
+    if sale is None:
+        raise HTTPException(status_code=404, detail="Sale not found")
+    parsed_refund_shift_id = _optional_int(refund_shift_id)
+    refund_shift = db.get(Shift, parsed_refund_shift_id) if parsed_refund_shift_id else None
+    if parsed_refund_shift_id and refund_shift is None:
+        raise HTTPException(status_code=400, detail="Refund shift not found")
+    current_user = request_current_user(request)
+    seller_id = refund_shift.seller_id if refund_shift is not None else (
+        current_user.id
+        if current_user is not None
+        else (sale.sold_by_user_id or sale.seller_id or sale.created_by_user_id)
+    )
+    if seller_id is None:
+        raise HTTPException(status_code=400, detail="Refund requires an active operator or sale seller.")
+    try:
+        add_line_refund(
+            db,
+            sale_id=sale.id,
+            sale_line_id=sale_line_id,
+            quantity_value=quantity,
+            refund_shift_id=parsed_refund_shift_id,
+            seller_id=seller_id,
+            payment_method=payment_method,
+            reason=reason,
+            restock=restock,
+            restock_location_id=_optional_int(restock_location_id),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -9,7 +9,10 @@ from app.models import (
     GoodsReceipt,
     GoodsReceiptLine,
     InventoryBalance,
+    InventoryReservation,
     InventoryTransaction,
+    Job,
+    JobItem,
     Product,
     Supplier,
     User,
@@ -770,9 +773,12 @@ def cancel_goods_receipt(db: Session, *, goods_receipt_id: int, user_id: int, re
         new_avg = cost(new_value / new_qty) if new_qty > 0 else None
 
         balance_qty = quantity(parse_decimal(balance.quantity_on_hand or 0))
+        balance_reserved = quantity(parse_decimal(balance.quantity_reserved or 0))
         balance_value = money(parse_decimal(balance.inventory_value_ex_vat or 0))
         if balance_qty - reverse_qty < 0:
             raise ValueError("Cannot cancel receipt because location stock would become negative.")
+        if balance_qty - reverse_qty < balance_reserved:
+            raise ValueError("Cannot cancel receipt while its stock is reserved.")
         balance.quantity_on_hand = quantity(balance_qty - reverse_qty)
         balance.quantity_available = quantity(parse_decimal(balance.quantity_on_hand) - parse_decimal(balance.quantity_reserved or 0))
         balance.inventory_value_ex_vat = money(balance_value - reverse_value)
@@ -822,6 +828,255 @@ def cancel_goods_receipt(db: Session, *, goods_receipt_id: int, user_id: int, re
     return receipt
 
 
+def reserve_stock_for_delivery_note(
+    db: Session,
+    *,
+    product_id: int,
+    quantity_value,
+    work_order_id: int,
+    job_item_id: int,
+    created_by_user_id: int,
+    commit: bool = True,
+) -> list[InventoryReservation]:
+    """Reserve available stock without changing on-hand quantity or inventory value."""
+    user = require_inventory_operational_user(db.get(User, created_by_user_id))
+    product = db.get(Product, product_id)
+    job = db.get(Job, work_order_id)
+    item = db.get(JobItem, job_item_id)
+    if product is None or not product.is_stock_item:
+        raise ValueError("Stock product is required.")
+    if job is None or job.document_type != "delivery_note":
+        raise ValueError("Delivery note is required for stock reservation.")
+    if item is None or item.job_id != job.id or item.product_id != product.id:
+        raise ValueError("Delivery note item does not match the reserved product.")
+
+    qty_remaining = require_positive_quantity(quantity_value)
+    existing = (
+        db.query(InventoryReservation)
+        .filter(
+            InventoryReservation.job_item_id == item.id,
+            InventoryReservation.status == "active",
+        )
+        .order_by(InventoryReservation.id.asc())
+        .all()
+    )
+    if existing:
+        existing_quantity = quantity(
+            sum((parse_decimal(row.quantity) for row in existing), Decimal("0"))
+        )
+        if existing_quantity != qty_remaining:
+            raise ValueError("Delivery note item already has a different active reservation.")
+        return existing
+
+    assert_inventory_cache_consistent(db, product_ids={product_id})
+    balances = (
+        db.query(InventoryBalance)
+        .filter(
+            InventoryBalance.product_id == product_id,
+            InventoryBalance.quantity_on_hand > InventoryBalance.quantity_reserved,
+        )
+        .order_by(InventoryBalance.warehouse_location_id.asc())
+        .all()
+    )
+    total_available = quantity(
+        sum(
+            (
+                max(
+                    Decimal("0"),
+                    parse_decimal(balance.quantity_on_hand or 0)
+                    - parse_decimal(balance.quantity_reserved or 0),
+                )
+                for balance in balances
+            ),
+            Decimal("0"),
+        )
+    )
+    if total_available < qty_remaining:
+        raise ValueError("Insufficient available stock for delivery note reservation.")
+
+    reservations: list[InventoryReservation] = []
+    for balance in balances:
+        if qty_remaining <= 0:
+            break
+        balance_available = quantity(
+            parse_decimal(balance.quantity_on_hand or 0)
+            - parse_decimal(balance.quantity_reserved or 0)
+        )
+        reserve_qty = min(qty_remaining, balance_available)
+        if reserve_qty <= 0:
+            # The query requires on-hand > reserved; keep the guard for
+            # defensive decimal/database handling without making it a test target.
+            continue  # pragma: no cover
+        balance.quantity_reserved = quantity(
+            parse_decimal(balance.quantity_reserved or 0) + reserve_qty
+        )
+        balance.quantity_available = quantity(
+            parse_decimal(balance.quantity_on_hand or 0)
+            - parse_decimal(balance.quantity_reserved or 0)
+        )
+        balance.updated_at = utc_now()
+        reservation = InventoryReservation(
+            job_id=job.id,
+            job_item_id=item.id,
+            product_id=product.id,
+            warehouse_location_id=balance.warehouse_location_id,
+            quantity=reserve_qty,
+            status="active",
+            created_by_user_id=user.id,
+        )
+        db.add(reservation)
+        reservations.append(reservation)
+        qty_remaining = quantity(qty_remaining - reserve_qty)
+
+    if qty_remaining > 0:  # pragma: no cover - guarded by total_available check.
+        raise ValueError("Insufficient available stock for delivery note reservation.")
+    db.flush()
+    for reservation in reservations:
+        log_audit_event(
+            db,
+            event_type="inventory.delivery_note_reserved",
+            entity_type="inventory_reservation",
+            entity_id=reservation.id,
+            description=(
+                f"Delivery note stock reserved for product {product.name}: "
+                f"{reservation.quantity} at location {reservation.warehouse_location_id}."
+            ),
+        )
+    if commit:
+        db.commit()
+        for reservation in reservations:
+            db.refresh(reservation)
+    return reservations
+
+
+def release_delivery_note_item_reservations(
+    db: Session,
+    *,
+    work_order_id: int,
+    job_item_id: int,
+    created_by_user_id: int,
+    reason: str,
+    commit: bool = True,
+) -> list[InventoryReservation]:
+    user = require_inventory_operational_user(db.get(User, created_by_user_id))
+    reservations = (
+        db.query(InventoryReservation)
+        .filter(
+            InventoryReservation.job_id == work_order_id,
+            InventoryReservation.job_item_id == job_item_id,
+            InventoryReservation.status == "active",
+        )
+        .order_by(InventoryReservation.id.asc())
+        .all()
+    )
+    released_at = utc_now()
+    release_reason = reason.strip() or "Reservation released."
+    for reservation in reservations:
+        balance = _get_or_create_balance(
+            db,
+            product_id=reservation.product_id,
+            location_id=reservation.warehouse_location_id,
+        )
+        reserved_before = quantity(parse_decimal(balance.quantity_reserved or 0))
+        reserved_quantity = quantity(parse_decimal(reservation.quantity))
+        if reserved_before < reserved_quantity:
+            raise ValueError("Inventory reservation balance is inconsistent.")
+        balance.quantity_reserved = quantity(reserved_before - reserved_quantity)
+        balance.quantity_available = quantity(
+            parse_decimal(balance.quantity_on_hand or 0)
+            - parse_decimal(balance.quantity_reserved or 0)
+        )
+        balance.updated_at = released_at
+        reservation.status = "released"
+        reservation.released_at = released_at
+        reservation.release_reason = release_reason
+        log_audit_event(
+            db,
+            event_type="inventory.delivery_note_reservation_released",
+            entity_type="inventory_reservation",
+            entity_id=reservation.id,
+            description=(
+                f"Delivery note reservation released by {user.id}/{user.name}: "
+                f"{reserved_quantity}; {release_reason}"
+            ),
+        )
+    if commit:
+        db.commit()
+        for reservation in reservations:
+            db.refresh(reservation)
+    return reservations
+
+
+def _issue_stock_at_location(
+    db: Session,
+    *,
+    product: Product,
+    warehouse_location_id: int,
+    quantity_value,
+    created_by_user_id: int,
+    transaction_type: str,
+    sale_id: int | None = None,
+    work_order_id: int | None = None,
+    delivery_note_number: str | None = None,
+    reference: str | None = None,
+) -> InventoryTransaction:
+    location = _location(db, warehouse_location_id)
+    balance = _get_or_create_balance(
+        db,
+        product_id=product.id,
+        location_id=warehouse_location_id,
+    )
+    qty = require_positive_quantity(quantity_value)
+    old_qty = quantity(parse_decimal(product.current_inventory_quantity or 0))
+    old_avg = cost(parse_decimal(product.current_weighted_average_cost_ex_vat or 0))
+    old_value = money(parse_decimal(product.current_inventory_value_ex_vat or 0))
+    balance_qty = quantity(parse_decimal(balance.quantity_on_hand or 0))
+    balance_reserved = quantity(parse_decimal(balance.quantity_reserved or 0))
+    balance_available = quantity(balance_qty - balance_reserved)
+    if old_qty < qty or balance_qty < qty:
+        raise ValueError("Negative stock is not allowed.")
+    if balance_available < qty:
+        raise ValueError("Negative stock is not allowed; available stock is reserved.")
+
+    total_cost = money(qty * old_avg)
+    new_qty = quantity(old_qty - qty)
+    new_value = money(old_value - total_cost)
+    new_avg = old_avg if new_qty > 0 else None
+    balance_value = money(parse_decimal(balance.inventory_value_ex_vat or 0))
+    balance.quantity_on_hand = quantity(balance_qty - qty)
+    balance.quantity_available = quantity(
+        parse_decimal(balance.quantity_on_hand) - balance_reserved
+    )
+    balance.inventory_value_ex_vat = money(balance_value - total_cost)
+    balance.weighted_average_cost_ex_vat = (
+        cost(parse_decimal(balance.inventory_value_ex_vat) / parse_decimal(balance.quantity_on_hand))
+        if parse_decimal(balance.quantity_on_hand) > 0
+        else None
+    )
+    balance.updated_at = utc_now()
+    _sync_product_cache(product, stock=new_qty, value=new_value, average_cost=new_avg)
+    return _create_transaction(
+        db,
+        product=product,
+        location=location,
+        transaction_type=transaction_type,
+        quantity_change=quantity(-qty),
+        unit_cost_ex_vat=old_avg,
+        total_inventory_cost=money(-total_cost),
+        inventory_value_before=old_value,
+        inventory_value_after=new_value,
+        stock_before=old_qty,
+        stock_after=new_qty,
+        weighted_average_cost_before=old_avg,
+        weighted_average_cost_after=new_avg,
+        sale_id=sale_id,
+        work_order_id=work_order_id,
+        delivery_note_number=delivery_note_number,
+        reference=reference,
+        created_by_user_id=created_by_user_id,
+    )
+
+
 def issue_stock_for_sale(
     db: Session,
     *,
@@ -837,48 +1092,14 @@ def issue_stock_for_sale(
     if product is None or not product.is_stock_item:
         raise ValueError("Stock product is required.")
     assert_inventory_cache_consistent(db, product_ids={product_id})
-    location = _location(db, warehouse_location_id)
-    balance = _get_or_create_balance(db, product_id=product_id, location_id=warehouse_location_id)
-    qty = require_positive_quantity(quantity_value)
-    old_qty = quantity(parse_decimal(product.current_inventory_quantity or 0))
-    old_avg = cost(parse_decimal(product.current_weighted_average_cost_ex_vat or 0))
-    old_value = money(parse_decimal(product.current_inventory_value_ex_vat or 0))
-    if old_qty - qty < 0:
-        raise ValueError("Negative stock is not allowed.")
-    total_cost = money(qty * old_avg)
-    new_qty = quantity(old_qty - qty)
-    new_value = money(old_value - total_cost)
-    new_avg = old_avg if new_qty > 0 else None
-
-    balance_qty = quantity(parse_decimal(balance.quantity_on_hand or 0))
-    if balance_qty - qty < 0:
-        raise ValueError("Negative stock is not allowed.")
-    balance_value = money(parse_decimal(balance.inventory_value_ex_vat or 0))
-    balance.quantity_on_hand = quantity(balance_qty - qty)
-    balance.quantity_available = quantity(parse_decimal(balance.quantity_on_hand) - parse_decimal(balance.quantity_reserved or 0))
-    balance.inventory_value_ex_vat = money(balance_value - total_cost)
-    balance.weighted_average_cost_ex_vat = (
-        cost(parse_decimal(balance.inventory_value_ex_vat) / parse_decimal(balance.quantity_on_hand))
-        if parse_decimal(balance.quantity_on_hand) > 0
-        else None
-    )
-    _sync_product_cache(product, stock=new_qty, value=new_value, average_cost=new_avg)
-    transaction = _create_transaction(
+    transaction = _issue_stock_at_location(
         db,
         product=product,
-        location=location,
-        transaction_type="sale",
-        quantity_change=quantity(-qty),
-        unit_cost_ex_vat=old_avg,
-        total_inventory_cost=money(-total_cost),
-        inventory_value_before=old_value,
-        inventory_value_after=new_value,
-        stock_before=old_qty,
-        stock_after=new_qty,
-        weighted_average_cost_before=old_avg,
-        weighted_average_cost_after=new_avg,
-        sale_id=sale_id,
+        warehouse_location_id=warehouse_location_id,
+        quantity_value=quantity_value,
         created_by_user_id=user.id,
+        transaction_type="sale",
+        sale_id=sale_id,
     )
     db.flush()
     log_audit_event(
@@ -886,7 +1107,10 @@ def issue_stock_for_sale(
         event_type="inventory.sale_issue",
         entity_type="inventory_transaction",
         entity_id=transaction.id,
-        description=f"Sale issue recorded for product {product.name}: {qty} at {old_avg}.",
+        description=(
+            f"Sale issue recorded for product {product.name}: "
+            f"{-transaction.quantity_change} at {transaction.unit_cost_ex_vat}."
+        ),
     )
     if commit:
         db.commit()
@@ -907,19 +1131,35 @@ def issue_stock_for_sale_from_available_locations(
     transactions: list[InventoryTransaction] = []
     balances = (
         db.query(InventoryBalance)
-        .filter(InventoryBalance.product_id == product_id, InventoryBalance.quantity_on_hand > 0)
+        .filter(
+            InventoryBalance.product_id == product_id,
+            InventoryBalance.quantity_on_hand > InventoryBalance.quantity_reserved,
+        )
         .order_by(InventoryBalance.warehouse_location_id.asc())
         .all()
     )
     total_available = quantity(
-        sum((parse_decimal(balance.quantity_on_hand or 0) for balance in balances), Decimal("0"))
+        sum(
+            (
+                parse_decimal(balance.quantity_on_hand or 0)
+                - parse_decimal(balance.quantity_reserved or 0)
+                for balance in balances
+            ),
+            Decimal("0"),
+        )
     )
     if total_available < qty_remaining:
         raise ValueError("Negative stock is not allowed.")
     for balance in balances:
         if qty_remaining <= 0:
             break
-        issue_qty = min(qty_remaining, quantity(parse_decimal(balance.quantity_on_hand)))
+        issue_qty = min(
+            qty_remaining,
+            quantity(
+                parse_decimal(balance.quantity_on_hand or 0)
+                - parse_decimal(balance.quantity_reserved or 0)
+            ),
+        )
         transactions.append(
             issue_stock_for_sale(
                 db,
@@ -956,12 +1196,22 @@ def issue_stock_for_delivery_note(
     transactions: list[InventoryTransaction] = []
     balances = (
         db.query(InventoryBalance)
-        .filter(InventoryBalance.product_id == product_id, InventoryBalance.quantity_on_hand > 0)
+        .filter(
+            InventoryBalance.product_id == product_id,
+            InventoryBalance.quantity_on_hand > InventoryBalance.quantity_reserved,
+        )
         .order_by(InventoryBalance.warehouse_location_id.asc())
         .all()
     )
     total_available = quantity(
-        sum((parse_decimal(balance.quantity_on_hand or 0) for balance in balances), Decimal("0"))
+        sum(
+            (
+                parse_decimal(balance.quantity_on_hand or 0)
+                - parse_decimal(balance.quantity_reserved or 0)
+                for balance in balances
+            ),
+            Decimal("0"),
+        )
     )
     if total_available < qty_remaining:
         raise ValueError("Negative stock is not allowed.")
@@ -974,51 +1224,29 @@ def issue_stock_for_delivery_note(
     for balance in balances:
         if qty_remaining <= 0:
             break
-        issue_qty = min(qty_remaining, quantity(parse_decimal(balance.quantity_on_hand)))
-        location = _location(db, balance.warehouse_location_id)
-        old_qty = quantity(parse_decimal(product.current_inventory_quantity or 0))
-        old_avg = cost(parse_decimal(product.current_weighted_average_cost_ex_vat or 0))
-        old_value = money(parse_decimal(product.current_inventory_value_ex_vat or 0))
-        total_cost = money(issue_qty * old_avg)
-        new_qty = quantity(old_qty - issue_qty)
-        new_value = money(old_value - total_cost)
-        new_avg = old_avg if new_qty > 0 else None
-
-        balance_qty = quantity(parse_decimal(balance.quantity_on_hand or 0))
-        balance_value = money(parse_decimal(balance.inventory_value_ex_vat or 0))
-        balance.quantity_on_hand = quantity(balance_qty - issue_qty)
-        balance.quantity_available = quantity(parse_decimal(balance.quantity_on_hand) - parse_decimal(balance.quantity_reserved or 0))
-        balance.inventory_value_ex_vat = money(balance_value - total_cost)
-        balance.weighted_average_cost_ex_vat = (
-            cost(parse_decimal(balance.inventory_value_ex_vat) / parse_decimal(balance.quantity_on_hand))
-            if parse_decimal(balance.quantity_on_hand) > 0
-            else None
+        issue_qty = min(
+            qty_remaining,
+            quantity(
+                parse_decimal(balance.quantity_on_hand or 0)
+                - parse_decimal(balance.quantity_reserved or 0)
+            ),
         )
-        _sync_product_cache(product, stock=new_qty, value=new_value, average_cost=new_avg)
-        transaction = _create_transaction(
+        transaction = _issue_stock_at_location(
             db,
             product=product,
-            location=location,
+            warehouse_location_id=balance.warehouse_location_id,
+            quantity_value=issue_qty,
+            created_by_user_id=user.id,
             transaction_type="delivery_note_issue",
-            quantity_change=quantity(-issue_qty),
-            unit_cost_ex_vat=old_avg,
-            total_inventory_cost=money(-total_cost),
-            inventory_value_before=old_value,
-            inventory_value_after=new_value,
-            stock_before=old_qty,
-            stock_after=new_qty,
-            weighted_average_cost_before=old_avg,
-            weighted_average_cost_after=new_avg,
             delivery_note_number=delivery_note_number,
             work_order_id=work_order_id,
             reference=f"job_item:{job_item_id}",
-            created_by_user_id=user.id,
         )
         transactions.append(transaction)
         qty_remaining = quantity(qty_remaining - issue_qty)
 
-    if qty_remaining > 0:
-        raise ValueError("Negative stock is not allowed.")
+    if qty_remaining > 0:  # pragma: no cover - guarded by total_available and the deterministic loop above.
+        raise ValueError("Negative stock is not allowed.")  # pragma: no cover
     db.flush()
     for transaction in transactions:
         log_audit_event(
@@ -1027,6 +1255,180 @@ def issue_stock_for_delivery_note(
             entity_type="inventory_transaction",
             entity_id=transaction.id,
             description=f"Delivery note stock issue recorded for product {product.name}: {-transaction.quantity_change}.",
+        )
+    if commit:
+        db.commit()
+        for transaction in transactions:
+            db.refresh(transaction)
+    return transactions
+
+
+def _consume_delivery_note_item_reservations(
+    db: Session,
+    *,
+    work_order_id: int,
+    job_item_id: int,
+    created_by_user_id: int | None,
+    transaction_type: str,
+    sale_id: int | None = None,
+    delivery_note_number: str | None = None,
+    expected_quantity=None,
+    commit: bool = True,
+) -> list[InventoryTransaction]:
+    if transaction_type not in {"sale", "delivery_note_issue"}:
+        raise ValueError("Invalid reservation consumption type.")
+    job = db.get(Job, work_order_id)
+    item = db.get(JobItem, job_item_id)
+    if job is None or job.document_type != "delivery_note":
+        raise ValueError("Delivery note is required for reservation consumption.")
+    if item is None or item.job_id != job.id or item.product is None or not item.product.is_stock_item:
+        raise ValueError("Stock delivery note item is required.")
+    reservations = (
+        db.query(InventoryReservation)
+        .filter(
+            InventoryReservation.job_id == job.id,
+            InventoryReservation.job_item_id == item.id,
+            InventoryReservation.status == "active",
+        )
+        .order_by(InventoryReservation.id.asc())
+        .all()
+    )
+    if not reservations:
+        return []
+    resolved_user_id = created_by_user_id or reservations[0].created_by_user_id
+    user = require_inventory_operational_user(db.get(User, resolved_user_id))
+
+    reserved_total = quantity(
+        sum((parse_decimal(row.quantity) for row in reservations), Decimal("0"))
+    )
+    required_total = require_positive_quantity(
+        expected_quantity if expected_quantity is not None else item.quantity
+    )
+    if reserved_total != required_total:
+        raise ValueError("Delivery note reservation quantity does not match the document row.")
+    assert_inventory_cache_consistent(db, product_ids={item.product.id})
+
+    consumed_at = utc_now()
+    transactions: list[InventoryTransaction] = []
+    for reservation in reservations:
+        reserved_quantity = quantity(parse_decimal(reservation.quantity))
+        balance = _get_or_create_balance(
+            db,
+            product_id=reservation.product_id,
+            location_id=reservation.warehouse_location_id,
+        )
+        balance_reserved = quantity(parse_decimal(balance.quantity_reserved or 0))
+        if balance_reserved < reserved_quantity:
+            raise ValueError("Inventory reservation balance is inconsistent.")
+        balance.quantity_reserved = quantity(balance_reserved - reserved_quantity)
+        balance.quantity_available = quantity(
+            parse_decimal(balance.quantity_on_hand or 0)
+            - parse_decimal(balance.quantity_reserved or 0)
+        )
+        balance.updated_at = consumed_at
+
+        transaction = _issue_stock_at_location(
+            db,
+            product=item.product,
+            warehouse_location_id=reservation.warehouse_location_id,
+            quantity_value=reserved_quantity,
+            created_by_user_id=user.id,
+            transaction_type=transaction_type,
+            sale_id=sale_id,
+            work_order_id=job.id,
+            delivery_note_number=delivery_note_number or job.receipt_number,
+            reference=f"job_item:{item.id}",
+        )
+        reservation.status = "consumed"
+        reservation.consumed_at = consumed_at
+        reservation.inventory_transaction = transaction
+        transactions.append(transaction)
+
+    db.flush()
+    event_type = (
+        "inventory.delivery_note_reservation_sold"
+        if transaction_type == "sale"
+        else "inventory.delivery_note_reservation_dispatched"
+    )
+    for reservation, transaction in zip(reservations, transactions, strict=True):
+        log_audit_event(
+            db,
+            event_type=event_type,
+            entity_type="inventory_reservation",
+            entity_id=reservation.id,
+            description=(
+                f"Delivery note reservation consumed: {reservation.quantity}; "
+                f"inventory transaction {transaction.id}."
+            ),
+        )
+    if commit:
+        db.commit()
+        for transaction in transactions:
+            db.refresh(transaction)
+    return transactions
+
+
+def consume_delivery_note_item_reservations_for_sale(
+    db: Session,
+    *,
+    work_order_id: int,
+    job_item_id: int,
+    quantity_value,
+    sale_id: int,
+    created_by_user_id: int | None,
+    commit: bool = True,
+) -> list[InventoryTransaction]:
+    return _consume_delivery_note_item_reservations(
+        db,
+        work_order_id=work_order_id,
+        job_item_id=job_item_id,
+        created_by_user_id=created_by_user_id,
+        transaction_type="sale",
+        sale_id=sale_id,
+        expected_quantity=quantity_value,
+        commit=commit,
+    )
+
+
+def dispatch_delivery_note_reservations(
+    db: Session,
+    *,
+    work_order_id: int,
+    created_by_user_id: int,
+    commit: bool = True,
+) -> list[InventoryTransaction]:
+    job = db.get(Job, work_order_id)
+    if job is None or job.document_type != "delivery_note":
+        raise ValueError("Delivery note not found.")
+    item_ids = [
+        row[0]
+        for row in db.query(InventoryReservation.job_item_id)
+        .filter(
+            InventoryReservation.job_id == job.id,
+            InventoryReservation.status == "active",
+        )
+        .distinct()
+        .order_by(InventoryReservation.job_item_id.asc())
+        .all()
+    ]
+    transactions: list[InventoryTransaction] = []
+    for item_id in item_ids:
+        item = db.get(JobItem, item_id)
+        if item is None:
+            # A non-null foreign key prevents this in a valid database; retain a
+            # clear diagnostic for externally corrupted legacy databases.
+            raise ValueError("Delivery note reservation refers to a missing item.")  # pragma: no cover
+        transactions.extend(
+            _consume_delivery_note_item_reservations(
+                db,
+                work_order_id=job.id,
+                job_item_id=item.id,
+                created_by_user_id=created_by_user_id,
+                transaction_type="delivery_note_issue",
+                delivery_note_number=job.receipt_number,
+                expected_quantity=item.quantity,
+                commit=False,
+            )
         )
     if commit:
         db.commit()
@@ -1128,6 +1530,99 @@ def reverse_delivery_note_item_issue(
     return reversals
 
 
+def return_stock_for_refund(
+    db: Session,
+    *,
+    product_id: int,
+    warehouse_location_id: int,
+    quantity_value,
+    unit_cost_ex_vat,
+    sale_id: int,
+    refund_line_id: int,
+    created_by_user_id: int,
+    reason: str = "Customer return",
+    commit: bool = True,
+) -> InventoryTransaction:
+    """Return a refunded stock item to a selected location at its original line cost."""
+    user = require_inventory_operational_user(db.get(User, created_by_user_id))
+    product = db.get(Product, product_id)
+    if product is None or not product.is_stock_item:
+        raise ValueError("Stock product is required for restocking.")
+    location = _location(db, warehouse_location_id)
+    qty = require_positive_quantity(quantity_value)
+    unit_cost = cost(parse_finite_decimal(unit_cost_ex_vat, "Return unit cost"))
+    if unit_cost < 0:
+        raise ValueError("Return unit cost cannot be negative.")
+    assert_inventory_cache_consistent(db, product_ids={product.id})
+
+    balance = _get_or_create_balance(
+        db,
+        product_id=product.id,
+        location_id=location.id,
+    )
+    old_qty = quantity(parse_decimal(product.current_inventory_quantity or 0))
+    old_value = money(parse_decimal(product.current_inventory_value_ex_vat or 0))
+    old_avg = (
+        cost(parse_decimal(product.current_weighted_average_cost_ex_vat))
+        if product.current_weighted_average_cost_ex_vat is not None
+        else None
+    )
+    return_value = money(qty * unit_cost)
+    new_qty = quantity(old_qty + qty)
+    new_value = money(old_value + return_value)
+    new_avg = cost(new_value / new_qty) if new_qty > 0 else None
+
+    balance_qty = quantity(parse_decimal(balance.quantity_on_hand or 0))
+    balance_value = money(parse_decimal(balance.inventory_value_ex_vat or 0))
+    balance.quantity_on_hand = quantity(balance_qty + qty)
+    balance.quantity_available = quantity(
+        parse_decimal(balance.quantity_on_hand)
+        - parse_decimal(balance.quantity_reserved or 0)
+    )
+    balance.inventory_value_ex_vat = money(balance_value + return_value)
+    balance.weighted_average_cost_ex_vat = (
+        cost(parse_decimal(balance.inventory_value_ex_vat) / parse_decimal(balance.quantity_on_hand))
+        if parse_decimal(balance.quantity_on_hand) > 0
+        else None
+    )
+    balance.updated_at = utc_now()
+    _sync_product_cache(product, stock=new_qty, value=new_value, average_cost=new_avg)
+    transaction = _create_transaction(
+        db,
+        product=product,
+        location=location,
+        transaction_type="customer_return",
+        quantity_change=qty,
+        unit_cost_ex_vat=unit_cost,
+        total_inventory_cost=return_value,
+        inventory_value_before=old_value,
+        inventory_value_after=new_value,
+        stock_before=old_qty,
+        stock_after=new_qty,
+        weighted_average_cost_before=old_avg,
+        weighted_average_cost_after=new_avg,
+        sale_id=sale_id,
+        adjustment_reason=reason.strip() or "Customer return",
+        reference=f"refund_line:{refund_line_id}",
+        created_by_user_id=user.id,
+    )
+    db.flush()
+    log_audit_event(
+        db,
+        event_type="inventory.customer_return",
+        entity_type="inventory_transaction",
+        entity_id=transaction.id,
+        description=(
+            f"Refunded product returned to stock: {product.name}, {qty}, "
+            f"location {location.id}, refund line {refund_line_id}."
+        ),
+    )
+    if commit:
+        db.commit()
+        db.refresh(transaction)
+    return transaction
+
+
 def transfer_stock(
     db: Session,
     *,
@@ -1149,8 +1644,12 @@ def transfer_stock(
     qty = require_positive_quantity(quantity_value)
     avg = cost(parse_decimal(product.current_weighted_average_cost_ex_vat or 0))
     total_value = money(qty * avg)
-    if parse_decimal(source.quantity_on_hand or 0) - qty < 0:
-        raise ValueError("Negative stock is not allowed.")
+    source_available = quantity(
+        parse_decimal(source.quantity_on_hand or 0)
+        - parse_decimal(source.quantity_reserved or 0)
+    )
+    if source_available < qty:
+        raise ValueError("Negative stock is not allowed; available stock is reserved.")
 
     product_qty = quantity(parse_decimal(product.current_inventory_quantity or 0))
     product_value = money(parse_decimal(product.current_inventory_value_ex_vat or 0))
