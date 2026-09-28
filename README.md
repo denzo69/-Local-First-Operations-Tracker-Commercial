@@ -20,10 +20,10 @@ It demonstrates how customer management, operational documents, sales, inventory
 - Customer, product, service, warehouse, supplier, cash register, and user registers
 - Work Orders, Quotes, Delivery Notes, and document conversion workflows
 - Direct Quick Sale and document-based Sale workflows
-- Cash, card, bank transfer, mobile, other payment, split-payment, refund, and external Invoice Handoff workflows
+- Cash, card, bank transfer, mobile, other payment, split-payment, line-level refund, and external Invoice Handoff workflows
 - Invoice Follow-up for manual payment checks, unpaid status, reminder tracking, and paid confirmation
 - Daily Closing with stored historical snapshots and closed-date write locks
-- Goods Receipts, Stock Balances, Inventory Transactions, weighted-average costing, and Inventory Valuation
+- Goods Receipts, Delivery Note stock reservations, Stock Balances, Inventory Transactions, weighted-average costing, and Inventory Valuation
 - Internal product SKUs, validated EAN/UPC/GTIN barcodes, Quick Sale scanner support, and identifier-aware CSV import
 - Reporting, Audit Log, database migrations, Backups, and Restore
 - Local authentication and operational user roles
@@ -82,7 +82,8 @@ The mobile experience is a responsive browser UI, not a native mobile applicatio
 - Sale document numbers shared by Quick Sale and Work Order-originated Sales
 - Cash, card, bank transfer, mobile, other, split-payment, partial-payment, and external Invoice Handoff settlement paths
 - Payment rows stored separately from Sale rows
-- Refund rows stored separately from Sale and Payment rows
+- Refund rows stored separately from Sale and Payment rows, with exact Sale-line quantity and VAT allocation
+- Optional customer-return stock movement to a selected warehouse location during a line refund
 - Seller reports for daily, weekly, and monthly sales and margin metrics
 - Sales reports and printable seller commission-style summaries
 - Customer-facing receipt output separate from internal Sale detail and audit views
@@ -96,6 +97,7 @@ The mobile experience is a responsive browser UI, not a native mobile applicatio
 - Weighted-average inventory cost based on ex-VAT landed cost
 - Freight and other landed-cost allocation by purchase value or quantity
 - Inventory Valuation and ledger/cache reconciliation
+- Delivery Note reservations reduce available stock without changing on-hand quantity or inventory value; dispatch or Sale conversion consumes the reservation
 - Sale-line cost-of-goods-sold and gross-profit snapshots using the weighted average cost at Sale time
 
 ### Operations, Backups, And Auditability
@@ -125,8 +127,7 @@ The mobile experience is a responsive browser UI, not a native mobile applicatio
 - There is no native mobile application.
 - Receipt numbering is local-MVP safe, but not designed for high-concurrency multi-server use.
 - Backup scheduling is in-process; use an external scheduler for stricter operational guarantees.
-- Multi-VAT refunds are rejected until line-level refund allocation is implemented.
-- Financial refunds do not yet create customer-return stock movements. A refund leaves inventory unchanged until a dedicated return workflow is implemented.
+- Line-level refunds support multi-VAT Sales and optional inventory return. The retained legacy amount-only refund service remains limited to a single VAT rate and never changes stock.
 - Bootstrap CSS and JavaScript are bundled locally under `app/static/vendor/bootstrap`; the normal UI does not require a CDN.
 
 ## Detailed Sales And Document Workflows
@@ -137,7 +138,7 @@ A Work Order is operational, not financial. When it becomes billable, it is conv
 
 A Quote is used to price products, services, or work without reducing inventory.
 
-A Delivery Note represents products reserved, delivered, or prepared for a customer before final settlement. Delivery Notes reduce stock products when issued. Service rows and manual work rows do not reduce stock. When a Delivery Note is later converted to a Sale, the existing Delivery Note stock issue is reused for Sale cost reporting and stock is not reduced a second time.
+A Delivery Note represents products reserved, delivered, or prepared for a customer before final settlement. Adding a stock-product row creates location-level reservations: on-hand quantity and inventory value remain unchanged, while reserved quantity increases and available quantity decreases. Dispatch consumes the reservation and creates the stock issue. Converting an undispatched Delivery Note to a Sale consumes the reservation directly; converting an already dispatched Delivery Note reuses its stock issue for Sale cost reporting, so stock is never reduced twice. Service rows and manual work rows do not reserve or reduce stock.
 
 Direct Quick Sale and Work Order billing use the same Sale engine:
 
@@ -168,6 +169,8 @@ Daily Closing rules:
 - Reopening the Daily Closing unlocks that business date for authorized users.
 - Re-closing after reopen creates a new snapshot version and preserves older snapshot rows.
 - Refunds cannot exceed the original Sale total cumulatively.
+- Line refunds cannot exceed the remaining quantity on their original Sale line and preserve that line's exact VAT rate.
+- A stock-product line refund can optionally create a `customer_return` inventory transaction at the original Sale-line unit cost and selected location.
 - Later Refunds reduce the refund day and refunding seller totals; the original Sale remains on its original Sale date and credited seller.
 
 ## Inventory Costing
@@ -202,6 +205,8 @@ new average cost = (old value + new receipt value) / (old quantity + received qu
 ```
 
 The Inventory Transaction ledger is the accounting source of truth for stock quantity and value. Current balance caches and product-level cost fields must be reproducible from ledger rows. Negative stock is rejected by default because it would make weighted-average cost ambiguous. Reconciliation can detect mismatches and repair caches without rewriting transaction history. Posted receipts are immutable through application guards and SQLite triggers; cancellation creates reversal transactions instead of deleting history.
+
+Active Delivery Note reservations are operational allocations, not ledger movements. They are stored separately, included in `InventoryBalance.quantity_reserved`, and protect the reserved quantity from Sales, transfers, and receipt cancellation. Releasing a reservation restores availability without creating a stock transaction; consuming it creates the appropriate Sale or Delivery Note issue transaction.
 
 Sale-line COGS and gross-profit snapshots use the weighted average cost that existed when the Sale was finalized. Later purchases do not rewrite historical profit. Non-stock products and services have zero inventory COGS in the current MVP cost model.
 

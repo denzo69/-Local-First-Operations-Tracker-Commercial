@@ -21,11 +21,22 @@
         {% endif %}
         <form method="post" action="{{ route_base }}/{{ job.id }}/convert/sale"><button class="btn btn-primary" type="submit">{{ t.convert_to_quick_sale }}</button></form>
         <form method="post" action="{{ route_base }}/{{ job.id }}/convert/invoice"><button class="btn btn-outline-secondary" type="submit">{{ t.mark_transferred_to_invoicing }}</button></form>
+        {% if document_type == "delivery_note" and reserved_quantity > 0 %}
+        <form method="post" action="{{ route_base }}/{{ job.id }}/dispatch"><button class="btn btn-success" type="submit">{{ t.dispatch_delivery_note }}</button></form>
+        {% endif %}
     </div>
 </div>
 
-{% if document_type in ["quote", "delivery_note"] %}
+{% if document_type == "quote" %}
 <div class="alert alert-info">{{ t.non_stock_document_help }}</div>
+{% elif document_type == "delivery_note" %}
+<div class="alert {% if inventory_state == 'dispatched' %}alert-success{% elif inventory_state == 'partially_dispatched' %}alert-warning{% else %}alert-info{% endif %}">
+    {% if inventory_state == "reserved" %}{{ t.delivery_note_inventory_reserved }}
+    {% elif inventory_state == "dispatched" %}{{ t.delivery_note_inventory_dispatched }}
+    {% elif inventory_state == "partially_dispatched" %}{{ t.delivery_note_inventory_partially_dispatched }}
+    {% else %}{{ t.delivery_note_no_stock_rows }}{% endif %}
+    <div class="small mt-1">{{ t.reserved_quantity }}: {{ reserved_quantity }} · {{ t.issued_quantity }}: {{ issued_quantity }}</div>
+</div>
 {% endif %}
 
 <div class="card shadow-sm border-0 mb-3">

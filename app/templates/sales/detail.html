@@ -115,7 +115,7 @@
 <div class="card mb-3">
     <div class="table-responsive responsive-card-table">
         <table class="table mb-0">
-            <thead><tr><th>{{ t.description }}</th><th>{{ t.quantity }}</th><th>{{ t.unit_price }}</th><th>{{ t.vat }} %</th><th>{{ t.total }}</th><th>{{ t.cost_of_goods_sold }}</th><th>{{ t.gross_profit }}</th></tr></thead>
+            <thead><tr><th>{{ t.description }}</th><th>{{ t.quantity }}</th><th>{{ t.unit_price }}</th><th>{{ t.vat }} %</th><th>{{ t.total }}</th><th>{{ t.cost_of_goods_sold }}</th><th>{{ t.gross_profit }}</th><th>{{ t.refund }}</th></tr></thead>
             <tbody>
             {% for line in sale.lines %}
             <tr>
@@ -126,6 +126,42 @@
                 <td data-label="{{ t.total }}">{{ line.line_total }}</td>
                 <td data-label="{{ t.cost_of_goods_sold }}">{{ line.cost_of_goods_sold_ex_vat }}</td>
                 <td data-label="{{ t.gross_profit }}">{{ line.gross_profit_ex_vat }}</td>
+                <td data-label="{{ t.refund }}">
+                    {% set refundable_quantity = remaining_refundable_quantities[line.id] %}
+                    {% if refundable_quantity > 0 and remaining_refundable > 0 %}
+                    <details>
+                        <summary class="btn btn-sm btn-outline-danger">{{ t.line_refund }}</summary>
+                        <form class="mt-2" method="post" action="/sales/{{ sale.id }}/refund-lines">
+                            <input type="hidden" name="sale_line_id" value="{{ line.id }}">
+                            <div class="small text-muted mb-2">{{ t.refundable_quantity }}: {{ refundable_quantity }}</div>
+                            <label class="form-label small">{{ t.refund_quantity }}</label>
+                            <input class="form-control form-control-sm mb-2" name="quantity" type="number" min="0.001" max="{{ refundable_quantity }}" step="0.001" value="{{ refundable_quantity }}" required>
+                            <label class="form-label small">{{ t.refund_shift_optional }}</label>
+                            <select class="form-select form-select-sm mb-2" name="refund_shift_id">
+                                <option value="">{{ t.no_refund_shift }}</option>
+                                {% for shift in open_shifts %}<option value="{{ shift.id }}">#{{ shift.id }} - {{ shift.seller.name }}</option>{% endfor %}
+                            </select>
+                            <label class="form-label small">{{ t.payment_method }}</label>
+                            <select class="form-select form-select-sm mb-2" name="payment_method">
+                                {% for code, label in payment_methods.items() %}<option value="{{ code }}">{{ t[code] }}</option>{% endfor %}
+                            </select>
+                            {% if line.product and line.product.is_stock_item %}
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" id="restock_{{ line.id }}" name="restock" type="checkbox" value="true">
+                                <label class="form-check-label small" for="restock_{{ line.id }}">{{ t.return_to_stock }}</label>
+                            </div>
+                            <label class="form-label small">{{ t.restock_location }}</label>
+                            <select class="form-select form-select-sm mb-2" name="restock_location_id">
+                                <option value="">-</option>
+                                {% for location in restock_locations %}<option value="{{ location.id }}">{{ location.warehouse.name }} / {{ location.code }}</option>{% endfor %}
+                            </select>
+                            {% endif %}
+                            <input class="form-control form-control-sm mb-2" name="reason" placeholder="{{ t.refund_reason }}">
+                            <button class="btn btn-sm btn-danger" type="submit">{{ t.refund }}</button>
+                        </form>
+                    </details>
+                    {% else %}<span class="text-muted">-</span>{% endif %}
+                </td>
             </tr>
             {% endfor %}
             </tbody>
@@ -156,6 +192,12 @@
                 </div>
                 {% if refund.reason %}<div>{{ refund.reason }}</div>{% endif %}
                 {% if refund.vat_breakdown_json %}<code>{{ refund.vat_breakdown_json }}</code>{% endif %}
+                {% for refund_line in refund.lines %}
+                <div class="small mt-1">
+                    {{ refund_line.sale_line.description_snapshot }} · {{ t.quantity }} {{ refund_line.quantity }}
+                    {% if refund_line.restocked %}· {{ t.return_to_stock }}: {{ refund_line.restock_location.code }}{% endif %}
+                </div>
+                {% endfor %}
             </div>
             {% else %}
             <div class="text-muted">{{ t.no_refunds }}</div>
@@ -163,24 +205,8 @@
         </div>
     </div>
 </div>
-<form class="card p-3 mt-3" method="post" action="/sales/{{ sale.id }}/refunds">
-    <h2 class="h5">{{ t.refund }}</h2>
-    <p class="text-muted">{{ t.remaining_refundable }}: {{ remaining_refundable }}</p>
-    <label class="form-label" for="refund_shift_id">{{ t.refund_shift_optional }}</label>
-    <select class="form-select mb-2" id="refund_shift_id" name="refund_shift_id">
-        <option value="">{{ t.no_refund_shift }}</option>
-        {% for shift in open_shifts %}
-        <option value="{{ shift.id }}">#{{ shift.id }} - {{ shift.seller.name }} - {{ shift.cash_register.name }} - {{ shift.business_date }}</option>
-        {% endfor %}
-    </select>
-    {% if not open_shifts %}<div class="alert alert-info">{{ t.refund_without_shift_hint }}</div>{% endif %}
-    <input class="form-control mb-2" name="amount" value="{{ remaining_refundable }}" placeholder="{{ t.refund_amount_blank_full }}" inputmode="decimal">
-    <select class="form-select mb-2" name="payment_method">
-        {% for code, label in payment_methods.items() %}
-        <option value="{{ code }}">{{ t[code] }}</option>
-        {% endfor %}
-    </select>
-    <input class="form-control mb-2" name="reason" placeholder="{{ t.refund_reason }}">
-    <button class="btn btn-outline-danger" type="submit">{{ t.refund }}</button>
-</form>
+<div class="alert alert-light border mt-3">
+    <strong>{{ t.line_refund }}</strong> — {{ t.line_refund_help }}
+    <div>{{ t.remaining_refundable }}: {{ remaining_refundable }}</div>
+</div>
 {% endblock %}

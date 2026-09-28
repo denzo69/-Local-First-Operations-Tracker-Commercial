@@ -20,6 +20,7 @@ The MVP database should include the following tables:
 - sale_lines
 - payments
 - refunds
+- refund_lines
 - cash_movements
 - daily_closings
 - daily_closing_snapshots
@@ -30,6 +31,8 @@ The MVP database should include the following tables:
 - goods_receipts
 - goods_receipt_lines
 - inventory_transactions
+- inventory_reservations
+- product_barcodes
 
 ## Migration bootstrap and legacy SQLite databases
 
@@ -38,6 +41,8 @@ Alembic is the versioned source of truth for schema upgrades. New databases shou
 ```powershell
 .\.venv\Scripts\python.exe -m app.migration_bootstrap
 ```
+
+The current Alembic head is `e4f6a8b0c2d3` (`inventory_reservations` and `refund_lines`).
 
 Older local-first builds could create tables through application startup before the database had an Alembic stamp. Those databases may contain valid application tables but no `alembic_version` row. Running raw `alembic upgrade head` against that state can fail because the baseline migration tries to recreate tables that already exist.
 
@@ -48,6 +53,8 @@ The migration bootstrap handles that compatibility case deterministically:
 - unstamped database matching auth schema: stamp `3f0d1c9a8b22`, then upgrade to head
 - unstamped database matching inventory schema: stamp `7c2a91f4d8e3`, then upgrade to head
 - unstamped database matching stabilization schema: stamp `9e4c3b2a1f08`
+- unstamped database matching a later known schema: stamp that exact revision, then upgrade to head
+- unstamped database matching current reservations/refund-lines schema: stamp `e4f6a8b0c2d3` without rebuilding tables
 - already stamped database: run normal Alembic upgrade to head
 - partial, inconsistent, or unknown schema: abort without stamping or upgrading
 
@@ -75,11 +82,15 @@ CashRegister 1---N Shift
 Shift 1---N Sale
 Sale 1---N Payment
 Sale 1---N Refund
+Refund 1---N RefundLine
+SaleLine 1---N RefundLine
 DailyClosing 1---N DailyClosingSnapshot
 Supplier 1---N GoodsReceipt
 Warehouse 1---N WarehouseLocation
 Product 1---N InventoryTransaction
 Product 1---N InventoryBalance
+JobItem 1---N InventoryReservation
+WarehouseLocation 1---N InventoryReservation
 GoodsReceipt 1---N GoodsReceiptLine
 GoodsReceipt 1---N InventoryTransaction
 ```
@@ -214,7 +225,7 @@ Important accounting rules:
 
 - Work Orders, Sales, Payments, and Refunds are separate records.
 - A Work Order is operational, not financial. It becomes billable by creating a Sale.
-- A Sale may originate from direct POS sale or from a Work Order.
+- A Sale may originate from direct POS, Work Order, Quote, or Delivery Note workflow. `sales.source_type` preserves the actual origin.
 - A Sale may reference a Work Order, but payments are stored in `payments`.
 - Work Order conversion is idempotent. A Work Order must not create multiple active Sales accidentally.
 - `sales.document_number` is the Sale receipt/register document number. Direct POS Sales and Work Order-originated Sales use the same Sale document-number sequence. Work Order numbers and external invoice numbers are separate references and must not replace it.
@@ -229,6 +240,7 @@ Important accounting rules:
 - `payments.received_by_user_id` is the operator who received or recorded payment; it is separate from the credited seller.
 - `sales.sold_by_user_id` credits the seller for reports and may be null when the operator explicitly chooses no seller on the receipt; `sales.created_by_user_id` records the operator.
 - Refunds are stored in `refunds` and include `vat_breakdown_json`.
+- Line-level allocations are stored in `refund_lines`, including refunded quantity, gross/net/VAT amounts, optional restock location, returned inventory cost, and the resulting inventory transaction reference.
 - Refunds reference the original sale through `sale_id`, but `shift_id`, `seller_id`, and `refunded_at` describe the actual refund event.
 - A later refund is attributed to the refund shift business date and refunding seller. It does not move the original sale away from the original sale shift or seller.
 - Daily closing stores immutable rows in `daily_closing_snapshots`.
@@ -244,8 +256,8 @@ Current limitations:
 - Role checks protect routes and business operations, but the app is still not hardened for public internet exposure.
 - Sale document numbers are stable Sale receipt/register numbers. Payment transaction numbers, refund numbers, shift numbers, and closing numbers are not official stable document numbers yet.
 - Sales support multiple validated lines and multiple payment rows. Full accounting invoicing, automatic external payment status sync, external payment gateways, and statutory e-invoicing are not implemented.
-- Multi-VAT refunds are rejected until line-level refund allocation is added.
-- Financial refunds do not yet create customer-return inventory transactions.
+- Multi-VAT Sales must use line-level refunds so VAT is allocated to the exact original line. The legacy amount-only refund service remains single-VAT.
+- A line-level stock-product refund may optionally create a `customer_return` inventory transaction at the original Sale-line cost. A financial-only refund leaves inventory unchanged.
 
 Sales also store cost snapshots for stock-product sales:
 
@@ -272,6 +284,10 @@ Important inventory rules:
 - Goods receipts also store freight and other-cost VAT rates, VAT amounts, and VAT-inclusive totals for purchase-document reconciliation. Deductible VAT is excluded from inventory value.
 - Posted goods receipt cancellation creates reversal transactions and never deletes the original purchase history.
 - Stock-product sales create `sale` transactions and store sale-line cost of goods sold and gross profit snapshots.
+- Delivery Note rows create `inventory_reservations` records by location. Reservations change reserved/available caches but do not change on-hand quantity, inventory value, or the immutable transaction ledger.
+- Dispatch consumes active reservations into `delivery_note_issue` transactions. Sale conversion consumes undispatched reservations into `sale` transactions and reuses prior dispatch cost when already dispatched.
+- Active reservations protect stock from unrelated Sales, transfers, and receipt cancellation.
+- Customer returns created by line refunds use `customer_return` transactions and restore the original Sale-line unit cost at the selected location.
 - Transfers create balanced transactions so total company inventory value remains unchanged.
 - Negative stock is rejected by default.
 
@@ -284,6 +300,8 @@ Supporting tables:
 - `goods_receipts`
 - `goods_receipt_lines`
 - `inventory_transactions`
+- `inventory_reservations`
+- `refund_lines`
 
 ## Future tables
 

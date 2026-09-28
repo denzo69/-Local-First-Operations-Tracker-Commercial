@@ -12,6 +12,7 @@ from app.migration_bootstrap import (
     CLASS_BASELINE,
     CLASS_CUSTOMER_DISCOUNT,
     CLASS_PRODUCT_IDENTIFIERS,
+    CLASS_RESERVATIONS_REFUNDS,
     CLASS_EMPTY,
     CLASS_DOCUMENT_WORKFLOW,
     CLASS_INVENTORY,
@@ -26,6 +27,7 @@ from app.migration_bootstrap import (
     DOCUMENT_WORKFLOW_REVISION,
     CUSTOMER_DISCOUNT_REVISION,
     PRODUCT_IDENTIFIERS_REVISION,
+    RESERVATIONS_REFUNDS_REVISION,
     HEAD_REVISION,
     INVOICE_FOLLOWUP_REVISION,
     INVENTORY_REVISION,
@@ -151,6 +153,28 @@ def test_product_identifier_bootstrap_evidence_and_non_nullable_checks():
         inspection,
     )
 
+    reservation_inspection = SchemaInspection(
+        database_url="sqlite:///example.db",
+        database_path=None,
+        sqlite=True,
+        tables={"inventory_reservations", "refund_lines"},
+        columns_by_table={},
+        nullable_columns_by_table={},
+        indexes={"ix_inventory_reservations_status"},
+        foreign_keys=set(),
+        triggers=set(),
+        alembic_versions=(),
+        settings_keys=set(),
+        missing_finalized_sale_document_numbers=0,
+    )
+    reservation_evidence = _future_revision_evidence(
+        PRODUCT_IDENTIFIERS_REVISION,
+        reservation_inspection,
+    )
+    assert "future table inventory_reservations" in reservation_evidence
+    assert "future table refund_lines" in reservation_evidence
+    assert "future index ix_inventory_reservations_status" in reservation_evidence
+
 
 def test_migration_bootstrap_module_entrypoint_dry_run_uses_temp_database(tmp_path, monkeypatch):
     db_path = tmp_path / "entrypoint.db"
@@ -220,6 +244,8 @@ def test_alembic_upgrade_head_creates_current_schema(tmp_path):
     assert "goods_receipt_lines" in tables
     assert "inventory_transactions" in tables
     assert "product_barcodes" in tables
+    assert "inventory_reservations" in tables
+    assert "refund_lines" in tables
     user_columns = {column["name"] for column in inspector.get_columns("users")}
     assert "password_hash" in user_columns
     assert "can_receive_sales_credit" in user_columns
@@ -284,6 +310,30 @@ def test_alembic_upgrade_head_creates_current_schema(tmp_path):
     assert "inventory_value_before" in transaction_columns
     assert "inventory_value_after" in transaction_columns
     assert "weighted_average_cost_after" in transaction_columns
+    reservation_columns = {column["name"] for column in inspector.get_columns("inventory_reservations")}
+    assert {
+        "job_id",
+        "job_item_id",
+        "product_id",
+        "warehouse_location_id",
+        "quantity",
+        "status",
+        "created_by_user_id",
+        "inventory_transaction_id",
+    } <= reservation_columns
+    refund_line_columns = {column["name"] for column in inspector.get_columns("refund_lines")}
+    assert {
+        "refund_id",
+        "sale_line_id",
+        "quantity",
+        "gross_amount",
+        "net_amount",
+        "vat_amount",
+        "restocked",
+        "restock_location_id",
+        "inventory_cost_ex_vat",
+        "inventory_transaction_id",
+    } <= refund_line_columns
 
     shift_indexes = {index["name"] for index in inspector.get_indexes("shifts")}
     assert "ux_open_shift_seller" in shift_indexes
@@ -304,11 +354,21 @@ def test_alembic_upgrade_head_creates_current_schema(tmp_path):
     job_indexes = {index["name"] for index in inspector.get_indexes("jobs")}
     product_indexes = {index["name"] for index in inspector.get_indexes("products")}
     barcode_indexes = {index["name"] for index in inspector.get_indexes("product_barcodes")}
+    reservation_indexes = {index["name"] for index in inspector.get_indexes("inventory_reservations")}
+    refund_line_indexes = {index["name"] for index in inspector.get_indexes("refund_lines")}
     assert "ix_jobs_document_type" in job_indexes
     assert "ix_jobs_source_job_id" in job_indexes
     assert "ix_products_sku" in product_indexes
     assert "ix_product_barcodes_product_id" in barcode_indexes
     assert "ix_product_barcodes_code" in barcode_indexes
+    assert {
+        "ix_inventory_reservations_job_id",
+        "ix_inventory_reservations_job_item_id",
+        "ix_inventory_reservations_product_id",
+        "ix_inventory_reservations_warehouse_location_id",
+        "ix_inventory_reservations_status",
+    } <= reservation_indexes
+    assert {"ix_refund_lines_refund_id", "ix_refund_lines_sale_line_id"} <= refund_line_indexes
     assert "ix_sales_settlement_status" in sale_indexes
     assert "ux_sales_active_work_order" in sale_indexes
     assert "ix_sales_due_date" in sale_indexes
@@ -379,7 +439,12 @@ def test_unstamped_stabilization_database_is_stamped_without_rebuild(tmp_path):
     assert plan.classification.classification == CLASS_STABILIZATION
     assert plan.stamp_revision == STABILIZATION_REVISION
     assert plan.upgrade_target == "head"
-    assert before_tables | {"alembic_version", "product_barcodes"} == after_tables
+    assert before_tables | {
+        "alembic_version",
+        "product_barcodes",
+        "inventory_reservations",
+        "refund_lines",
+    } == after_tables
     assert _current_revision(db_path) == HEAD_REVISION
 
 
@@ -531,7 +596,7 @@ def test_unstamped_customer_discount_database_is_stamped_and_upgraded(tmp_path):
     assert _current_revision(db_path) == HEAD_REVISION
 
 
-def test_unstamped_product_identifier_database_is_stamped_without_upgrade(tmp_path):
+def test_unstamped_product_identifier_database_is_stamped_and_upgraded(tmp_path):
     db_path = tmp_path / "product-identifiers.sqlite"
     _upgrade_to_revision(db_path, PRODUCT_IDENTIFIERS_REVISION)
     _drop_alembic_version(db_path)
@@ -540,6 +605,19 @@ def test_unstamped_product_identifier_database_is_stamped_without_upgrade(tmp_pa
 
     assert plan.classification.classification == CLASS_PRODUCT_IDENTIFIERS
     assert plan.stamp_revision == PRODUCT_IDENTIFIERS_REVISION
+    assert plan.upgrade_target == "head"
+    assert _current_revision(db_path) == HEAD_REVISION
+
+
+def test_unstamped_reservations_refunds_database_is_stamped_without_upgrade(tmp_path):
+    db_path = tmp_path / "reservations-refunds.sqlite"
+    _upgrade_to_revision(db_path, RESERVATIONS_REFUNDS_REVISION)
+    _drop_alembic_version(db_path)
+
+    plan = run_bootstrap(_database_url(db_path), backup_dir=tmp_path / "backups")
+
+    assert plan.classification.classification == CLASS_RESERVATIONS_REFUNDS
+    assert plan.stamp_revision == RESERVATIONS_REFUNDS_REVISION
     assert plan.upgrade_target is None
     assert _current_revision(db_path) == HEAD_REVISION
 
@@ -772,7 +850,7 @@ def test_extra_legacy_side_table_does_not_block_known_schema_classification(tmp_
     inspection = inspect_database(_database_url(db_path))
     classification = classify_schema(inspection)
 
-    assert classification.classification == CLASS_PRODUCT_IDENTIFIERS
+    assert classification.classification == CLASS_RESERVATIONS_REFUNDS
     assert classification.matched_revision == HEAD_REVISION
 
 
@@ -829,5 +907,6 @@ def test_default_database_can_be_classified_in_dry_run_without_modification():
         CLASS_DOCUMENT_WORKFLOW,
         CLASS_CUSTOMER_DISCOUNT,
         CLASS_PRODUCT_IDENTIFIERS,
+        CLASS_RESERVATIONS_REFUNDS,
         CLASS_UNKNOWN,
     }

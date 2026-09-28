@@ -131,6 +131,7 @@ def ensure_sqlite_schema_compatibility(engine: Engine) -> list[str]:
             column="code",
             index_name="ix_product_barcodes_code",
         )
+        _create_reservation_refund_tables(connection)
         _add_column_if_missing(connection, "jobs", "document_type", "VARCHAR(50)")
         _add_column_if_missing(connection, "jobs", "source_job_id", "INTEGER")
         _add_column_if_missing(connection, "jobs", "converted_at", "DATETIME")
@@ -163,6 +164,86 @@ def ensure_sqlite_schema_compatibility(engine: Engine) -> list[str]:
             )
         )
     return diagnostics
+
+
+def _create_reservation_refund_tables(connection) -> None:
+    required_tables = {
+        row[0]
+        for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type = 'table'")).fetchall()
+    }
+    if {
+        "jobs",
+        "job_items",
+        "products",
+        "warehouse_locations",
+        "users",
+        "inventory_transactions",
+    }.issubset(required_tables):
+        connection.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS inventory_reservations (
+                    id INTEGER NOT NULL PRIMARY KEY,
+                    job_id INTEGER NOT NULL REFERENCES jobs (id),
+                    job_item_id INTEGER NOT NULL REFERENCES job_items (id),
+                    product_id INTEGER NOT NULL REFERENCES products (id),
+                    warehouse_location_id INTEGER NOT NULL REFERENCES warehouse_locations (id),
+                    quantity NUMERIC(18, 3) NOT NULL,
+                    status VARCHAR(30) NOT NULL DEFAULT 'active',
+                    created_by_user_id INTEGER NOT NULL REFERENCES users (id),
+                    created_at DATETIME,
+                    consumed_at DATETIME,
+                    released_at DATETIME,
+                    release_reason TEXT,
+                    inventory_transaction_id INTEGER REFERENCES inventory_transactions (id),
+                    CONSTRAINT ux_inventory_reservation_item_location
+                        UNIQUE (job_item_id, warehouse_location_id)
+                )
+                """
+            )
+        )
+    if {
+        "refunds",
+        "sale_lines",
+        "warehouse_locations",
+        "inventory_transactions",
+    }.issubset(required_tables):
+        connection.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS refund_lines (
+                    id INTEGER NOT NULL PRIMARY KEY,
+                    refund_id INTEGER NOT NULL REFERENCES refunds (id),
+                    sale_line_id INTEGER NOT NULL REFERENCES sale_lines (id),
+                    quantity NUMERIC(12, 3) NOT NULL,
+                    gross_amount NUMERIC(12, 2) NOT NULL,
+                    net_amount NUMERIC(12, 2) NOT NULL,
+                    vat_amount NUMERIC(12, 2) NOT NULL,
+                    restocked BOOLEAN NOT NULL DEFAULT 0,
+                    restock_location_id INTEGER REFERENCES warehouse_locations (id),
+                    inventory_cost_ex_vat NUMERIC(12, 2) NOT NULL DEFAULT 0,
+                    inventory_transaction_id INTEGER REFERENCES inventory_transactions (id),
+                    created_at DATETIME
+                )
+                """
+            )
+        )
+    for index_name, table, column in [
+        ("ix_inventory_reservations_id", "inventory_reservations", "id"),
+        ("ix_inventory_reservations_job_id", "inventory_reservations", "job_id"),
+        ("ix_inventory_reservations_job_item_id", "inventory_reservations", "job_item_id"),
+        ("ix_inventory_reservations_product_id", "inventory_reservations", "product_id"),
+        (
+            "ix_inventory_reservations_warehouse_location_id",
+            "inventory_reservations",
+            "warehouse_location_id",
+        ),
+        ("ix_inventory_reservations_status", "inventory_reservations", "status"),
+        ("ix_refund_lines_id", "refund_lines", "id"),
+        ("ix_refund_lines_refund_id", "refund_lines", "refund_id"),
+        ("ix_refund_lines_sale_line_id", "refund_lines", "sale_line_id"),
+    ]:
+        _create_index_if_missing(connection, index_name, table, column)
 
 
 def _create_inventory_transaction_immutability_triggers(connection) -> None:

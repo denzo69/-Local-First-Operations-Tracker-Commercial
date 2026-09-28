@@ -7,7 +7,19 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import GoodsReceipt, InventoryBalance, InventoryTransaction, Job, Product, Role, Sale, Supplier, User, WarehouseLocation
+from app.models import (
+    GoodsReceipt,
+    InventoryBalance,
+    InventoryReservation,
+    InventoryTransaction,
+    Job,
+    Product,
+    Role,
+    Sale,
+    Supplier,
+    User,
+    WarehouseLocation,
+)
 from app.services.auth_service import hash_password
 from app.services.sales_service import ensure_default_roles
 
@@ -185,11 +197,18 @@ def test_enterprise_week_simulation_covers_core_business_workflows():
         assert delivery_response.status_code == 303
         delivery_id = _id_from_location(delivery_response.headers["location"])
         with SessionLocal() as db:
-            assert db.get(Product, stock_id).current_inventory_quantity == Decimal("9.000")
+            assert db.get(Product, stock_id).current_inventory_quantity == Decimal("12.000")
+            balance = db.query(InventoryBalance).filter(InventoryBalance.product_id == stock_id).one()
+            assert balance.quantity_reserved == Decimal("3.000")
+            assert balance.quantity_available == Decimal("9.000")
+            assert db.query(InventoryReservation).filter(
+                InventoryReservation.job_id == delivery_id,
+                InventoryReservation.status == "active",
+            ).count() == 1
             assert db.query(InventoryTransaction).filter(
                 InventoryTransaction.transaction_type == "delivery_note_issue",
                 InventoryTransaction.work_order_id == delivery_id,
-            ).count() == 1
+            ).count() == 0
 
         work_order_response = client.post(f"/quotes/{quote_id}/convert/work_order", follow_redirects=False)
         assert work_order_response.status_code == 303
@@ -205,6 +224,18 @@ def test_enterprise_week_simulation_covers_core_business_workflows():
         assert delivery_receipt.status_code == 200
         assert "KASSAKUITTI" in delivery_receipt.text
         assert "Viikon Simulaatioasiakas" in delivery_receipt.text
+
+        with SessionLocal() as db:
+            delivery_sale_record = db.get(Sale, delivery_sale_id)
+            reservation = db.query(InventoryReservation).filter(InventoryReservation.job_id == delivery_id).one()
+            balance = db.query(InventoryBalance).filter(InventoryBalance.product_id == stock_id).one()
+            assert delivery_sale_record.source_type == "delivery_note"
+            assert reservation.status == "consumed"
+            # The separately converted Work Order has already consumed three
+            # unreserved units; this sale consumes the delivery reservation.
+            assert balance.quantity_on_hand == Decimal("6.000")
+            assert balance.quantity_reserved == Decimal("0.000")
+            assert balance.quantity_available == Decimal("6.000")
 
         quick_sale = client.post(
             "/sales/quick",

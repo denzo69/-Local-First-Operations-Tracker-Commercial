@@ -20,6 +20,7 @@ from app.models import (
     Product,
     Customer,
     Refund,
+    RefundLine,
     Role,
     Sale,
     SaleLine,
@@ -81,6 +82,7 @@ SALE_SELLER_SELECTION_MODES = {
     "selectable_active_seller",
 }
 SELLER_MODES = {"default", "selected", "none"}
+DOCUMENT_SALE_SOURCES = {"work_order", "delivery_note", "quote"}
 
 
 class AuthorizationError(ValueError):
@@ -234,6 +236,15 @@ def settlement_status_for(*, total: Decimal, paid: Decimal, invoice_requested: b
 def remaining_refundable_amount(sale: Sale) -> Decimal:
     existing_refunds = sum_money(refund.amount for refund in sale.refunds)
     return money(parse_decimal(sale.total) - existing_refunds)
+
+
+def remaining_refundable_quantity(sale_line: SaleLine) -> Decimal:
+    refunded_quantity = sum(
+        (parse_decimal(refund_line.quantity) for refund_line in sale_line.refund_lines),
+        Decimal("0"),
+    )
+    remaining = parse_decimal(sale_line.quantity) - refunded_quantity
+    return max(Decimal("0"), remaining)
 
 
 def require_operational_user(user: User | None) -> User:
@@ -404,7 +415,7 @@ def _sale_payment_method_label(payments: list[PaymentInput], invoice_requested: 
 
 def _validate_sale_source(source_type: str) -> str:
     source = source_type.strip() if source_type else "pos"
-    if source not in {"pos", "work_order"}:
+    if source not in {"pos", *DOCUMENT_SALE_SOURCES}:
         raise ValueError("Invalid sale source.")
     return source
 
@@ -513,9 +524,18 @@ def create_sale_from_lines(
     work_order = db.get(Job, work_order_id) if work_order_id else None
     if work_order_id and work_order is None:
         raise ValueError("Work Order not found.")
-    if source == "work_order":
+    if source in DOCUMENT_SALE_SOURCES:
         if work_order is None:
-            raise ValueError("Work Order sale requires a Work Order.")
+            if source == "work_order":
+                raise ValueError("Work Order sale requires a Work Order.")
+            raise ValueError("Document sale requires a source document.")
+        expected_source = (
+            work_order.document_type
+            if work_order.document_type in DOCUMENT_SALE_SOURCES
+            else "work_order"
+        )
+        if source != expected_source:
+            raise ValueError("Sale source type does not match the linked source document.")
         existing_work_order_sale = (
             db.query(Sale)
             .filter(Sale.work_order_id == work_order.id, Sale.status != "cancelled")
@@ -678,13 +698,42 @@ def create_sale_from_lines(
             line_cogs = Decimal("0.00")
             product = payload["product"]
             if product is not None and product.is_stock_item:
+                reservation_transactions = []
+                if (
+                    work_order is not None
+                    and work_order.document_type == "delivery_note"
+                    and source_line.work_order_item_id is not None
+                ):
+                    from app.services.inventory_service import (
+                        consume_delivery_note_item_reservations_for_sale,
+                    )
+
+                    reservation_transactions = consume_delivery_note_item_reservations_for_sale(
+                        db,
+                        work_order_id=work_order.id,
+                        job_item_id=source_line.work_order_item_id,
+                        quantity_value=payload["quantity"],
+                        sale_id=sale.id,
+                        created_by_user_id=operator_id,
+                        commit=False,
+                    )
                 delivery_note_cogs = _delivery_note_line_cogs(
                     db,
                     work_order=work_order,
                     work_order_item_id=source_line.work_order_item_id,
                     product_id=product.id,
                 )
-                if delivery_note_cogs is not None:
+                if reservation_transactions:
+                    line_cogs = money(
+                        sum(
+                            (
+                                -parse_decimal(transaction.total_inventory_cost)
+                                for transaction in reservation_transactions
+                            ),
+                            Decimal("0"),
+                        )
+                    )
+                elif delivery_note_cogs is not None:
                     line_cogs = delivery_note_cogs
                 else:
                     from app.services.inventory_service import issue_stock_for_sale_from_available_locations
@@ -775,6 +824,11 @@ def create_sale_from_work_order(
         raise ValueError("Work Order not found.")
     if not work_order.items:
         raise ValueError("Work Order has no billable rows.")
+    source_type = (
+        work_order.document_type
+        if work_order.document_type in DOCUMENT_SALE_SOURCES
+        else "work_order"
+    )
     lines = [
         SaleLineInput(
             product_id=item.product_id,
@@ -798,9 +852,9 @@ def create_sale_from_work_order(
         seller_mode=seller_mode,
         created_by_user_id=created_by_user_id,
         seller_selection_mode=seller_selection_mode,
-        source_type="work_order",
+        source_type=source_type,
         send_to_invoice=send_to_invoice,
-        idempotency_key=idempotency_key or f"work-order:{work_order.id}",
+        idempotency_key=idempotency_key or f"{source_type.replace('_', '-')}:{work_order.id}",
     )
 
 
@@ -1254,6 +1308,172 @@ def add_refund(
         ),
     )
     db.commit()
+    db.refresh(refund)
+    return refund
+
+
+def add_line_refund(
+    db: Session,
+    *,
+    sale_id: int,
+    sale_line_id: int,
+    quantity_value,
+    refund_shift_id: int | None,
+    seller_id: int,
+    payment_method: str,
+    reason: str = "",
+    restock: bool = False,
+    restock_location_id: int | None = None,
+) -> Refund:
+    """Refund one sale row with exact VAT allocation and optional stock return."""
+    sale = db.get(Sale, sale_id)
+    if sale is None:
+        raise ValueError("Sale not found.")
+    sale_line = db.get(SaleLine, sale_line_id)
+    if sale_line is None or sale_line.sale_id != sale.id:
+        raise ValueError("Sale line not found.")
+
+    refund_shift = db.get(Shift, refund_shift_id) if refund_shift_id else None
+    if refund_shift_id and (refund_shift is None or refund_shift.status != "open"):
+        raise ValueError("Refund requires an open shift.")
+    refund_business_date = refund_shift.business_date if refund_shift is not None else date.today()
+    assert_business_date_open(db, refund_business_date)
+    seller = require_operational_user(db.get(User, seller_id))
+    if refund_shift is not None and refund_shift.seller_id != seller.id:
+        raise ValueError("Refund seller must match refund shift seller.")
+    require_payment_method(payment_method)
+
+    refund_quantity = require_positive_quantity(quantity_value)
+    remaining_quantity = remaining_refundable_quantity(sale_line)
+    if refund_quantity > remaining_quantity:
+        raise ValueError("Refund quantity exceeds the remaining sale-line quantity.")
+    original_quantity = require_positive_quantity(sale_line.quantity)
+    already_refunded_gross = sum_money(
+        refund_line.gross_amount for refund_line in sale_line.refund_lines
+    )
+    remaining_line_gross = money(
+        parse_decimal(sale_line.line_total) - already_refunded_gross
+    )
+    if refund_quantity == remaining_quantity:
+        refund_gross = remaining_line_gross
+    else:
+        refund_gross = money(
+            parse_decimal(sale_line.line_total) * refund_quantity / original_quantity
+        )
+    if refund_gross <= 0:
+        raise ValueError("Refunded sale line must have a positive refundable amount.")
+    if refund_gross > remaining_refundable_amount(sale):
+        raise ValueError("Refund exceeds remaining refundable sale total.")
+
+    refund_net, refund_vat = vat_included_breakdown(
+        refund_gross,
+        parse_decimal(sale_line.vat_percent, "24"),
+    )
+    vat_key = format_decimal_key(sale_line.vat_percent)
+    vat_breakdown = {
+        vat_key: {
+            "gross": str(refund_gross),
+            "net": str(refund_net),
+            "vat": str(refund_vat),
+        }
+    }
+    product = sale_line.product
+    if restock and (product is None or not product.is_stock_item):
+        raise ValueError("Only a stock product can be returned to inventory.")
+    if restock and restock_location_id is None:
+        raise ValueError("Restock location is required when returning an item to inventory.")
+
+    original_line_cost = money(parse_decimal(sale_line.cost_of_goods_sold_ex_vat or 0))
+    original_unit_cost = original_line_cost / original_quantity
+    returned_inventory_cost = Decimal("0.00")
+    return_unit_cost = original_unit_cost
+    if restock:
+        previously_restocked_quantity = sum(
+            (
+                parse_decimal(refund_line.quantity)
+                for refund_line in sale_line.refund_lines
+                if refund_line.restocked
+            ),
+            Decimal("0"),
+        )
+        previously_returned_cost = sum_money(
+            refund_line.inventory_cost_ex_vat
+            for refund_line in sale_line.refund_lines
+            if refund_line.restocked
+        )
+        cumulative_return_cost = money(
+            original_line_cost
+            * (previously_restocked_quantity + refund_quantity)
+            / original_quantity
+        )
+        returned_inventory_cost = money(cumulative_return_cost - previously_returned_cost)
+        return_unit_cost = returned_inventory_cost / refund_quantity
+    existing_refunds = sum_money(refund.amount for refund in sale.refunds)
+    try:
+        refund = Refund(
+            sale_id=sale.id,
+            shift_id=refund_shift.id if refund_shift is not None else None,
+            seller_id=seller.id,
+            business_date=refund_business_date,
+            amount=refund_gross,
+            vat_amount=refund_vat,
+            vat_breakdown_json=json.dumps(vat_breakdown, sort_keys=True),
+            payment_method=payment_method,
+            reason=reason.strip() or None,
+        )
+        db.add(refund)
+        db.flush()
+        refund_line = RefundLine(
+            refund_id=refund.id,
+            sale_line_id=sale_line.id,
+            quantity=refund_quantity,
+            gross_amount=refund_gross,
+            net_amount=refund_net,
+            vat_amount=refund_vat,
+            restocked=restock,
+            restock_location_id=restock_location_id if restock else None,
+            inventory_cost_ex_vat=returned_inventory_cost,
+        )
+        db.add(refund_line)
+        db.flush()
+
+        if restock:
+            from app.services.inventory_service import return_stock_for_refund
+
+            transaction = return_stock_for_refund(
+                db,
+                product_id=product.id,
+                warehouse_location_id=restock_location_id,
+                quantity_value=refund_quantity,
+                unit_cost_ex_vat=return_unit_cost,
+                sale_id=sale.id,
+                refund_line_id=refund_line.id,
+                created_by_user_id=seller.id,
+                reason=reason or "Customer return",
+                commit=False,
+            )
+            refund_line.inventory_transaction = transaction
+
+        cumulative_refunds = money(existing_refunds + refund_gross)
+        sale.status = (
+            "partially_refunded"
+            if cumulative_refunds < parse_decimal(sale.total)
+            else "refunded"
+        )
+        log_audit_event(
+            db,
+            event_type="sale.line_refunded",
+            entity_type="refund",
+            entity_id=refund.id,
+            description=(
+                f"Sale {sale.id} line {sale_line.id} refunded: quantity {refund_quantity}, "
+                f"amount {refund_gross}, VAT {refund_vat}, restocked={restock}."
+            ),
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     db.refresh(refund)
     return refund
 

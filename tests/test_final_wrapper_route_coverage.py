@@ -74,6 +74,7 @@ def test_delivery_note_and_quote_wrappers_delegate(monkeypatch):
     monkeypatch.setattr(delivery_notes_route.jobs, "add_job_item", record("add_delivery"))
     monkeypatch.setattr(delivery_notes_route.jobs, "delete_job_item", record("delete_delivery_item"))
     monkeypatch.setattr(delivery_notes_route.jobs, "update_job_status", record("status_delivery"))
+    monkeypatch.setattr(delivery_notes_route.jobs, "dispatch_delivery_note", record("dispatch_delivery"))
     monkeypatch.setattr(delivery_notes_route.jobs, "delete_job", record("delete_delivery"))
 
     request = _request(path="/delivery-notes")
@@ -81,6 +82,7 @@ def test_delivery_note_and_quote_wrappers_delegate(monkeypatch):
     assert delivery_notes_route.add_delivery_note_item(request, 1, "", "Line", "1", "1", "24", db=object()) == "add_delivery"
     assert delivery_notes_route.delete_delivery_note_item(request, 1, 2, db=object()) == "delete_delivery_item"
     assert delivery_notes_route.update_delivery_note_status(request, 1, 2, db=object()) == "status_delivery"
+    assert delivery_notes_route.dispatch_delivery_note(request, 1, db=object()) == "dispatch_delivery"
     assert delivery_notes_route.delete_delivery_note(request, 1, db=object()) == "delete_delivery"
 
     monkeypatch.setattr(quotes_route.jobs, "update_job", record("update_quote"))

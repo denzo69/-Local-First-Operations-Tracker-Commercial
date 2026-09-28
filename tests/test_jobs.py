@@ -4,7 +4,20 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import AuditLog, InventoryBalance, InventoryTransaction, Job, Product, Receipt, Role, Sale, Setting, Supplier, User
+from app.models import (
+    AuditLog,
+    InventoryBalance,
+    InventoryReservation,
+    InventoryTransaction,
+    Job,
+    Product,
+    Receipt,
+    Role,
+    Sale,
+    Setting,
+    Supplier,
+    User,
+)
 from app.services.inventory_service import (
     add_goods_receipt_line,
     create_default_warehouse,
@@ -118,7 +131,7 @@ def test_work_order_routes_create_and_redirect_to_work_order_detail():
     assert response.headers["location"].startswith("/work-orders/")
 
 
-def test_quote_does_not_reduce_stock_delivery_note_reduces_once_and_sale_reuses_issue():
+def test_quote_does_not_reduce_stock_delivery_note_reserves_and_sale_consumes_reservation():
     with TestClient(app) as client:
         customer_response = client.post("/customers", data={"name": "Document Customer"}, follow_redirects=False)
         customer_id = customer_response.headers["location"].rsplit("/", 1)[-1]
@@ -144,9 +157,17 @@ def test_quote_does_not_reduce_stock_delivery_note_reduces_once_and_sale_reuses_
         with SessionLocal() as db:
             delivery = db.query(Job).filter(Job.source_job_id == int(quote_id), Job.document_type == "delivery_note").one()
             stock_after_delivery = db.get(Product, product_id).current_inventory_quantity
+            balance_after_delivery = db.query(InventoryBalance).filter(InventoryBalance.product_id == product_id).one()
+            reserved_after_delivery = balance_after_delivery.quantity_reserved
+            available_after_delivery = balance_after_delivery.quantity_available
             delivery_issue_count = (
                 db.query(InventoryTransaction)
                 .filter(InventoryTransaction.transaction_type == "delivery_note_issue", InventoryTransaction.work_order_id == delivery.id)
+                .count()
+            )
+            active_reservation_count = (
+                db.query(InventoryReservation)
+                .filter(InventoryReservation.job_id == delivery.id, InventoryReservation.status == "active")
                 .count()
             )
             delivery_id = delivery.id
@@ -157,6 +178,8 @@ def test_quote_does_not_reduce_stock_delivery_note_reduces_once_and_sale_reuses_
         delivery = db.get(Job, delivery_id)
         sale = db.query(Sale).filter(Sale.work_order_id == delivery.id).one()
         inventory_transactions = db.query(InventoryTransaction).filter(InventoryTransaction.sale_id == sale.id).count()
+        reservation = db.query(InventoryReservation).filter(InventoryReservation.job_id == delivery.id).one()
+        final_balance = db.query(InventoryBalance).filter(InventoryBalance.product_id == product_id).one()
 
     assert quote_response.status_code == 303
     assert item_response.status_code == 303
@@ -164,16 +187,25 @@ def test_quote_does_not_reduce_stock_delivery_note_reduces_once_and_sale_reuses_
     assert sale_response.status_code == 303
     assert quote.document_type == "quote"
     assert delivery.document_type == "delivery_note"
+    assert sale.source_type == "delivery_note"
     assert sale.total == 50
     assert stock_after_quote == 5
     assert quote_issue_count == 1
-    assert stock_after_delivery == 3
-    assert delivery_issue_count == 1
-    assert inventory_transactions == 0
+    assert stock_after_delivery == 5
+    assert reserved_after_delivery == 2
+    assert available_after_delivery == 3
+    assert delivery_issue_count == 0
+    assert active_reservation_count == 1
+    assert inventory_transactions == 1
+    assert reservation.status == "consumed"
+    assert reservation.inventory_transaction_id is not None
+    assert final_balance.quantity_on_hand == 3
+    assert final_balance.quantity_reserved == 0
+    assert final_balance.quantity_available == 3
     assert sale.cost_of_goods_sold_ex_vat == 20
 
 
-def test_delivery_note_item_reduces_stock_and_deleting_item_restores_stock_with_reversal():
+def test_delivery_note_item_reserves_stock_and_deleting_item_releases_reservation():
     with TestClient(app) as client:
         with SessionLocal() as db:
             product = seed_stock(db, product_name="Delivery Delete Stock")
@@ -190,10 +222,18 @@ def test_delivery_note_item_reduces_stock_and_deleting_item_restores_stock_with_
         with SessionLocal() as db:
             item = db.get(Job, delivery_id).items[0]
             stock_after_item = db.get(Product, product_id).current_inventory_quantity
-            balance_after_item = db.query(InventoryBalance).filter(InventoryBalance.product_id == product_id).one().quantity_on_hand
+            balance_after_item = db.query(InventoryBalance).filter(InventoryBalance.product_id == product_id).one()
+            on_hand_after_item = balance_after_item.quantity_on_hand
+            reserved_after_item = balance_after_item.quantity_reserved
+            available_after_item = balance_after_item.quantity_available
             issue_count = (
                 db.query(InventoryTransaction)
                 .filter(InventoryTransaction.transaction_type == "delivery_note_issue", InventoryTransaction.work_order_id == delivery_id)
+                .count()
+            )
+            active_reservation_count = (
+                db.query(InventoryReservation)
+                .filter(InventoryReservation.job_id == delivery_id, InventoryReservation.status == "active")
                 .count()
             )
             item_id = item.id
@@ -202,20 +242,28 @@ def test_delivery_note_item_reduces_stock_and_deleting_item_restores_stock_with_
 
     with SessionLocal() as db:
         product = db.get(Product, product_id)
-        reversal = (
-            db.query(InventoryTransaction)
-            .filter(InventoryTransaction.transaction_type == "delivery_note_reversal", InventoryTransaction.work_order_id == delivery_id)
-            .one()
-        )
+        final_balance = db.query(InventoryBalance).filter(InventoryBalance.product_id == product_id).one()
+        reversal_count = db.query(InventoryTransaction).filter(
+            InventoryTransaction.transaction_type == "delivery_note_reversal",
+            InventoryTransaction.work_order_id == delivery_id,
+        ).count()
+        remaining_reservations = db.query(InventoryReservation).filter(InventoryReservation.job_id == delivery_id).count()
 
     assert delivery_response.status_code == 303
     assert item_response.status_code == 303
     assert delete_response.status_code == 303
-    assert stock_after_item == 3
-    assert balance_after_item == 3
-    assert issue_count == 1
+    assert stock_after_item == 5
+    assert on_hand_after_item == 5
+    assert reserved_after_item == 2
+    assert available_after_item == 3
+    assert issue_count == 0
+    assert active_reservation_count == 1
     assert product.current_inventory_quantity == 5
-    assert reversal.quantity_change == 2
+    assert final_balance.quantity_on_hand == 5
+    assert final_balance.quantity_reserved == 0
+    assert final_balance.quantity_available == 5
+    assert reversal_count == 0
+    assert remaining_reservations == 0
 
 
 def test_delivery_note_service_row_does_not_reduce_stock():
