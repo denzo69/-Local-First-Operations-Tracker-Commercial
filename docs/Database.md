@@ -33,6 +33,8 @@ The MVP database should include the following tables:
 - inventory_transactions
 - inventory_reservations
 - product_barcodes
+- purchase_orders
+- purchase_order_lines
 
 ## Migration bootstrap and legacy SQLite databases
 
@@ -42,7 +44,7 @@ Alembic is the versioned source of truth for schema upgrades. New databases shou
 .\.venv\Scripts\python.exe -m app.migration_bootstrap
 ```
 
-The current Alembic head is `e4f6a8b0c2d3` (`inventory_reservations` and `refund_lines`).
+The current Alembic head is `f7a1c9e3b5d2` (purchase orders and replenishment settings).
 
 Older local-first builds could create tables through application startup before the database had an Alembic stamp. Those databases may contain valid application tables but no `alembic_version` row. Running raw `alembic upgrade head` against that state can fail because the baseline migration tries to recreate tables that already exist.
 
@@ -54,7 +56,8 @@ The migration bootstrap handles that compatibility case deterministically:
 - unstamped database matching inventory schema: stamp `7c2a91f4d8e3`, then upgrade to head
 - unstamped database matching stabilization schema: stamp `9e4c3b2a1f08`
 - unstamped database matching a later known schema: stamp that exact revision, then upgrade to head
-- unstamped database matching current reservations/refund-lines schema: stamp `e4f6a8b0c2d3` without rebuilding tables
+- unstamped database matching current purchasing/replenishment schema: stamp `f7a1c9e3b5d2` without rebuilding tables
+- unstamped database matching an earlier known schema: stamp that exact revision, then upgrade to head
 - already stamped database: run normal Alembic upgrade to head
 - partial, inconsistent, or unknown schema: abort without stamping or upgrading
 
@@ -157,6 +160,10 @@ Planned fields:
 - current_inventory_value_ex_vat
 - current_purchase_price_ex_vat
 - current_purchase_price_inc_vat
+- preferred_supplier_id
+- supplier_product_code
+- reorder_point
+- target_stock_quantity
 - created_at
 - updated_at
 
@@ -302,6 +309,10 @@ Supporting tables:
 - `inventory_transactions`
 - `inventory_reservations`
 - `refund_lines`
+- `purchase_orders`
+- `purchase_order_lines`
+
+`purchase_orders` track supplier, dates, status, creator, and notes. `purchase_order_lines` snapshot product, supplier code, destination, ordered and received quantities, unit cost, and VAT. Goods Receipts created from an order carry the order and line references so partial receipts, cancellations, and replenishment calculations remain traceable.
 
 ## Future tables
 

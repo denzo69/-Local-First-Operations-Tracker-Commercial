@@ -36,7 +36,8 @@ DOCUMENT_WORKFLOW_REVISION = "b9d2e4f6a8c0"
 CUSTOMER_DISCOUNT_REVISION = "d6e8f0a1b2c3"
 PRODUCT_IDENTIFIERS_REVISION = "d2e4f6a8b0c1"
 RESERVATIONS_REFUNDS_REVISION = "e4f6a8b0c2d3"
-HEAD_REVISION = RESERVATIONS_REFUNDS_REVISION
+PURCHASING_REVISION = "f7a1c9e3b5d2"
+HEAD_REVISION = PURCHASING_REVISION
 
 CLASS_EMPTY = "empty database"
 CLASS_BASELINE = "matches baseline"
@@ -53,6 +54,7 @@ CLASS_DOCUMENT_WORKFLOW = "matches document workflow revision"
 CLASS_CUSTOMER_DISCOUNT = "matches customer default discount revision"
 CLASS_PRODUCT_IDENTIFIERS = "matches product identifiers revision"
 CLASS_RESERVATIONS_REFUNDS = "matches inventory reservations and refund lines revision"
+CLASS_PURCHASING = "matches purchasing and replenishment revision"
 CLASS_UNKNOWN = "inconsistent / partially migrated / unknown"
 
 
@@ -477,6 +479,16 @@ RESERVATION_REFUND_TABLE_COLUMNS = {
     },
 }
 
+PURCHASING_COLUMNS = {
+    "products": {"preferred_supplier_id", "supplier_product_code", "reorder_point", "target_stock_quantity"},
+    "goods_receipts": {"purchase_order_id"},
+    "goods_receipt_lines": {"purchase_order_line_id"},
+}
+PURCHASING_TABLE_COLUMNS = {
+    "purchase_orders": {"id", "order_number", "supplier_id", "status", "order_date", "expected_date", "created_by_user_id", "ordered_at", "cancelled_at", "notes", "created_at", "updated_at"},
+    "purchase_order_lines": {"id", "purchase_order_id", "product_id", "destination_location_id", "supplier_product_code", "ordered_quantity", "received_quantity", "unit_cost_ex_vat", "vat_rate", "created_at"},
+}
+
 OPTIONAL_SHIFTS_SETTING_KEYS = {"require_cashier_shift"}
 
 NULLABLE_COLUMNS_BY_REVISION = {
@@ -492,6 +504,7 @@ NULLABLE_COLUMNS_BY_REVISION = {
     CUSTOMER_DISCOUNT_REVISION: {},
     PRODUCT_IDENTIFIERS_REVISION: {},
     RESERVATIONS_REFUNDS_REVISION: {},
+    PURCHASING_REVISION: {"products": {"preferred_supplier_id", "supplier_product_code"}, "goods_receipts": {"purchase_order_id"}, "goods_receipt_lines": {"purchase_order_line_id"}},
 }
 
 NON_NULLABLE_COLUMNS_BY_REVISION = {
@@ -525,6 +538,11 @@ NON_NULLABLE_COLUMNS_BY_REVISION = {
             "restocked",
             "inventory_cost_ex_vat",
         },
+    },
+    PURCHASING_REVISION: {
+        "products": {"reorder_point", "target_stock_quantity"},
+        "purchase_orders": {"id", "order_number", "supplier_id", "status", "order_date", "created_by_user_id"},
+        "purchase_order_lines": {"id", "purchase_order_id", "product_id", "destination_location_id", "ordered_quantity", "received_quantity", "unit_cost_ex_vat", "vat_rate"},
     },
 }
 
@@ -643,6 +661,12 @@ REQUIRED_INDEXES_BY_REVISION = {
         "ix_refund_lines_refund_id",
         "ix_refund_lines_sale_line_id",
     },
+    PURCHASING_REVISION: {
+        "ix_products_preferred_supplier_id", "ix_purchase_orders_id", "ix_purchase_orders_order_number",
+        "ix_purchase_orders_supplier_id", "ix_purchase_orders_status", "ix_purchase_orders_order_date",
+        "ix_purchase_order_lines_id", "ix_purchase_order_lines_purchase_order_id", "ix_purchase_order_lines_product_id",
+        "ix_goods_receipts_purchase_order_id", "ix_goods_receipt_lines_purchase_order_line_id",
+    },
 }
 
 REQUIRED_TRIGGERS_BY_REVISION = {
@@ -667,6 +691,7 @@ REVISION_LABELS = {
     CUSTOMER_DISCOUNT_REVISION: CLASS_CUSTOMER_DISCOUNT,
     PRODUCT_IDENTIFIERS_REVISION: CLASS_PRODUCT_IDENTIFIERS,
     RESERVATIONS_REFUNDS_REVISION: CLASS_RESERVATIONS_REFUNDS,
+    PURCHASING_REVISION: CLASS_PURCHASING,
 }
 
 REVISION_ORDER = [
@@ -684,6 +709,7 @@ REVISION_ORDER = [
     CUSTOMER_DISCOUNT_REVISION,
     PRODUCT_IDENTIFIERS_REVISION,
     RESERVATIONS_REFUNDS_REVISION,
+    PURCHASING_REVISION,
 ]
 
 
@@ -880,7 +906,8 @@ RESERVATIONS_REFUNDS_SCHEMA = merge_columns(
     PRODUCT_IDENTIFIERS_SCHEMA,
     RESERVATION_REFUND_TABLE_COLUMNS,
 )
-HEAD_KNOWN_SCHEMA = RESERVATIONS_REFUNDS_SCHEMA
+PURCHASING_SCHEMA = merge_columns(RESERVATIONS_REFUNDS_SCHEMA, PURCHASING_COLUMNS, PURCHASING_TABLE_COLUMNS)
+HEAD_KNOWN_SCHEMA = PURCHASING_SCHEMA
 
 
 def _missing_schema(schema: dict[str, set[str]], inspection: SchemaInspection) -> list[str]:
@@ -932,6 +959,8 @@ def _missing_indexes(revision: str, inspection: SchemaInspection) -> list[str]:
         required.update(REQUIRED_INDEXES_BY_REVISION[PRODUCT_IDENTIFIERS_REVISION])
     if revision_index >= REVISION_ORDER.index(RESERVATIONS_REFUNDS_REVISION):
         required.update(REQUIRED_INDEXES_BY_REVISION[RESERVATIONS_REFUNDS_REVISION])
+    if revision_index >= REVISION_ORDER.index(PURCHASING_REVISION):
+        required.update(REQUIRED_INDEXES_BY_REVISION[PURCHASING_REVISION])
     return [f"missing index {index}" for index in sorted(required - inspection.indexes)]
 
 
@@ -1103,6 +1132,15 @@ def _future_revision_evidence(revision: str, inspection: SchemaInspection) -> li
         present_indexes = REQUIRED_INDEXES_BY_REVISION[RESERVATIONS_REFUNDS_REVISION] & inspection.indexes
         evidence.extend(f"future index {index}" for index in sorted(present_indexes))
 
+    if PURCHASING_REVISION in later_revisions:
+        for table, columns in PURCHASING_COLUMNS.items():
+            present = inspection.columns_by_table.get(table, set()) & columns
+            evidence.extend(f"future column {table}.{column}" for column in sorted(present))
+        for table in sorted(set(PURCHASING_TABLE_COLUMNS) & inspection.tables):
+            evidence.append(f"future table {table}")
+        present_indexes = REQUIRED_INDEXES_BY_REVISION[PURCHASING_REVISION] & inspection.indexes
+        evidence.extend(f"future index {index}" for index in sorted(present_indexes))
+
     return evidence
 
 
@@ -1124,6 +1162,7 @@ def classify_schema(inspection: SchemaInspection) -> SchemaClassification:
         )
 
     candidates = [
+        (PURCHASING_REVISION, PURCHASING_SCHEMA),
         (RESERVATIONS_REFUNDS_REVISION, RESERVATIONS_REFUNDS_SCHEMA),
         (PRODUCT_IDENTIFIERS_REVISION, PRODUCT_IDENTIFIERS_SCHEMA),
         (CUSTOMER_DISCOUNT_REVISION, CUSTOMER_DISCOUNT_SCHEMA),

@@ -94,4 +94,11 @@
     <button class="btn btn-outline-danger" type="submit">{{ t.cancel_goods_receipt }}</button>
 </form>
 {% endif %}
+{% if receipt.status == "draft" %}
+<form method="post" action="{{ products_inventory_base|default('/inventory') }}/goods-receipts/{{ receipt.id }}/discard" class="card p-3 border-danger mt-3" onsubmit="return confirm('Discard this draft receipt?')">
+    <input type="hidden" name="reason" value="Draft receipt discarded by user">
+    {% if not is_authenticated %}<label class="form-label" for="discard_user_id">Discarded by</label><select class="form-select mb-2" id="discard_user_id" name="user_id" required>{% for user in users %}<option value="{{ user.id }}">{{ user.name }}</option>{% endfor %}</select>{% endif %}
+    <button class="btn btn-outline-danger" type="submit">Discard draft receipt</button>
+</form>
+{% endif %}
 {% endblock %}

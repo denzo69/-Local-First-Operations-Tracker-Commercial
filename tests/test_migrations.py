@@ -12,6 +12,7 @@ from app.migration_bootstrap import (
     CLASS_BASELINE,
     CLASS_CUSTOMER_DISCOUNT,
     CLASS_PRODUCT_IDENTIFIERS,
+    CLASS_PURCHASING,
     CLASS_RESERVATIONS_REFUNDS,
     CLASS_EMPTY,
     CLASS_DOCUMENT_WORKFLOW,
@@ -27,6 +28,7 @@ from app.migration_bootstrap import (
     DOCUMENT_WORKFLOW_REVISION,
     CUSTOMER_DISCOUNT_REVISION,
     PRODUCT_IDENTIFIERS_REVISION,
+    PURCHASING_REVISION,
     RESERVATIONS_REFUNDS_REVISION,
     HEAD_REVISION,
     INVOICE_FOLLOWUP_REVISION,
@@ -444,6 +446,8 @@ def test_unstamped_stabilization_database_is_stamped_without_rebuild(tmp_path):
         "product_barcodes",
         "inventory_reservations",
         "refund_lines",
+        "purchase_orders",
+        "purchase_order_lines",
     } == after_tables
     assert _current_revision(db_path) == HEAD_REVISION
 
@@ -618,7 +622,7 @@ def test_unstamped_reservations_refunds_database_is_stamped_without_upgrade(tmp_
 
     assert plan.classification.classification == CLASS_RESERVATIONS_REFUNDS
     assert plan.stamp_revision == RESERVATIONS_REFUNDS_REVISION
-    assert plan.upgrade_target is None
+    assert plan.upgrade_target == "head"
     assert _current_revision(db_path) == HEAD_REVISION
 
 
@@ -850,8 +854,35 @@ def test_extra_legacy_side_table_does_not_block_known_schema_classification(tmp_
     inspection = inspect_database(_database_url(db_path))
     classification = classify_schema(inspection)
 
-    assert classification.classification == CLASS_RESERVATIONS_REFUNDS
+    assert classification.classification == CLASS_PURCHASING
     assert classification.matched_revision == HEAD_REVISION
+
+
+def test_partial_future_purchasing_schema_is_rejected(tmp_path):
+    db_path = tmp_path / "partial-purchasing.sqlite"
+    _upgrade_to_revision(db_path, RESERVATIONS_REFUNDS_REVISION)
+    _drop_alembic_version(db_path)
+    engine = create_engine(_database_url(db_path), future=True)
+    with engine.begin() as connection:
+        connection.execute(text("CREATE TABLE purchase_orders (id INTEGER PRIMARY KEY)"))
+    engine.dispose()
+
+    classification = classify_schema(inspect_database(_database_url(db_path)))
+    assert classification.classification == CLASS_UNKNOWN
+    assert any("future table purchase_orders" in item for item in classification.unexpected)
+
+
+def test_purchasing_migration_downgrades_and_reapplies(tmp_path):
+    db_path = tmp_path / "purchasing-cycle.sqlite"
+    _upgrade_to_revision(db_path, PURCHASING_REVISION)
+    engine = create_engine(_database_url(db_path), future=True)
+    assert "purchase_orders" in inspect(engine).get_table_names()
+    command.downgrade(_alembic_config(db_path), RESERVATIONS_REFUNDS_REVISION)
+    assert "purchase_orders" not in inspect(engine).get_table_names()
+    assert "purchase_order_id" not in {column["name"] for column in inspect(engine).get_columns("goods_receipts")}
+    command.upgrade(_alembic_config(db_path), "head")
+    assert "purchase_orders" in inspect(engine).get_table_names()
+    engine.dispose()
 
 
 def test_backup_created_and_quick_check_succeeds(tmp_path):

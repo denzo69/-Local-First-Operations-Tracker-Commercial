@@ -13,6 +13,7 @@
         {% if product.is_stock_item %}
         <a class="btn btn-primary" href="/products/{{ product.id }}/receive">{{ t.receive_stock }}</a>
         {% endif %}
+        <a class="btn btn-outline-primary" href="/products/{{ product.id }}/labels">{{ t.print_label }}</a>
         <a class="btn btn-outline-secondary" href="/products/{{ product.id }}/edit">{{ t.edit }}</a>
         <a class="btn btn-outline-primary" href="/products/inventory/transactions?product_id={{ product.id }}">{{ t.inventory_transactions }}</a>
         <a class="btn btn-outline-primary" href="/products/goods-receipts/new">{{ t.new_goods_receipt }}</a>
@@ -36,6 +37,7 @@
             <div class="col-md-3"><div class="text-muted">{{ t.status }}</div><strong>{{ t.active if product.is_active else "Inactive" }}</strong></div>
             <div class="col-md-3"><div class="text-muted">{{ t.vat }}</div><strong>{{ product.vat_percent }}%</strong></div>
             <div class="col-md-3"><div class="text-muted">{{ t.unit }}</div><strong>{{ product.unit }}</strong></div>
+            {% if product.is_stock_item %}<div class="col-md-3"><div class="text-muted">{{ t.preferred_supplier }}</div><strong>{{ product.preferred_supplier.name if product.preferred_supplier else "-" }}</strong></div><div class="col-md-3"><div class="text-muted">{{ t.reorder_point }} / {{ t.target_stock_quantity }}</div><strong>{{ product.reorder_point }} / {{ product.target_stock_quantity }}</strong></div>{% endif %}
         </div>
     </div>
 </div>
