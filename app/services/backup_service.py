@@ -44,10 +44,13 @@ def backup_checksum(path: Path) -> str:
 
 
 def validate_sqlite_database(path: Path) -> None:
-    with closing(sqlite3.connect(path)) as connection:
-        result = connection.execute("PRAGMA integrity_check").fetchone()
-        if not result or result[0] != "ok":
-            raise RuntimeError(f"Backup integrity check failed for {path.name}.")
+    try:
+        with closing(sqlite3.connect(path)) as connection:
+            result = connection.execute("PRAGMA integrity_check").fetchone()
+    except sqlite3.DatabaseError as exc:
+        raise RuntimeError(f"Backup integrity check failed for {path.name}.") from exc
+    if not result or result[0] != "ok":
+        raise RuntimeError(f"Backup integrity check failed for {path.name}.")
 
 
 def create_backup(label: str = "manual") -> BackupInfo:
