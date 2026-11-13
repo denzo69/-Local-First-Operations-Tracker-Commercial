@@ -1041,7 +1041,9 @@ def _issue_stock_at_location(
     total_cost = money(qty * old_avg)
     new_qty = quantity(old_qty - qty)
     new_value = money(old_value - total_cost)
-    new_avg = old_avg if new_qty > 0 else None
+    # Keep the remaining cache consistent with the cent-rounded ledger value.
+    # The outgoing transaction retains old_avg and its original rounded cost.
+    new_avg = cost(new_value / new_qty) if new_qty > 0 else None
     balance_value = money(parse_decimal(balance.inventory_value_ex_vat or 0))
     balance.quantity_on_hand = quantity(balance_qty - qty)
     balance.quantity_available = quantity(

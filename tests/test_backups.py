@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from app.database import SessionLocal, engine
@@ -95,12 +96,32 @@ def test_corrupt_backup_fails_integrity_check(tmp_path):
     corrupt = tmp_path / "corrupt.sqlite"
     corrupt.write_bytes(b"not a sqlite database")
 
-    try:
+    with pytest.raises(RuntimeError, match="Backup integrity check failed.*corrupt.sqlite"):
         validate_sqlite_database(corrupt)
-    except Exception as exc:
-        assert "file is not a database" in str(exc) or "integrity" in str(exc).lower()
-    else:
-        raise AssertionError("Corrupt backup passed validation")
+
+
+def test_corrupt_backup_restore_is_controlled_preserves_data_and_allows_valid_restore():
+    with SessionLocal() as db:
+        db.add(Customer(name="Customer before backup"))
+        db.commit()
+    valid = create_backup(label="before_corrupt_restore")
+    corrupt = valid.path.parent / "ops_tracker_corrupt.sqlite"
+    corrupt.write_bytes(b"not a sqlite database")
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(f"/backups/{corrupt.name}/restore", follow_redirects=False)
+        assert response.status_code == 400
+        assert "Backup integrity check failed" in response.text
+        with SessionLocal() as db:
+            assert [row.name for row in db.query(Customer).all()] == ["Customer before backup"]
+
+        # The failed restore must release maintenance mode and keep the app usable.
+        assert client.post("/customers", data={"name": "Customer after rejection"}, follow_redirects=False).status_code == 303
+        restored = client.post(f"/backups/{valid.name}/restore", follow_redirects=False)
+        assert restored.status_code == 303
+
+    with SessionLocal() as db:
+        assert [row.name for row in db.query(Customer).all()] == ["Customer before backup"]
 
 
 def test_write_routes_are_blocked_during_maintenance():
